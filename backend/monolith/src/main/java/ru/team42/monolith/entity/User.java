@@ -2,6 +2,8 @@ package ru.team42.monolith.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
@@ -31,6 +33,13 @@ public class User extends AbstractEntity {
     @Column(name = "last_name", length = 100)
     private String lastName;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 50)
-    private String role = "USER";
+    private Role role = Role.USER;
+
+    public enum Role {
+        USER,
+        ADMIN,
+        SYSTEM_ADMIN
+    }
 }

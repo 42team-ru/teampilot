@@ -1,7 +1,6 @@
 package ru.team42.monolith.rest;
 
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -12,12 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ru.team42.backend.web_common.dto.ErrorResponse;
-import ru.team42.backend.web_common.exception.AppException;
-import ru.team42.monolith.config.AppProperties;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
 import ru.team42.monolith.dto.responce.AuthResponse;
@@ -35,7 +31,7 @@ public class AuthController {
     @Operation(
             summary = "Создать инвайт-ссылку",
             description = "Вызывается Telegram-ботом. Генерирует одноразовый токен для входа пользователя. "
-                    + "Требует секрет бота в заголовке X-Bot-Secret."
+                    + "Требует секрет бота в заголовке."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Инвайт создан",
