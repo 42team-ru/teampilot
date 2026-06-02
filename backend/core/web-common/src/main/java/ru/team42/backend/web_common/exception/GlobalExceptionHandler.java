@@ -24,126 +24,107 @@ import ru.team42.backend.web_common.dto.FieldViolation;
 import ru.team42.backend.web_common.dto.ValidationErrorResponse;
 
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
+    // ── Custom exceptions ─────────────────────────────────────────────────────
+
     @ExceptionHandler(AppException.class)
-    public ResponseEntity<ErrorResponse> handleAppException(AppException ex, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
-        if (status != null && status.is5xxServerError()) {
-            log.error("Application error: {}", ex.getMessage(), ex);
-        } else {
-            log.debug("Client error [{}]: {}", ex.getStatusCode().value(), ex.getMessage());
-        }
-        return ResponseEntity.status(ex.getStatusCode()).body(new ErrorResponse(
-                ex.getStatusCode().value(),
-                status != null ? phrase(status) : "Error",
-                ex.getBody().getDetail(),
-                request.getRequestURI(),
-                traceId()
-        ));
+    ResponseEntity<ErrorResponse> onApp(AppException ex, HttpServletRequest req) {
+        if (ex.getStatus().is5xxServerError()) log.error("App error: {}", ex.getMessage(), ex);
+        else log.debug("[{}] {}", ex.getStatus().value(), ex.getMessage());
+        return error(ex.getStatus(), ex.getMessage(), req.getRequestURI());
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ValidationErrorResponse> handleConstraintViolation(
-            ConstraintViolationException ex, HttpServletRequest request) {
-
+    ResponseEntity<ValidationErrorResponse> onConstraint(ConstraintViolationException ex, HttpServletRequest req) {
         List<FieldViolation> violations = ex.getConstraintViolations().stream()
                 .map(cv -> new FieldViolation(cv.getPropertyPath().toString(), cv.getMessage()))
                 .toList();
-        log.debug("Constraint violations on {}: {}", request.getRequestURI(), violations);
-        return ResponseEntity.badRequest().body(new ValidationErrorResponse(
-                400, "Validation Error", "Constraint violations",
-                request.getRequestURI(), traceId(), violations
-        ));
+        log.debug("Constraint violations on {}: {}", req.getRequestURI(), violations);
+        return validationError("Constraint violations", req.getRequestURI(), violations);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ErrorResponse> handleTypeMismatch(
-            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
-
-        String expected = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown";
-        String detail = "Parameter '%s' must be of type %s".formatted(ex.getName(), expected);
-        log.debug("Type mismatch on {}: {}", request.getRequestURI(), detail);
-        return ResponseEntity.badRequest().body(new ErrorResponse(
-                400, "Bad Request", detail, request.getRequestURI(), traceId()
-        ));
+    ResponseEntity<ErrorResponse> onTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
+        String type = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown";
+        return error(HttpStatus.BAD_REQUEST,
+                "Parameter '%s' must be of type %s".formatted(ex.getName(), type),
+                req.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
-        log.error("Unexpected error on {}", request.getRequestURI(), ex);
-        return ResponseEntity.internalServerError().body(new ErrorResponse(
-                500, "Internal Server Error", "An unexpected error occurred",
-                request.getRequestURI(), traceId()
-        ));
+    ResponseEntity<ErrorResponse> onUnexpected(Exception ex, HttpServletRequest req) {
+        log.error("Unexpected error on {}", req.getRequestURI(), ex);
+        return error(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", req.getRequestURI());
     }
+
+    // ── Spring MVC exceptions ─────────────────────────────────────────────────
+    // handleMethodArgumentNotValid overridden separately — needs ValidationErrorResponse.
+    // All other Spring MVC exceptions fall through to handleExceptionInternal.
 
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
-            MethodArgumentNotValidException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-
+            MethodArgumentNotValidException ex, HttpHeaders headers, HttpStatusCode status, WebRequest req) {
         List<FieldViolation> violations = ex.getBindingResult().getAllErrors().stream()
-                .map(error -> {
-                    String field = error instanceof FieldError fe ? fe.getField() : error.getObjectName();
-                    String message = error.getDefaultMessage();
-                    return new FieldViolation(field, message != null ? message : "invalid value");
+                .map(e -> {
+                    String field = e instanceof FieldError fe ? fe.getField() : e.getObjectName();
+                    String msg = e.getDefaultMessage();
+                    return new FieldViolation(field, msg != null ? msg : "invalid value");
                 })
                 .toList();
-        log.debug("Validation failed on {}: {}", extractPath(request), violations);
-        return ResponseEntity.badRequest().body(new ValidationErrorResponse(
-                400, "Validation Error", "Request contains invalid data",
-                extractPath(request), traceId(), violations
-        ));
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleHttpMessageNotReadable(
-            HttpMessageNotReadableException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-
-        log.debug("Malformed request body on {}: {}", extractPath(request), ex.getMessage());
-        return ResponseEntity.badRequest().body(new ErrorResponse(
-                400, "Bad Request", "Request body is malformed or unreadable",
-                extractPath(request), traceId()
-        ));
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleMissingServletRequestParameter(
-            MissingServletRequestParameterException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-
-        log.debug("Missing parameter '{}' on {}", ex.getParameterName(), extractPath(request));
-        return ResponseEntity.badRequest().body(new ErrorResponse(
-                400, "Bad Request",
-                "Required parameter '" + ex.getParameterName() + "' is missing",
-                extractPath(request), traceId()
-        ));
+        String path = extractPath(req);
+        log.debug("Validation failed on {}: {}", path, violations);
+        return ResponseEntity.badRequest()
+                .body(new ValidationErrorResponse(400, "Validation Error", "Request contains invalid data",
+                        path, traceId(), violations));
     }
 
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
-            Exception ex, Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
-
-        HttpStatus httpStatus = HttpStatus.resolve(statusCode.value());
-        String title = httpStatus != null ? phrase(httpStatus) : "Error";
-        return super.handleExceptionInternal(ex,
-                new ErrorResponse(statusCode.value(), title, title, extractPath(request), traceId()),
-                headers, statusCode, request);
+            Exception ex, Object body, HttpHeaders headers, HttpStatusCode status, WebRequest req) {
+        HttpStatus httpStatus = HttpStatus.resolve(status.value());
+        String title = httpStatus != null ? httpStatus.getReasonPhrase() : "Error";
+        String detail = resolveDetail(ex, title);
+        String path = extractPath(req);
+        if (status.is5xxServerError()) log.error("Server error on {}: {}", path, ex.getMessage(), ex);
+        else log.debug("[{}] {} — {}", status.value(), detail, path);
+        return ResponseEntity.status(status).headers(headers)
+                .body(new ErrorResponse(status.value(), title, detail, path, traceId()));
     }
 
-    private String phrase(HttpStatus status) {
-        return status.getReasonPhrase();
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private ResponseEntity<ErrorResponse> error(HttpStatus status, String detail, String path) {
+        return ResponseEntity.status(status)
+                .body(new ErrorResponse(status.value(), status.getReasonPhrase(), detail, path, traceId()));
+    }
+
+    private ResponseEntity<ValidationErrorResponse> validationError(String detail, String path, List<FieldViolation> violations) {
+        return ResponseEntity.badRequest()
+                .body(new ValidationErrorResponse(400, "Validation Error", detail, path, traceId(), violations));
+    }
+
+    private String resolveDetail(Exception ex, String fallback) {
+        return switch (ex) {
+            case HttpMessageNotReadableException ignored -> "Request body is malformed or unreadable";
+            case MissingServletRequestParameterException e ->
+                    "Required parameter '%s' is missing".formatted(e.getParameterName());
+            default -> ex.getMessage() != null ? ex.getMessage() : fallback;
+        };
     }
 
     private String traceId() {
-        return MDC.get("traceId");
+        String id = MDC.get("traceId");
+        return id != null ? id : UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
-    private String extractPath(WebRequest request) {
-        String description = request.getDescription(false);
-        return description.startsWith("uri=") ? description.substring(4) : description;
+    private String extractPath(WebRequest req) {
+        String desc = req.getDescription(false);
+        return desc.startsWith("uri=") ? desc.substring(4) : desc;
     }
 }
