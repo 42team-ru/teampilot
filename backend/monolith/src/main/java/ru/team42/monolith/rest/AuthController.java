@@ -31,7 +31,6 @@ import ru.team42.monolith.service.AuthService;
 public class AuthController {
 
     private final AuthService authService;
-    private final AppProperties appProperties;
 
     @Operation(
             summary = "Создать инвайт-ссылку",
@@ -40,9 +39,7 @@ public class AuthController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Инвайт создан",
-                    content = @Content(schema = @Schema(implementation = InviteResponse.class))),
-            @ApiResponse(responseCode = "403", description = "Неверный секрет бота",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(schema = @Schema(implementation = InviteResponse.class)))
     })
     @PostMapping("/invite")
     public ResponseEntity<InviteResponse> createInvite(
