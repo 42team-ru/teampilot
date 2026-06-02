@@ -25,7 +25,7 @@ import ru.team42.monolith.dto.responce.InviteResponse;
 import ru.team42.monolith.service.AuthService;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 @RequiredArgsConstructor
 @Tag(name = "Auth", description = "Аутентификация через Telegram-бота")
 public class AuthController {
