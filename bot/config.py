@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     BOT_TOKEN: str
+    BOT_SECRET: str = ""
     ADMIN_IDS: list[int] = []
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     BACKEND_URL: str = "http://localhost:8080"

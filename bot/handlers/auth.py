@@ -9,7 +9,7 @@ from aiogram.types import Message
 from loguru import logger
 
 from config import settings
-from storage import create_invite, get_invite, get_user, register_user, save_yougile_token, use_invite
+from storage import get_user, register_user, save_yougile_token
 
 router = Router()
 
@@ -26,15 +26,37 @@ async def cmd_invite(message: Message) -> None:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
 
-    token = create_invite(message.from_user.id)
-    bot_username = (await message.bot.get_me()).username
-    link = f"https://t.me/{bot_username}?start={token}"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}/auth/invite",
+                headers={"X-Bot-Secret": settings.BOT_SECRET},
+                json={
+                    "creatorTelegramId": message.from_user.id,
+                    "createdBy": str(message.from_user.id),
+                },
+            )
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError) as e:
+        logger.warning(f"Backend unavailable on /invite: {e}")
+        await message.answer("❌ Бэкенд недоступен, попробуй позже.")
+        return
 
-    await message.answer(
-        f"✅ Ссылка-приглашение создана:\n{link}\n\n"
-        "Ссылка одноразовая — для одного пользователя."
-    )
-    logger.info(f"Admin {message.from_user.id} created invite {token}")
+    if resp.status_code == 403:
+        await message.answer("⛔ Неверный секрет бота.")
+        return
+
+    if resp.status_code == 200:
+        data = resp.json()
+        invite_url = data["inviteUrl"]
+        await message.answer(
+            f"✅ Ссылка-приглашение создана:\n{invite_url}\n\n"
+            "Ссылка одноразовая — для одного пользователя."
+        )
+        logger.info(f"Admin {message.from_user.id} created invite via backend")
+        return
+
+    logger.warning(f"Unexpected status from /auth/invite: {resp.status_code} {resp.text}")
+    await message.answer("❌ Бэкенд недоступен, попробуй позже.")
 
 
 @router.message(CommandStart())
@@ -42,7 +64,8 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     args = message.text.split(maxsplit=1)
     token = args[1] if len(args) > 1 else ""
 
-    if not token.startswith("inv_"):
+    # setup_ deep links are handled by setup_router (registered before auth_router)
+    if not token or token.startswith("setup_"):
         user = get_user(message.from_user.id)
         if user:
             await message.answer("Вы уже зарегистрированы.")
@@ -50,28 +73,49 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
             await message.answer("Доступ только по приглашению. Обратитесь к администратору.")
         return
 
-    invite = get_invite(token)
-    if invite is None:
-        await message.answer("❌ Ссылка-приглашение недействительна.")
-        return
-    if invite.used_by is not None:
-        await message.answer("❌ Эта ссылка уже была использована.")
-        return
-    if get_user(message.from_user.id):
-        await message.answer("Вы уже зарегистрированы.")
-        return
-
+    # Any non-empty payload that is not "setup_" is treated as an invite token
     u = message.from_user
-    register_user(u.id, u.username, u.full_name)
-    use_invite(token, u.id)
-    logger.info(f"New user registered: {u.id} ({u.full_name}) via invite {token}")
 
-    await message.answer(
-        f"Добро пожаловать, {u.first_name}! 🎉\n\n"
-        "Теперь привяжи аккаунт YouGile —\n"
-        "зайди в YouGile → Настройки → API → скопируй токен и пришли сюда."
-    )
-    await state.set_state(Registration.waiting_yougile_token)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}/auth/login",
+                json={
+                    "inviteToken": token,
+                    "telegramId": u.id,
+                    "telegramLogin": u.username,
+                    "firstName": u.first_name,
+                    "lastName": u.last_name,
+                },
+            )
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError) as e:
+        logger.warning(f"Backend unavailable on /auth/login: {e}")
+        await message.answer("❌ Бэкенд недоступен, попробуй позже.")
+        return
+
+    if resp.status_code == 404:
+        await message.answer("❌ Ссылка-приглашение недействительна или истекла.")
+        return
+
+    if resp.status_code == 400:
+        await message.answer("❌ Неверный запрос.")
+        return
+
+    if resp.status_code == 200:
+        data = resp.json()
+        register_user(u.id, u.username, u.full_name)
+        logger.info(f"New user registered: {u.id} ({u.full_name}) via backend invite {token}")
+
+        await message.answer(
+            f"Добро пожаловать, {u.first_name}! 🎉\n\n"
+            "Теперь привяжи аккаунт YouGile —\n"
+            "зайди в YouGile → Настройки → API → скопируй токен и пришли сюда."
+        )
+        await state.set_state(Registration.waiting_yougile_token)
+        return
+
+    logger.warning(f"Unexpected status from /auth/login: {resp.status_code} {resp.text}")
+    await message.answer("❌ Бэкенд недоступен, попробуй позже.")
 
 
 @router.message(Registration.waiting_yougile_token)
