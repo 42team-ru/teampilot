@@ -9,10 +9,6 @@ public final class ResponseUtils {
 
     private ResponseUtils() {}
 
-    public static <T> ResponseEntity<T> ok(T body) {
-        return ResponseEntity.ok(body);
-    }
-
     public static <T> ResponseEntity<T> created(String location, T body) {
         return ResponseEntity.created(URI.create(location)).body(body);
     }

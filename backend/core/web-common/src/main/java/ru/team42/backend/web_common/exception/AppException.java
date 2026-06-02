@@ -1,35 +1,13 @@
 package ru.team42.backend.web_common.exception;
 
-import lombok.Getter;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.web.ErrorResponseException;
 
-@Getter
-public class AppException extends RuntimeException {
+public class AppException extends ErrorResponseException {
 
-    private final HttpStatus status;
-
-    private AppException(HttpStatus status, String detail) {
-        super(detail);
-        this.status = status;
-    }
-
-    private AppException(HttpStatus status, String detail, Throwable cause) {
-        super(detail, cause);
-        this.status = status;
-    }
-
-    // ── 4xx ──────────────────────────────────────────────────────────────────
-
-    public static AppException badRequest(String detail) {
-        return new AppException(HttpStatus.BAD_REQUEST, detail);
-    }
-
-    public static AppException unauthorized(String detail) {
-        return new AppException(HttpStatus.UNAUTHORIZED, detail);
-    }
-
-    public static AppException forbidden(String detail) {
-        return new AppException(HttpStatus.FORBIDDEN, detail);
+    public AppException(HttpStatus status, String detail) {
+        super(status, ProblemDetail.forStatusAndDetail(status, detail), null);
     }
 
     public static AppException notFound(String detail) {
@@ -40,13 +18,15 @@ public class AppException extends RuntimeException {
         return new AppException(HttpStatus.CONFLICT, detail);
     }
 
-    // ── 5xx ──────────────────────────────────────────────────────────────────
-
-    public static AppException internalError(String detail) {
-        return new AppException(HttpStatus.INTERNAL_SERVER_ERROR, detail);
+    public static AppException forbidden(String detail) {
+        return new AppException(HttpStatus.FORBIDDEN, detail);
     }
 
-    public static AppException internalError(String detail, Throwable cause) {
-        return new AppException(HttpStatus.INTERNAL_SERVER_ERROR, detail, cause);
+    public static AppException unauthorized(String detail) {
+        return new AppException(HttpStatus.UNAUTHORIZED, detail);
+    }
+
+    public static AppException badRequest(String detail) {
+        return new AppException(HttpStatus.BAD_REQUEST, detail);
     }
 }

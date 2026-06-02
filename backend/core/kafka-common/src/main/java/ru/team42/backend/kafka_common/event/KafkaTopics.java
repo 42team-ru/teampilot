@@ -4,5 +4,6 @@ public final class KafkaTopics {
 
     private KafkaTopics() {}
 
-    public static final String MESSAGES_RAW  = "messages.raw";
+    public static final String USER_CREATED = "user-created-events";
+    public static final String USER_UPDATED = "user-updated-events";
 }
