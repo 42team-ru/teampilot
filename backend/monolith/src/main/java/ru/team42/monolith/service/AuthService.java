@@ -24,8 +24,6 @@ public class AuthService {
 
     private final InviteTokenRepository inviteTokenRepository;
     private final UserRepository userRepository;
-    private final JwtService jwtService;
-    private final UserEventPublisher eventPublisher;
     private final AppProperties appProperties;
 
     @Transactional
@@ -65,8 +63,7 @@ public class AuthService {
         inviteToken.setUsedByUser(user);
         inviteTokenRepository.save(inviteToken);
 
-        String token = jwtService.generateToken(user);
-        return new AuthResponse(token, user.getId(), user.getTelegramId(), user.getRole());
+        return new AuthResponse(user.getId(), user.getTelegramId(), user.getRole());
     }
 
     private User createUser(LoginRequest request) {
