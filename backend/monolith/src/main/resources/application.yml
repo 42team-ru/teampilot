@@ -26,12 +26,7 @@ spring:
         driver-class-name: org.postgresql.Driver
     jpa:
         hibernate:
-            ddl-auto: validate
-    flyway:
-        default-schema: monolit_schema
-        schemas: monolit_schema
-    kafka:
-        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+            ddl-auto: update
 
 server:
     port: ${SERVER_PORT:8080}
