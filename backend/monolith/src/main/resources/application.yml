@@ -20,7 +20,7 @@ spring:
             group-id: ${KAFKA_CONSUMER_GROUP_ID:monolith-consumer}
 
     datasource:
-        url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase?currentSchema=monolit_schema}
+        url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase}
         username: ${SPRING_DATASOURCE_USERNAME:myuser}
         password: ${SPRING_DATASOURCE_PASSWORD:mypassword}
         driver-class-name: org.postgresql.Driver
