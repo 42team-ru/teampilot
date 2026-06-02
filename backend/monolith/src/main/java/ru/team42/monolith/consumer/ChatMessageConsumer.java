@@ -19,9 +19,9 @@ public class ChatMessageConsumer {
     private final ChatMessageService chatMessageService;
 
     @KafkaListener(topics = KafkaTopics.MESSAGES_RAW)
-    public void consume(ChatMessageEvent message, Acknowledgment ack) {
-        log.info("Received message from chat: {}", message.getChatId());
-        chatMessageService.save(message);
+    public void consume(List<ChatMessageEvent> messages, Acknowledgment ack) {
+        log.info("Received batch of {} chat messages", messages.size());
+        chatMessageService.saveAll(messages);
         ack.acknowledge();
     }
 }

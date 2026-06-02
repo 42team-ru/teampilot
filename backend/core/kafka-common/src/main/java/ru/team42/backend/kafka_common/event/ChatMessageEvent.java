@@ -10,11 +10,8 @@ import java.time.Instant;
 @Builder
 public class ChatMessageEvent extends BaseEvent {
 
-    private final Long messageId;
     private final Long chatId;
-    private final Long userId;
-    private final String username;
-    private final String fullName;
+    private final String tgUser;
     private final String text;
     private final Instant timestamp;
 }

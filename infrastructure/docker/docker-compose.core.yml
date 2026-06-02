@@ -63,18 +63,6 @@ services:
             timeout: 5s
             retries: 5
 
-#    qdrant:
-#        image: qdrant/qdrant:v1.14.0
-#        ports:
-#            - "${QDRANT_PORT:-6333}:6333"
-#        volumes:
-#            - qdrant_data:/qdrant/storage
-#        healthcheck:
-#            test: [ "CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1" ]
-#            interval: 10s
-#            timeout: 5s
-#            retries: 5
-
     caddy:
         image: caddy:2.11.2-alpine
         container_name: caddy
@@ -95,7 +83,6 @@ volumes:
     my_pg_data:
     redpanda_data:
     minio_data:
-    qdrant_data:
 
 networks:
   default:
