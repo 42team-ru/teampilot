@@ -14,6 +14,11 @@ spring:
     profiles:
         default: dev
 
+    kafka:
+        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        consumer:
+            group-id: ${KAFKA_CONSUMER_GROUP_ID:monolith-consumer}
+
     datasource:
         url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase?currentSchema=monolit_schema}
         username: ${SPRING_DATASOURCE_USERNAME:myuser}
