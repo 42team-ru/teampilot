@@ -39,13 +39,4 @@ public class InviteToken extends AbstractEntity {
 
     @Column(name = "created_by", length = 100)
     private String createdBy;
-
-    @Column(name = "first_name", length = 100)
-    private String firstName;
-
-    @Column(name = "last_name", length = 100)
-    private String lastName;
-
-    @Column(name = "position")
-    private String position;
 }

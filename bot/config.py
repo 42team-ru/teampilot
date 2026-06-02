@@ -12,10 +12,6 @@ class Settings(BaseSettings):
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET_AUDIO: str = "audio-recordings"
-    # Set to true to skip YouGile setup and use mock credentials
-    MOCK_YOUGILE: bool = False
-    MOCK_YOUGILE_TOKEN: str = "mock_token"
-    MOCK_YOUGILE_BOARD_ID: str = "mock_board"
 
     class Config:
         env_file = ".env"

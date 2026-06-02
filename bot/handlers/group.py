@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 
 from aiogram import F, Router
 from aiogram.types import Message
-from loguru import logger
 
 from kafka.producer import EventProducer
 from kafka.topics import TOPIC_MESSAGES_RAW
@@ -15,10 +14,6 @@ router = Router()
 # Without this, the handler will not fire for regular group messages.
 @router.message(F.chat.type.in_({"group", "supergroup"}), F.text)
 async def handle_group_message(message: Message, producer: EventProducer) -> None:
-    logger.info(
-        f"[MSG] chat={message.chat.id} user={message.from_user.id} "
-        f"({message.from_user.full_name}): {message.text[:80]!r}"
-    )
     event = RawMessageEvent(
         message_id=message.message_id,
         chat_id=message.chat.id,
@@ -29,4 +24,4 @@ async def handle_group_message(message: Message, producer: EventProducer) -> Non
         timestamp=datetime.now(timezone.utc),
     )
     await producer.publish(TOPIC_MESSAGES_RAW, event)
-    logger.debug(f"[MSG] published to Kafka: message_id={message.message_id}")
+    # Intentionally silent — no reply to group messages

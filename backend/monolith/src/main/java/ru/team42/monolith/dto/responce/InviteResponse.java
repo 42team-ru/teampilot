@@ -1,4 +1,4 @@
-package ru.team42.monolith.dto.response;
+package ru.team42.monolith.dto.responce;
 
 import java.time.Instant;
 

@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.team42.backend.web_common.dto.ErrorResponse;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
-import ru.team42.monolith.dto.response.AuthResponse;
-import ru.team42.monolith.dto.response.InviteResponse;
+import ru.team42.monolith.dto.responce.AuthResponse;
+import ru.team42.monolith.dto.responce.InviteResponse;
 import ru.team42.monolith.service.AuthService;
 
 @RestController

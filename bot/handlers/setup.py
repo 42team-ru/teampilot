@@ -13,19 +13,12 @@ from aiogram.types import (
 )
 from loguru import logger
 
-from config import settings
 from keyboards.task import build_projects_keyboard
 from services.group_service import deactivate_group, is_group_configured, register_group
 from services.yougile import YouGileClient
 from states.setup import GroupSetupStates
 
 router = Router()
-
-
-@router.message(Command("cancel"), F.chat.type == "private")
-async def cmd_cancel(message: Message, state: FSMContext) -> None:
-    await state.clear()
-    await message.answer("Действие отменено.")
 
 
 class _SetupDeepLink(BaseFilter):
@@ -56,31 +49,6 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot, state: FSMConte
             await bot.send_message(chat_id=adder.id, text=reconfigure_text)
         except TelegramForbiddenError:
             await bot.send_message(chat_id=chat.id, text=reconfigure_text)
-        return
-
-    # Mock mode: skip YouGile setup, register group instantly
-    if settings.MOCK_YOUGILE:
-        await register_group(
-            chat_id=chat.id,
-            chat_title=chat.title,
-            added_by_telegram_id=adder.id,
-            yougile_token=settings.MOCK_YOUGILE_TOKEN,
-            yougile_board_id=settings.MOCK_YOUGILE_BOARD_ID,
-        )
-        logger.info(f"[MOCK] Group {chat.id} ({chat.title}) registered with mock YouGile")
-        try:
-            await bot.send_message(
-                chat_id=adder.id,
-                text=(
-                    f"✅ [MOCK] Группа <b>{chat.title}</b> настроена!\n\n"
-                    "YouGile замокан — сообщения будут читаться и отправляться в Kafka."
-                ),
-            )
-        except TelegramForbiddenError:
-            await bot.send_message(
-                chat_id=chat.id,
-                text="✅ [MOCK] Группа настроена. Читаю сообщения.",
-            )
         return
 
     await state.update_data(pending_chat_id=chat.id, pending_chat_title=chat.title)
@@ -256,24 +224,6 @@ async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> N
         pending_chat_id=message.chat.id,
         pending_chat_title=message.chat.title,
     )
-
-    if settings.MOCK_YOUGILE:
-        await register_group(
-            chat_id=message.chat.id,
-            chat_title=message.chat.title,
-            added_by_telegram_id=message.from_user.id,
-            yougile_token=settings.MOCK_YOUGILE_TOKEN,
-            yougile_board_id=settings.MOCK_YOUGILE_BOARD_ID,
-        )
-        logger.info(f"[MOCK] Group {message.chat.id} reconfigured via /setup")
-        try:
-            await bot.send_message(
-                chat_id=message.from_user.id,
-                text=f"✅ [MOCK] Группа <b>{message.chat.title}</b> настроена с mock YouGile.",
-            )
-        except TelegramForbiddenError:
-            await message.answer("✅ [MOCK] Группа настроена.")
-        return
 
     try:
         await bot.send_message(
