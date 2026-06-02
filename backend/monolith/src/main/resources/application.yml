@@ -1,3 +1,13 @@
+app:
+    jwt:
+        secret: ${APP_JWT_SECRET:bXlfc3VwZXJfc2VjcmV0X2tleV9mb3JfaGFja2F0aG9uXzIwMjQ=}
+        expiration-days: 7
+    bot:
+        secret: ${BOT_SECRET:changeme}
+    invite:
+        expiration-days: 7
+        bot-url: ${BOT_URL:t.me/prorab_bot}
+
 spring:
     application:
         name: monolith
@@ -16,7 +26,12 @@ spring:
         driver-class-name: org.postgresql.Driver
     jpa:
         hibernate:
-            ddl-auto: update
+            ddl-auto: validate
+    flyway:
+        default-schema: monolit_schema
+        schemas: monolit_schema
+    kafka:
+        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
 server:
     port: ${SERVER_PORT:8080}
