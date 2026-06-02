@@ -12,6 +12,7 @@ from config import settings
 from handlers.auth import router as auth_router
 from handlers.files import router as files_router
 from handlers.group import router as group_router
+from handlers.setup import router as setup_router
 from handlers.tasks import router as tasks_router
 from kafka.consumer import EventConsumer
 from kafka.producer import EventProducer
@@ -41,7 +42,8 @@ async def main() -> None:
     producer = EventProducer(settings.KAFKA_BOOTSTRAP_SERVERS)
     dp.update.middleware(KafkaProducerMiddleware(producer))
 
-    # Order matters: specific routers first, most generic (group) last
+    # Order matters: setup first (my_chat_member + setup deep links), generic group last
+    dp.include_router(setup_router)
     dp.include_router(auth_router)
     dp.include_router(tasks_router)
     dp.include_router(files_router)

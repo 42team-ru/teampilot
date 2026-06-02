@@ -76,7 +76,6 @@ public class AuthService {
         user.setFirstName(request.firstName());
         user.setLastName(request.lastName());
         User saved = userRepository.save(user);
-        eventPublisher.publishUserCreated(saved);
         return saved;
     }
 }
