@@ -1,45 +1,45 @@
 app:
-  jwt:
-    secret: ${APP_JWT_SECRET:bXlfc3VwZXJfc2VjcmV0X2tleV9mb3JfaGFja2F0aG9uXzIwMjQ=}
-    expiration-days: 7
-  bot:
-    secret: ${BOT_SECRET:changeme}
-  invite:
-    expiration-days: 7
-    bot-url: ${BOT_URL:t.me/prorab_bot}
+    jwt:
+        secret: ${APP_JWT_SECRET:bXlfc3VwZXJfc2VjcmV0X2tleV9mb3JfaGFja2F0aG9uXzIwMjQ=}
+        expiration-days: 7
+    bot:
+        secret: ${BOT_SECRET:changeme}
+    invite:
+        expiration-days: 7
+        bot-url: ${BOT_URL:t.me/prorab_bot}
 
 spring:
-  application:
-    name: monolith
-  profiles:
-    default: dev
+    application:
+        name: monolith
+    profiles:
+        default: dev
 
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP_ID:monolith-consumer}
+    kafka:
+        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        consumer:
+            group-id: ${KAFKA_CONSUMER_GROUP_ID:monolith-consumer}
 
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase?currentSchema=monolit_schema}
-    username: ${SPRING_DATASOURCE_USERNAME:myuser}
-    password: ${SPRING_DATASOURCE_PASSWORD:mypassword}
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
+    datasource:
+        url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase}
+        username: ${SPRING_DATASOURCE_USERNAME:myuser}
+        password: ${SPRING_DATASOURCE_PASSWORD:mypassword}
+        driver-class-name: org.postgresql.Driver
+    jpa:
+        hibernate:
+            ddl-auto: update
 
 server:
-  port: ${SERVER_PORT:8080}
+    port: ${SERVER_PORT:8080}
 
 springdoc:
-  api-docs:
-    path: /v3/api-docs
-  packages-to-scan: ru.team42.monolith.controller
-  default-produces-media-type: application/json
+    api-docs:
+        path: /v3/api-docs
+    packages-to-scan: ru.team42.monolith.controller
+    default-produces-media-type: application/json
 
 management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
+    endpoints:
+        web:
+            exposure:
+                include: health,info
 debug: false
