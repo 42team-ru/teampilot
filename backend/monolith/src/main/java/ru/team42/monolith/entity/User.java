@@ -37,6 +37,12 @@ public class User extends AbstractEntity {
     @Column(name = "role", nullable = false, length = 50)
     private Role role = Role.USER;
 
+    @Column(name = "yougile_user_id")
+    private String yougileUserId;
+
+    @Column(name = "yougile_display_name")
+    private String yougileDisplayName;
+
     public enum Role {
         USER,
         ADMIN,

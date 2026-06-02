@@ -1,4 +1,4 @@
-package ru.team42.monolith.dto.responce;
+package ru.team42.monolith.dto.response;
 
 import ru.team42.monolith.entity.User;
 
