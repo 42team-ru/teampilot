@@ -2,6 +2,9 @@ package ru.team42.monolith.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,8 +23,9 @@ public class ChatMessage extends AbstractEntity {
     @Column(name = "chat_id", nullable = false)
     private Long chatId;
 
-    @Column(name = "tg_user", nullable = false)
-    private String tgUser;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Column(name = "text", nullable = false, columnDefinition = "TEXT")
     private String text;
@@ -29,6 +33,7 @@ public class ChatMessage extends AbstractEntity {
     @Column(name = "message_timestamp", nullable = false)
     private Instant messageTimestamp;
 
-    @Column(name = "user_id")
-    private Long userId;
+    // null → ещё не отправлено в LLM Worker
+    @Column(name = "sent_to_llm_at")
+    private Instant sentToLlmAt;
 }
