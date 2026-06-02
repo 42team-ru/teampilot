@@ -1,0 +1,69 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      monolith: ${{ steps.filter.outputs.monolith }}
+      auth-service: ${{ steps.filter.outputs.auth-service }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      landing: ${{ steps.filter.outputs.landing }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            monolith:
+              - 'backend/monolith/**'
+              - 'backend/core/**'
+              - 'backend/build.gradle.kts'
+              - 'backend/settings.gradle.kts'
+              - 'backend/gradle/**'
+
+  build-monolith:
+    needs: changes
+    if: needs.changes.outputs.monolith == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - run: chmod +x backend/gradlew
+      - name: Build and push via Jib
+        run: |
+          cd backend
+          ./gradlew --no-daemon :monolith:jib \
+            -Djib.to.auth.username=${{ github.actor }} \
+            -Djib.to.auth.password=${{ secrets.GITHUB_TOKEN }}
+
+#  deploy:
+#    needs: [build-monolith, build-auth-service, build-frontend]
+#    if: always() && !failure() && !cancelled()
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Deploy via SSH
+#        uses: appleboy/ssh-action@v1
+#        with:
+#          host: ${{ secrets.HOST }}
+#          username: ${{ secrets.SSH_USER }}
+#          key: ${{ secrets.SSH_KEY }}
+#          script: |
+#            cd /app
+#            docker compose pull
+#            docker compose up -d --remove-orphans

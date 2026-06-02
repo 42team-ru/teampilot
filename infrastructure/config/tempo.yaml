@@ -1,0 +1,57 @@
+stream_over_http_enabled: true
+
+server:
+    http_listen_port: 3200
+    log_level: info
+
+memberlist:
+    bind_port: 7946
+    join_members:
+        - tempo:7946
+
+distributor:
+    receivers:
+        otlp:
+            protocols:
+                grpc:
+                    endpoint: "0.0.0.0:4317"
+                http:
+                    endpoint: "0.0.0.0:4318"
+
+metrics_generator:
+    ring:
+        kvstore:
+            store: memberlist
+    registry:
+        external_labels:
+            source: tempo
+            cluster: docker-compose
+    storage:
+        path: /var/tempo/generator/wal
+        remote_write:
+            - url: http://prometheus:9090/api/v1/write
+              send_exemplars: true
+    traces_storage:
+        path: /var/tempo/generator/traces
+
+query_frontend:
+    search:
+        duration_slo: 5s
+        throughput_bytes_slo: 1.073741824e+09
+
+storage:
+    trace:
+        backend: local
+        local:
+            path: /var/tempo/traces
+        wal:
+            path: /var/tempo/wal
+
+overrides:
+    defaults:
+        metrics_generator:
+            processors: ["span-metrics", "service-graphs", "local-blocks"]
+            generate_native_histograms: both
+
+usage_report:
+    reporting_enabled: false

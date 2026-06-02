@@ -1,0 +1,87 @@
+services:
+    tempo:
+        image: grafana/tempo:2.10.0
+        command: ["-target=all", "-config.file=/etc/tempo.yaml", "-config.expand-env=true"]
+        volumes:
+            - ./infrastructure/config/tempo.yaml:/etc/tempo.yaml:ro
+            - tempo_data:/var/tempo
+        ports:
+            - "3200:3200"
+            - "4317:4317"
+            - "4318:4318"
+
+    loki:
+        image: grafana/loki:3.5.10
+        user: root
+        command: ["-config.file=/etc/loki/loki.yaml"]
+        volumes:
+            - ./infrastructure/config/loki.yaml:/etc/loki/loki.yaml:ro
+            - loki_data:/var/loki
+        ports:
+            - "3100:3100"
+
+    alloy:
+        image: grafana/alloy:v1.13.1
+        volumes:
+            - ./infrastructure/config/alloy.alloy:/etc/alloy/config.alloy:ro
+            - alloy_data:/var/lib/alloy/data
+            - /var/run/docker.sock:/var/run/docker.sock
+        command:
+            - run
+            - /etc/alloy/config.alloy
+            - --storage.path=/var/lib/alloy/data
+            - --server.http.listen-addr=0.0.0.0:12345
+        environment:
+            ALLOY_OTLP_UPSTREAM: tempo:4317
+        ports:
+            - "12345:12345"
+            - "4319:4317"
+            - "4320:4318"
+        depends_on:
+            - tempo
+            - loki
+
+    prometheus:
+        image: prom/prometheus:v3.9.1
+        command:
+            - --config.file=/etc/prometheus.yaml
+            - --web.external-url=/prometheus/
+            - --web.route-prefix=/prometheus/
+            - --web.enable-remote-write-receiver
+            - --enable-feature=exemplar-storage
+            - --enable-feature=native-histograms
+        volumes:
+            - ./infrastructure/config/prometheus.yaml:/etc/prometheus.yaml:ro
+            - prometheus_data:/prometheus
+        ports:
+            - "9090:9090"
+
+    grafana:
+        image: grafana/grafana:12.3.3
+        volumes:
+            - ./infrastructure/config/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+            - ./infrastructure/config/dashboards.yaml:/etc/grafana/provisioning/dashboards-config/dashboards.yaml:ro
+            - ./infrastructure/config/dashboards:/etc/grafana/provisioning/dashboards:ro
+            - grafana_data:/var/lib/grafana
+        environment:
+            GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER}
+            GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD}
+            GF_AUTH_ANONYMOUS_ENABLED: "false"
+            GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+            GF_AUTH_DISABLE_LOGIN_FORM: "false"
+            GF_FEATURE_TOGGLES_ENABLE: traceqlEditor metricsSummary
+            GF_SERVER_ROOT_URL: "https://42team.ru/grafana"
+            GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+        ports:
+            - "3000:3000"
+
+volumes:
+    tempo_data:
+    loki_data:
+    alloy_data:
+    prometheus_data:
+    grafana_data:
+
+networks:
+    default:
+        name: microservices-network

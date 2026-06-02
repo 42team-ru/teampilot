@@ -1,0 +1,78 @@
+<configuration scan="true">
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+
+
+    <springProperty name="SERVICE_NAME" scope="context"
+                    source="spring.application.name" defaultValue="unknown-service"/>
+
+    <!-- DEV – human-readable coloured output -->
+    <appender name="CONSOLE_TEXT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%-5level) %clr([%thread]){faint} %clr(%logger{36}){cyan} %clr([%mdc{traceId:--} %mdc{spanId:--}]){magenta} %clr([req=%mdc{requestId:-} user=%mdc{userId:-}]){yellow} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- TEST/PROD – structured JSON (Logstash-compatible) -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <customFields>{"service":"${SERVICE_NAME}"}</customFields>
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <version>@version</version>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <!-- PROD – async wrapper -->
+    <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>20</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+        <neverBlock>false</neverBlock>
+        <appender-ref ref="CONSOLE_JSON"/>
+    </appender>
+
+    <!-- Silence noisy libraries -->
+    <logger name="org.hibernate.SQL"                          level="WARN"/>
+    <logger name="org.hibernate.type.descriptor.sql"          level="WARN"/>
+    <logger name="org.springframework.web.servlet.mvc.method" level="WARN"/>
+    <logger name="org.springframework.security"               level="WARN"/>
+
+    <springProfile name="dev">
+        <logger name="ru.team42" level="DEBUG"/>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_TEXT"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="test">
+        <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+            <http>
+                <url>http://localhost:3100/loki/api/v1/push</url>
+            </http>
+            <labels>
+                service=${SERVICE_NAME}
+                level=%level
+            </labels>
+            <message>
+                <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ} %-5level [%thread] %logger{36} [%mdc{traceId:-} %mdc{spanId:-}] [req=%mdc{requestId:-} user=%mdc{userId:-}] - %msg%n%ex</pattern>
+            </message>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_JSON"/>
+            <appender-ref ref="LOKI"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="ASYNC_JSON"/>
+        </root>
+    </springProfile>
+</configuration>

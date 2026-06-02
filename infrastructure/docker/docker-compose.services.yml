@@ -1,0 +1,50 @@
+services:
+  api-gateway:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/api-gateway:latest
+    container_name: api-gateway
+    pull_policy: always
+    ports:
+      - "${API_GATEWAY_PORT}:${API_GATEWAY_PORT}"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      AUTH_SERVICE_URL: "http://auth-service:${AUTH_SERVICE_PORT}"
+      APP_CORS_ALLOWED_ORIGINS: "http://localhost:5173,https://42team.ru"
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: "http://alloy:4317"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4317"
+    depends_on:
+      - auth-service
+
+  auth-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/auth-service:latest
+    container_name: auth-service
+    pull_policy: always
+    ports:
+      - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}?currentSchema=auth_schema
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:19092
+      AUTH_ISSUER: "http://auth-service:${AUTH_SERVICE_PORT}"
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: "http://alloy:4317"
+      JWT_ISSUER: http://auth-service:8082
+      COOKIE_DOMAIN: dynamic
+      COOKIE_SECURE: "true"
+      APP_FRONTEND_URL: "https://42team.ru"
+      APP_OAUTH2_REDIRECT_BASE_URL: "https://42team.ru/api"
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID}
+      YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET}
+      APP_S3_ENDPOINT: http://minio:9000
+      APP_S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      APP_S3_SECRET_KEY: ${S3_SECRET_KEY}
+      APP_S3_REGION: us-east-1
+      APP_S3_DEFAULT_BUCKET: ${S3_DEFAULT_BUCKET}
+      APP_S3_PRESIGNED_ENDPOINT: ${S3_SERVER_URL}
+
+networks:
+  default:
+    name: microservices-network

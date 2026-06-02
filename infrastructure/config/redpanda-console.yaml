@@ -1,0 +1,15 @@
+kafka:
+  brokers: [ "redpanda:19092" ]
+
+redpanda:
+  adminApi:
+    enabled: true
+    urls: [ "http://redpanda:9644" ]
+
+schemaRegistry:
+  enabled: true
+  urls: [ "http://redpanda:8081" ]
+
+server:
+  basePath: "/redpanda"
+  stripPrefix: true

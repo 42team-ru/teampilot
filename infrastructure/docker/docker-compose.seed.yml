@@ -1,0 +1,11 @@
+services:
+    data-seeder:
+        image: ghcr.io/42team-ru/data-seeder:latest
+        environment:
+            AUTH_DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-mydatabase}?currentSchema=auth_schema
+            AUTH_DB_USER: ${DB_USER:-myuser}
+            AUTH_DB_PASS: ${DB_PASSWORD:-mypassword}
+        depends_on:
+            postgres:
+                condition: service_healthy
+        restart: "no"

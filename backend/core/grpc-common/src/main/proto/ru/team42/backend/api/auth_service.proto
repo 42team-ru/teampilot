@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package ru.team42.backend.api;
+
+option java_package = "ru.team42.backend.proto.api";
+option java_outer_classname = "AuthServiceProto";
+option java_multiple_files = true;
+
+service AuthGrpcService {
+  rpc getUsers(getUsersRequest) returns (getUsersResponse);
+}
+
+message getUsersRequest{
+   string email = 1;
+}
+
+message getUsersResponse{
+  string first_name = 1;
+}
