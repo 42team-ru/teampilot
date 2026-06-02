@@ -46,13 +46,8 @@ public class AuthController {
     })
     @PostMapping("/invite")
     public ResponseEntity<InviteResponse> createInvite(
-            @Parameter(description = "Секрет бота (env BOT_SECRET)", required = true)
-            @RequestHeader("X-Bot-Secret") String botSecret,
             @RequestBody(required = false) CreateInviteRequest request
     ) {
-        if (!appProperties.getBot().getSecret().equals(botSecret)) {
-            throw AppException.forbidden("Invalid bot secret");
-        }
         return ResponseEntity.ok(authService.createInvite(request));
     }
 
