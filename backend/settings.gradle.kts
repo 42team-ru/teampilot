@@ -12,7 +12,6 @@ dependencyResolutionManagement {
     repositories {
         mavenCentral()
         maven("https://packages.confluent.io/maven/")
-        maven("https://repo.spring.io/milestone")
     }
 }
 

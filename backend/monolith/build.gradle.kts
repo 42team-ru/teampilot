@@ -11,7 +11,6 @@ dependencies {
     implementation(project(":core:web-common"))
     implementation(project(":core:kafka-common"))
     implementation(project(":core:security-common"))
-    implementation(project(":core:s3-common"))
 
     // Web
     implementation(libs.spring.boot.starter.webmvc)
