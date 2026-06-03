@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.team42.backend.common_data.entity.AbstractEntity;
+import ru.team42.monolith.entity.enums.SystemRole;
 
 @Entity
 @Table(
@@ -35,13 +36,5 @@ public class User extends AbstractEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 50)
-    private Role role = Role.USER;
-
-    @Column(name = "position")
-    private String position;
-
-    public enum Role {
-        USER,
-        SYSTEM_ADMIN
-    }
+    private SystemRole systemRole = SystemRole.USER;
 }

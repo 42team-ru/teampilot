@@ -39,7 +39,7 @@ Use the actual paths in the user project as authoritative.
 
 ## Modification Principles
 
-1. **Preserve role boundaries**: research investigates and persists; implement writes implementation; check reviews and fixes.
+1. **Preserve systemRole boundaries**: research investigates and persists; implement writes implementation; check reviews and fixes.
 2. **Do not hard-code project specs into agents**: long-term specs belong in `.trellis/spec/`; agents are responsible for reading them.
 3. **Make read order explicit**: active task -> PRD -> info -> JSONL -> spec/research.
 4. **Make write boundaries explicit**: which directories may be written and which may not.

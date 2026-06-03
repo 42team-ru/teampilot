@@ -8,6 +8,5 @@ public record UserResponse(
         String role,
         String firstName,
         String lastName,
-        String position,
         String telegramLogin
 ) {}

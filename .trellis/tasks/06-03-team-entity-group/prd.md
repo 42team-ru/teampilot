@@ -6,7 +6,7 @@
 
 ## Requirements
 
-- `Team` заменяет `Group`: `telegramChatId`, `kanbanId`, `kanbanApiKey` (+ `chatTitle` для отображения)
+- `Team` заменяет `Group`: `teamId`, `kanbanId`, `kanbanApiKey` (+ `chatTitle` для отображения)
 - `TeamUser` — связь пользователя с командой: роль (`ADMIN/MANAGER/USER`) + `yougileUserId` (переезжает из `User` сюда)
 - `TaskFromYougile` — полумоканная сущность: `yougileId`, `localStatus`, `yougileStatus`, `name`, `description`
 - Удалить `chat_groups`, создать `teams`, `team_users`, `tasks_from_yougile` через Flyway-миграцию
@@ -47,7 +47,7 @@ TeamUser (таблица: team_users)
   - UUID id
   - Team team (ManyToOne)
   - User user (ManyToOne)
-  - TeamRole role  (ADMIN, MANAGER, USER)
+  - TeamRole systemRole  (ADMIN, MANAGER, USER)
   - String yougileUserId
 
 TaskFromYougile (таблица: tasks_from_yougile)
