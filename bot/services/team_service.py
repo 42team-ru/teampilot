@@ -5,16 +5,23 @@ from loguru import logger
 
 from config import settings
 
-_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
+_BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
 
 
-async def get_team_id(chat_id: int) -> str | None:
+def _headers(telegram_id: int | None = None) -> dict:
+    h = dict(_BASE_HEADERS)
+    if telegram_id is not None:
+        h["X-Telegram-Id"] = str(telegram_id)
+    return h
+
+
+async def get_team_id(chat_id: int, telegram_id: int | None = None) -> str | None:
     """POST /auth/invite {chatId} — returns teamId uuid string, or None if not found."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
                 f"{settings.BACKEND_URL}/auth/invite",
-                headers=_HEADERS,
+                headers=_headers(telegram_id),
                 json={"chatId": chat_id},
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
@@ -36,7 +43,7 @@ async def get_my_teams(manager_telegram_id: int) -> list[dict]:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{settings.BACKEND_URL}/teams/my",
-                headers={**_HEADERS, "X-Telegram-Id": str(manager_telegram_id)},
+                headers=_headers(manager_telegram_id),
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on GET /teams/my manager={manager_telegram_id}: {e}")
@@ -49,13 +56,13 @@ async def get_my_teams(manager_telegram_id: int) -> list[dict]:
     return resp.json()
 
 
-async def link_chat_to_team(team_id: str, telegram_chat_id: int) -> bool:
+async def link_chat_to_team(team_id: str, telegram_chat_id: int, telegram_id: int | None = None) -> bool:
     """PATCH /teams/{teamId} body:{telegramChatId} — link a chat to a team. Returns True on success."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.patch(
                 f"{settings.BACKEND_URL}/teams/{team_id}",
-                headers=_HEADERS,
+                headers=_headers(telegram_id),
                 json={"telegramChatId": telegram_chat_id},
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
@@ -69,13 +76,18 @@ async def link_chat_to_team(team_id: str, telegram_chat_id: int) -> bool:
     return True
 
 
-async def update_team_kanban(team_id: str, kanban_id: str, kanban_api_key: str) -> bool:
+async def update_team_kanban(
+    team_id: str,
+    kanban_id: str,
+    kanban_api_key: str,
+    telegram_id: int | None = None,
+) -> bool:
     """PATCH /teams/{teamId} body:{kanbanId, kanbanApiKey} — update kanban config. Returns True on success."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.patch(
                 f"{settings.BACKEND_URL}/teams/{team_id}",
-                headers=_HEADERS,
+                headers=_headers(telegram_id),
                 json={"kanbanId": kanban_id, "kanbanApiKey": kanban_api_key},
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
@@ -90,12 +102,12 @@ async def update_team_kanban(team_id: str, kanban_id: str, kanban_api_key: str) 
 
 
 async def deactivate_team(telegram_chat_id: int) -> None:
-    """DELETE /teams/{telegramChatId} — mark team inactive."""
+    """DELETE /teams/{telegramChatId} — mark team inactive. No user context available."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             await client.delete(
                 f"{settings.BACKEND_URL}/teams/{telegram_chat_id}",
-                headers=_HEADERS,
+                headers=_headers(),
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on DELETE /teams/{telegram_chat_id}: {e}")

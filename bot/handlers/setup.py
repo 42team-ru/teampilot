@@ -40,9 +40,9 @@ class _SetupDeepLink(BaseFilter):
 
 # ── Helper: send join-link to group ─────────────────────────────────────────
 
-async def _send_join_link_to_group(bot: Bot, chat_id: int) -> None:
+async def _send_join_link_to_group(bot: Bot, chat_id: int, telegram_id: int | None = None) -> None:
     """Fetch teamId and send an invite button to the group."""
-    team_id = await get_team_id(chat_id)
+    team_id = await get_team_id(chat_id, telegram_id=telegram_id)
     if not team_id:
         logger.warning(f"Could not get teamId for chat {chat_id} after linking")
         return
@@ -70,7 +70,7 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
     adder = event.from_user
     chat = event.chat
 
-    team_id = await get_team_id(chat.id)
+    team_id = await get_team_id(chat.id, telegram_id=adder.id)
 
     if team_id:
         # Team already linked — just send the invite button
@@ -209,9 +209,9 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext, bo
     board_title = projects.get(board_id, board_id)
 
     # Get teamId to update kanban settings
-    team_id = await get_team_id(chat_id)
+    team_id = await get_team_id(chat_id, telegram_id=callback.from_user.id)
     if team_id:
-        ok = await update_team_kanban(team_id, board_id, yougile_token)
+        ok = await update_team_kanban(team_id, board_id, yougile_token, telegram_id=callback.from_user.id)
         if not ok:
             await callback.message.edit_text(
                 "❌ Не удалось сохранить настройки канбана. Попробуй позже."
@@ -230,7 +230,7 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext, bo
         "Настройка сохранена."
     )
 
-    await _send_join_link_to_group(bot, chat_id)
+    await _send_join_link_to_group(bot, chat_id, telegram_id=callback.from_user.id)
     await callback.answer()
 
 
@@ -256,7 +256,7 @@ async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> N
     except Exception:
         pass
 
-    team_id = await get_team_id(message.chat.id)
+    team_id = await get_team_id(message.chat.id, telegram_id=message.from_user.id)
     if not team_id:
         await message.answer(
             "⚠️ Этот чат не привязан к команде.\n"
@@ -270,7 +270,7 @@ async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> N
     )
 
     if settings.MOCK_YOUGILE:
-        ok = await update_team_kanban(team_id, settings.MOCK_YOUGILE_BOARD_ID, settings.MOCK_YOUGILE_TOKEN)
+        ok = await update_team_kanban(team_id, settings.MOCK_YOUGILE_BOARD_ID, settings.MOCK_YOUGILE_TOKEN, telegram_id=message.from_user.id)
         logger.info(f"[MOCK] Team {team_id} kanban reconfigured via /setup")
         try:
             await bot.send_message(
