@@ -1,14 +1,22 @@
 package ru.team42.backend.s3_common.service;
 
 import lombok.RequiredArgsConstructor;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.BucketAlreadyExistsException;
+import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException;
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
+import java.io.InputStream;
 import java.time.Duration;
 
 /**
@@ -39,6 +47,40 @@ public class S3Service {
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final Duration defaultPresignedExpiry;
+
+    /**
+     * Создать бакет, если он не существует. Идемпотентно.
+     */
+    public void ensureBucketExists(String bucket) {
+        try {
+            s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
+        } catch (NoSuchBucketException e) {
+            try {
+                s3Client.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+            } catch (BucketAlreadyExistsException | BucketAlreadyOwnedByYouException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Загрузить объект напрямую с сервера (server-side upload).
+     *
+     * @param bucket      имя бакета
+     * @param key         ключ объекта
+     * @param inputStream поток байт файла
+     * @param sizeBytes   размер файла в байтах (обязателен для AWS SDK v2)
+     * @param contentType MIME-тип
+     */
+    public void upload(String bucket, String key, InputStream inputStream, long sizeBytes, String contentType) {
+        s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(key)
+                        .contentType(contentType)
+                        .contentLength(sizeBytes)
+                        .build(),
+                RequestBody.fromInputStream(inputStream, sizeBytes));
+    }
 
     /**
      * Presigned URL для прямой загрузки (HTTP PUT) из клиента в S3.
