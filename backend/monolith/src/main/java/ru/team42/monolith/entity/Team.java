@@ -34,15 +34,15 @@ public class Team extends AbstractEntity {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
-    @Column(name = "kanban_id", nullable = false)
+    @Column(name = "kanban_id")
     private String kanbanId;
 
-    @Column(name = "kanban_api_key", nullable = false, length = 512)
+    @Column(name = "kanban_api_key", length = 512)
     private String kanbanApiKey;
 
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<TeamUser> members = new ArrayList<>();
 
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<TaskFromYougile> tasks = new ArrayList<>();
+    private List<Task> tasks = new ArrayList<>();
 }

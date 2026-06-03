@@ -11,5 +11,7 @@ public interface TeamUserRepository extends JpaRepository<TeamUser, UUID> {
 
     Optional<TeamUser> findByTeamIdAndUserTelegramId(UUID teamId, Long telegramId);
 
+    Optional<TeamUser> findByTeamIdAndYougileUserId(UUID teamId, String yougileUserId);
+
     List<TeamUser> findByTeamId(UUID teamId);
 }

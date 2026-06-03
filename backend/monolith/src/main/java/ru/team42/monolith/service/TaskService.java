@@ -75,6 +75,54 @@ public class TaskService {
                 .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(id)));
     }
 
+    @Transactional
+    public Task syncFromYouGile(UUID id) {
+        Task task = taskRepository.findById(id)
+                .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(id)));
+
+        if (task.getExternalId() == null) {
+            throw AppException.badRequest("Task %s has not been synced to YouGile yet".formatted(id));
+        }
+
+        Team team = task.getTeam();
+        ru.team42.monolith.kanban.YouGileService.YouGileTaskResponse remote =
+                youGileService.fetchTask(team, task.getExternalId())
+                        .orElseThrow(() -> AppException.internalError(
+                                "YouGile did not return task " + task.getExternalId()));
+
+        boolean changed = false;
+
+        if (remote.getColumnId() != null) {
+            TaskStatus newStatus = youGileService.resolveInternalStatus(team, remote.getColumnId());
+            if (newStatus != task.getStatus()) {
+                recordHistory(task, task.getStatus(), newStatus, null);
+                task.setStatus(newStatus);
+                changed = true;
+            }
+        }
+
+        if (remote.getTitle() != null && !remote.getTitle().equals(task.getTitle())) {
+            task.setTitle(remote.getTitle());
+            changed = true;
+        }
+
+        if (remote.getResponsible() != null) {
+            teamUserRepository.findByTeamIdAndYougileUserId(team.getId(), remote.getResponsible())
+                    .ifPresent(tu -> {
+                        if (!tu.equals(task.getAssignee())) {
+                            task.setAssignee(tu);
+                        }
+                    });
+        }
+
+        if (changed) {
+            taskRepository.save(task);
+        }
+
+        log.info("Synced task {} from YouGile (changed={})", id, changed);
+        return task;
+    }
+
     @Transactional(readOnly = true)
     public Page<Task> listByTeam(Long chatId, TaskStatus status, Pageable pageable) {
         Team team = teamRepository.findByTelegramChatId(chatId)

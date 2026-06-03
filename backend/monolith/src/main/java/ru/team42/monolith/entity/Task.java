@@ -12,6 +12,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.team42.backend.common_data.entity.AbstractEntity;
+import ru.team42.monolith.entity.enums.TaskLocalStatus;
+import ru.team42.monolith.entity.enums.TaskSource;
 import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 
@@ -47,7 +49,7 @@ public class Task extends AbstractEntity {
 
     /** YouGile task card ID — null until successfully synced */
     @Column(name = "external_id")
-    private String externalId;
+    private String externalId; // ID задачи в YouGile
 
     /** TeamUser who was assigned the task (resolved from LLM event) */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -58,4 +60,16 @@ public class Task extends AbstractEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id")
     private TeamUser author;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 20)
+    private TaskSource source = TaskSource.LLM;
+
+    /** Raw YouGile column name — e.g. "В работе", "Готово". Null for LLM-created tasks until first sync. */
+    @Column(name = "yougile_status")
+    private String yougileStatus;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "local_status", nullable = false, length = 30)
+    private TaskLocalStatus localStatus = TaskLocalStatus.ACTIVE;
 }
