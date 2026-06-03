@@ -1,0 +1,49 @@
+{
+  "id": "case-008-role-ambiguity",
+  "description": "Разрешение assignee по роли с неоднозначностью (несколько фронтендеров)",
+  "input_batch": {
+    "event_id": "evt_role_8",
+    "occurred_at": "2026-06-11T14:00:00",
+    "chat_id": 1008,
+    "messages": [
+      {
+        "user_id": 801,
+        "username": "pm_ivan",
+        "full_name": "Иван Менеджеров",
+        "text": "Пусть фронт займётся этим багом.",
+        "timestamp": "2026-06-11T13:50:00"
+      },
+      {
+        "user_id": 802,
+        "username": "backend_vlad",
+        "full_name": "Влад Бэкендов",
+        "text": "Согласен, это на их стороне.",
+        "timestamp": "2026-06-11T13:55:00"
+      }
+    ],
+    "batch_start": "2026-06-11T13:40:00",
+    "batch_end": "2026-06-11T14:00:00",
+    "team": [
+      {
+        "user_id": 803,
+        "username": "@frontend_kirill",
+        "full_name": "Кирилл Версталов",
+        "role": "Developer"
+      },
+      {
+        "user_id": 804,
+        "username": "@front_dasha",
+        "full_name": "Дарья Фронтендова",
+        "role": "Developer"
+      }
+    ]
+  },
+  "expected_output": {
+    "type": "task",
+    "data": {
+      "title": "Исправить баг на стороне фронтенда",
+      "assignee": null,
+      "priority": "MEDIUM"
+    }
+  }
+}
