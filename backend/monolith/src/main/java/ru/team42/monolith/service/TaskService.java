@@ -20,7 +20,6 @@ import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -53,7 +52,6 @@ public class TaskService {
         task.setDescription(event.getDescription());
         task.setDeadline(event.getDeadline());
         task.setStatus(TaskStatus.IN_PROGRESS);
-        task.setExternalColumnId(event.getColumnId());
         task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
 
         if (event.getAssigneeTelegramId() != null) {
@@ -66,7 +64,7 @@ public class TaskService {
         task = taskRepository.save(task);
         recordHistory(task, null, TaskStatus.IN_PROGRESS, null);
 
-        youGileService.createTask(team, task);
+        syncToYouGile(task, team);
 
         return task;
     }
@@ -87,7 +85,6 @@ public class TaskService {
         }
 
         Team team = task.getTeam();
-/*
         ru.team42.monolith.kanban.YouGileService.YouGileTaskResponse remote =
                 youGileService.fetchTask(team, task.getExternalId())
                         .orElseThrow(() -> AppException.internalError(
@@ -121,9 +118,8 @@ public class TaskService {
         if (changed) {
             taskRepository.save(task);
         }
-*/
 
-//        log.info("Synced task {} from YouGile (changed={})", id, changed);
+        log.info("Synced task {} from YouGile (changed={})", id, changed);
         return task;
     }
 
@@ -138,15 +134,6 @@ public class TaskService {
         return taskRepository.findByTeamId(team.getId(), pageable);
     }
 
-    @Transactional(readOnly = true)
-    public List<YouGileService.YouGileTaskResponse> listFromYouGile(Long chatId) {
-        Team team = teamRepository.findByTelegramChatId(chatId)
-                .orElseThrow(() -> AppException.notFound(
-                        "Team not found for chatId %d".formatted(chatId)));
-        return youGileService.fetchAllTasksForBoard(team);
-    }
-
-/*
     private void syncToYouGile(Task task, Team team) {
         Exception lastException = null;
         for (int attempt = 1; attempt <= YOUGILE_MAX_RETRIES; attempt++) {
@@ -177,7 +164,6 @@ public class TaskService {
                 YOUGILE_MAX_RETRIES, task.getId(), lastException);
         // Task stays PENDING_SYNC — a cron job can retry later
     }
-*/
 
     private void validateEvent(LlmTaskCreateEvent event) {
         if (event.getChatId() == null) throw AppException.badRequest("chatId is required");

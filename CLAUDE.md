@@ -90,7 +90,6 @@ make ps             # статус контейнеров
 
 ### Соглашения по Spring
 Не добавляй в RequestMapping /api. Пиши /auth, /user, /tasks. Не пиши /api/users, /api/tasks
-Не пиши Flyway миграции. Все работает через ddl-auto: update.
 
 ### Исключения — только через AppException
 

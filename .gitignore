@@ -208,6 +208,3 @@ htmlcov/
 
 # Я стесняюсь
 .gemini_mh/
-
-# LLM Worker test results
-llm-worker/tests/results/

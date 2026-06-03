@@ -9,6 +9,5 @@ management:
 
 logging:
     level:
-        org.springframework.web.reactive.function.client: DEBUG
-        reactor.netty.http.client: DEBUG
-#        org.springframework.security: DEBUG
+        org.springframework.security: DEBUG
+        org.springframework.security.oauth2: TRACE

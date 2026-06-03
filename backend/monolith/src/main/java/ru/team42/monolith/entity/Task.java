@@ -51,9 +51,6 @@ public class Task extends AbstractEntity {
     @Column(name = "external_id")
     private String externalId; // ID задачи в YouGile
 
-    @Column(name = "external_column_id")
-    private String externalColumnId; // ID колонки в которой находиться задача в YouGile
-
     /** TeamUser who was assigned the task (resolved from LLM event) */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assignee_id")
