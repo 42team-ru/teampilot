@@ -1,0 +1,76 @@
+{
+  "id": "case-004-multitask-planning",
+  "description": "Сложный батч с 3 разными задачами разным исполнителям от менеджера",
+  "input_batch": {
+    "event_id": "evt_multi_4",
+    "occurred_at": "2026-06-07T09:00:00",
+    "chat_id": 1004,
+    "messages": [
+      {
+        "user_id": 501,
+        "username": "lead_alex",
+        "full_name": "Алексей Лидов",
+        "text": "Так, ребят, погнали по спринту. Кирилл, тебе нужно закончить перенос стора на Redux Toolkit до конца недели.",
+        "timestamp": "2026-06-07T08:50:00"
+      },
+      {
+        "user_id": 502,
+        "username": "frontend_kirill",
+        "full_name": "Кирилл Версталов",
+        "text": "Понял, сделаю.",
+        "timestamp": "2026-06-07T08:51:00"
+      },
+      {
+        "user_id": 501,
+        "username": "lead_alex",
+        "full_name": "Алексей Лидов",
+        "text": "Отлично. Влад, на тебе рефакторинг Kafka Consumer. Это не горит, ставлю средний приоритет, просто чтобы не забыли в бэклоге.",
+        "timestamp": "2026-06-07T08:55:00"
+      },
+      {
+        "user_id": 503,
+        "username": "backend_vlad",
+        "full_name": "Влад Бэкендов",
+        "text": "Ок. А что с доками по API?",
+        "timestamp": "2026-06-07T08:58:00"
+      },
+      {
+        "user_id": 501,
+        "username": "lead_alex",
+        "full_name": "Алексей Лидов",
+        "text": "Доки напишет Маша. Маша, распиши новые ручки по оплате в Swagger.",
+        "timestamp": "2026-06-07T09:00:00"
+      }
+    ],
+    "batch_start": "2026-06-07T08:50:00",
+    "batch_end": "2026-06-07T09:00:00",
+    "team": [
+      {
+        "user_id": 504,
+        "username": "@qa_masha",
+        "full_name": "Мария Тестировщикова",
+        "role": "QA"
+      }
+    ]
+  },
+  "expected_output": {
+    "type": "tasks",
+    "data": [
+      {
+        "title": "Перенести store на Redux Toolkit",
+        "assignee": "@frontend_kirill",
+        "priority": "MEDIUM"
+      },
+      {
+        "title": "Провести рефакторинг Kafka Consumer",
+        "assignee": "@backend_vlad",
+        "priority": "MEDIUM"
+      },
+      {
+        "title": "Описать новые ручки оплаты в Swagger",
+        "assignee": "@qa_masha",
+        "priority": "MEDIUM"
+      }
+    ]
+  }
+}
