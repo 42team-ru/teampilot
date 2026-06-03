@@ -1,9 +1,9 @@
 package ru.team42.monolith.event;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
+import lombok.extern.jackson.Jacksonized;
+import ru.team42.backend.kafka_common.event.BaseEvent;
 
 import java.time.Instant;
 
@@ -11,10 +11,11 @@ import java.time.Instant;
  * Входящее кфка событие от воркера
  */
 @Getter
-@Setter
+@Builder
+@Jacksonized
+@AllArgsConstructor
 @NoArgsConstructor
-@JsonIgnoreProperties(ignoreUnknown = true)
-public class LlmTaskCreateEvent {
+public class LlmTaskCreateEvent extends BaseEvent {
 
     private Long chatId;
 
@@ -25,6 +26,8 @@ public class LlmTaskCreateEvent {
     private Long assigneeTelegramId;
 
     private Long authorTelegramId;
+
+    private String columnId;
 
     private Instant deadline;
 }

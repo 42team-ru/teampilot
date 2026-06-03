@@ -28,6 +28,6 @@ public class AudioController {
             throw AppException.badRequest("Audio file is empty");
         }
         var response = audioService.upload(file);
-        return ResponseUtils.created("/api/audio/" + response.fileId(), response);
+        return ResponseUtils.created("/audio/" + response.fileId(), response);
     }
 }
