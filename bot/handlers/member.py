@@ -6,24 +6,27 @@ from aiogram.types import CallbackQuery, Message
 
 from handlers.upload import UPLOAD_PROMPT_TEXT
 from keyboards.member import back_to_member_keyboard, member_main_keyboard
+from services.team_service import get_my_teams
 from states.upload import FileUploadStates
 
 router = Router()
 
 
 async def show_member_panel(message: Message, user: dict) -> None:
+    manager_teams = await get_my_teams(message.from_user.id)
     await message.answer(
-        _member_panel_text(user),
-        reply_markup=member_main_keyboard(),
+        _member_panel_text(user, is_manager=bool(manager_teams)),
+        reply_markup=member_main_keyboard(is_manager=bool(manager_teams)),
     )
 
 
 @router.callback_query(F.data == "member:back")
 async def member_back(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
+    manager_teams = await get_my_teams(callback.from_user.id)
     await callback.message.edit_text(
-        _member_panel_text(),
-        reply_markup=member_main_keyboard(),
+        _member_panel_text(is_manager=bool(manager_teams)),
+        reply_markup=member_main_keyboard(is_manager=bool(manager_teams)),
     )
     await callback.answer()
 
@@ -47,13 +50,15 @@ async def member_help(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-def _member_panel_text(user: dict | None = None) -> str:
+def _member_panel_text(user: dict | None = None, is_manager: bool = False) -> str:
+    title = "Панель менеджера" if is_manager else "Панель участника"
     if not user:
-        return "<b>Панель участника</b>\n\nВыберите действие:"
+        return f"<b>{title}</b>\n\nВыберите действие:"
 
     yougile = user.get("yougileDisplayName")
     if yougile:
         status = f"✅ Привязан к YouGile: <b>{yougile}</b>"
     else:
         status = "⚠️ YouGile аккаунт не привязан"
-    return f"Привет! Ты зарегистрирован в системе.\n\n{status}\n\nВыберите действие:"
+    manager_note = "\n\nДоступны действия менеджера команды." if is_manager else ""
+    return f"<b>{title}</b>\n\nПривет! Ты зарегистрирован в системе.\n\n{status}{manager_note}\n\nВыберите действие:"

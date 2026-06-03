@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify entity/column annotations match spec"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality check"}

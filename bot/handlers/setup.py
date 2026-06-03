@@ -15,7 +15,7 @@ from loguru import logger
 
 from config import settings
 from keyboards.task import build_projects_keyboard
-from services.group_service import deactivate_group, is_group_configured, register_group
+from services.team_service import create_pending_team_chat, deactivate_team, get_team_id, update_team_kanban
 from services.yougile import YouGileClient
 from states.setup import GroupSetupStates
 
@@ -38,76 +38,90 @@ class _SetupDeepLink(BaseFilter):
         return len(parts) == 2 and parts[1].startswith("setup_")
 
 
-# ── 1. Bot added to group ────────────────────────────────────────────────────
+# ── Helper: send join-link to group ─────────────────────────────────────────
 
-@router.my_chat_member(ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
-async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot, state: FSMContext) -> None:
-    adder = event.from_user
-    chat = event.chat
-
-    already_set = await is_group_configured(chat.id)
-
-    if already_set:
-        reconfigure_text = (
-            f"Я уже настроен в группе <b>{chat.title}</b>.\n\n"
-            "Если хочешь переподключить YouGile борд — отправь <b>/setup</b> в группе."
-        )
-        try:
-            await bot.send_message(chat_id=adder.id, text=reconfigure_text)
-        except TelegramForbiddenError:
-            await bot.send_message(chat_id=chat.id, text=reconfigure_text)
+async def _send_join_link_to_group(bot: Bot, chat_id: int, telegram_id: int | None = None) -> None:
+    """Fetch teamId and send an invite button to the group."""
+    team_id = await get_team_id(chat_id, telegram_id=telegram_id)
+    if not team_id:
+        logger.warning(f"Could not get teamId for chat {chat_id} after linking")
         return
-
-    # Mock mode: skip YouGile setup, register group instantly
-    if settings.MOCK_YOUGILE:
-        await register_group(
-            chat_id=chat.id,
-            chat_title=chat.title,
-            added_by_telegram_id=adder.id,
-            yougile_token=settings.MOCK_YOUGILE_TOKEN,
-            yougile_board_id=settings.MOCK_YOUGILE_BOARD_ID,
-        )
-        logger.info(f"[MOCK] Group {chat.id} ({chat.title}) registered with mock YouGile")
-        try:
-            await bot.send_message(
-                chat_id=adder.id,
-                text=(
-                    f"✅ [MOCK] Группа <b>{chat.title}</b> настроена!\n\n"
-                    "YouGile замокан — сообщения будут читаться и отправляться в Kafka."
-                ),
-            )
-        except TelegramForbiddenError:
-            await bot.send_message(
-                chat_id=chat.id,
-                text="✅ [MOCK] Группа настроена. Читаю сообщения.",
-            )
-        return
-
-    await state.update_data(pending_chat_id=chat.id, pending_chat_title=chat.title)
-
-    setup_text = (
-        f"Привет! Меня добавили в <b>{chat.title}</b> 👷\n\n"
-        "Для начала работы отправь мне API токен YouGile:\n"
-        "<i>YouGile → Настройки → API → Создать токен</i>"
-    )
-
+    bot_info = await bot.get_me()
+    deep_link = f"https://t.me/{bot_info.username}?start=join_{team_id}"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🚀 Вступить в команду", url=deep_link)
+    ]])
     try:
-        await bot.send_message(chat_id=adder.id, text=setup_text)
-        await state.set_state(GroupSetupStates.waiting_for_token)
-    except TelegramForbiddenError:
-        bot_info = await bot.get_me()
-        deep_link = f"https://t.me/{bot_info.username}?start=setup_{chat.id}"
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="⚙️ Настроить бота", url=deep_link)
-        ]])
         await bot.send_message(
-            chat_id=chat.id,
+            chat_id=chat_id,
             text=(
-                f"Привет! Я готов работать в <b>{chat.title}</b>\n"
-                "Для настройки нажми кнопку — нужно открыть личку:"
+                "👋 Бот настроен! Чтобы начать получать задачи — нажмите кнопку ниже:"
             ),
             reply_markup=kb,
         )
+    except TelegramForbiddenError:
+        logger.warning(f"Cannot send join link to group {chat_id}: bot was removed or no access")
+
+
+# ── 1. Bot added to group ────────────────────────────────────────────────────
+
+@router.my_chat_member(ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
+async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
+    adder = event.from_user
+    chat = event.chat
+    chat_title = chat.title or str(chat.id)
+
+    team_id = await get_team_id(chat.id, telegram_id=adder.id)
+
+    if team_id:
+        # Team already linked — just send the invite button
+        bot_info = await bot.get_me()
+        deep_link = f"https://t.me/{bot_info.username}?start=join_{team_id}"
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🚀 Вступить в команду", url=deep_link)
+        ]])
+        try:
+            await bot.send_message(
+                chat_id=chat.id,
+                text=(
+                    f"👋 Привет, <b>{chat_title}</b>!\n\n"
+                    "Чтобы начать получать задачи — нажмите кнопку ниже:"
+                ),
+                reply_markup=kb,
+            )
+        except TelegramForbiddenError:
+            pass
+        return
+
+    # No team linked yet — ask manager to link via DM
+    await create_pending_team_chat(chat.id, chat_title, telegram_id=adder.id)
+    group_text = (
+        f"👋 Привет! Я добавлен в <b>{chat_title}</b>.\n\n"
+        "⚠️ Этот чат ещё не привязан к команде.\n"
+        "Менеджер команды должен связать чат через личку бота."
+    )
+    try:
+        await bot.send_message(chat_id=chat.id, text=group_text)
+    except TelegramForbiddenError:
+        pass
+
+    bot_info = await bot.get_me()
+    link_deep_link = f"https://t.me/{bot_info.username}?start=link_{chat.id}"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔗 Привязать чат к команде", url=link_deep_link)
+    ]])
+    try:
+        await bot.send_message(
+            chat_id=adder.id,
+            text=(
+                f"👥 Бот добавлен в <b>{chat_title}</b>.\n\n"
+                "Чат ещё не привязан ни к одной команде.\n"
+                "Нажмите кнопку, чтобы выбрать команду. Также этот чат появится в панели менеджера."
+            ),
+            reply_markup=kb,
+        )
+    except TelegramForbiddenError:
+        logger.warning(f"Cannot DM adder {adder.id} — no private chat open")
 
 
 # ── 2. Deep link fallback — /start setup_{chat_id} ──────────────────────────
@@ -171,7 +185,6 @@ async def process_yougile_token(message: Message, state: FSMContext) -> None:
 
     await state.update_data(
         yougile_token=token,
-        # Store title map in FSM to avoid 64-byte callback_data limit
         pending_projects={p["id"]: p["title"] for p in projects},
     )
     await state.set_state(GroupSetupStates.waiting_for_board_select)
@@ -187,7 +200,7 @@ async def process_yougile_token(message: Message, state: FSMContext) -> None:
 # ── 4. Board selected ────────────────────────────────────────────────────────
 
 @router.callback_query(GroupSetupStates.waiting_for_board_select, F.data.startswith("select_board:"))
-async def process_board_selection(callback: CallbackQuery, state: FSMContext) -> None:
+async def process_board_selection(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     board_id = callback.data.split(":")[1]
 
     data = await state.get_data()
@@ -197,13 +210,18 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext) ->
     projects: dict[str, str] = data.get("pending_projects", {})
     board_title = projects.get(board_id, board_id)
 
-    await register_group(
-        chat_id=chat_id,
-        chat_title=chat_title,
-        added_by_telegram_id=callback.from_user.id,
-        yougile_token=yougile_token,
-        yougile_board_id=board_id,
-    )
+    # Get teamId to update kanban settings
+    team_id = await get_team_id(chat_id, telegram_id=callback.from_user.id)
+    if team_id:
+        ok = await update_team_kanban(team_id, board_id, yougile_token, telegram_id=callback.from_user.id)
+        if not ok:
+            await callback.message.edit_text(
+                "❌ Не удалось сохранить настройки канбана. Попробуй позже."
+            )
+            await callback.answer()
+            return
+    else:
+        logger.warning(f"No team found for chat {chat_id} during board selection — kanban not saved")
 
     await state.clear()
 
@@ -211,22 +229,10 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext) ->
         f"✅ Готово!\n\n"
         f"Группа: <b>{chat_title}</b>\n"
         f"Борд: <b>{board_title}</b>\n\n"
-        "Теперь я буду читать переписку и создавать задачи автоматически.\n"
-        "Участники команды могут привязать свои аккаунты через /start"
+        "Настройка сохранена."
     )
 
-    try:
-        await callback.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                f"✅ Настройка завершена! Я буду следить за задачами в этом чате.\n\n"
-                f"Борд: <b>{board_title}</b>\n"
-                "Каждый участник может привязать свой аккаунт через /start"
-            ),
-        )
-    except TelegramForbiddenError:
-        logger.warning(f"Cannot send confirmation to group {chat_id} — bot was removed")
-
+    await _send_join_link_to_group(bot, chat_id, telegram_id=callback.from_user.id)
     await callback.answer()
 
 
@@ -234,7 +240,7 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext) ->
 
 @router.my_chat_member(ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))
 async def bot_removed_from_group(event: ChatMemberUpdated) -> None:
-    await deactivate_group(event.chat.id)
+    await deactivate_team(event.chat.id, telegram_id=event.from_user.id)
     logger.info(f"Bot removed from group {event.chat.id} ({event.chat.title})")
 
 
@@ -250,7 +256,15 @@ async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> N
     try:
         await message.delete()
     except Exception:
-        pass  # not critical if delete fails
+        pass
+
+    team_id = await get_team_id(message.chat.id, telegram_id=message.from_user.id)
+    if not team_id:
+        await message.answer(
+            "⚠️ Этот чат не привязан к команде.\n"
+            "Сначала менеджер команды должен привязать чат через личку бота."
+        )
+        return
 
     await state.update_data(
         pending_chat_id=message.chat.id,
@@ -258,14 +272,8 @@ async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> N
     )
 
     if settings.MOCK_YOUGILE:
-        await register_group(
-            chat_id=message.chat.id,
-            chat_title=message.chat.title,
-            added_by_telegram_id=message.from_user.id,
-            yougile_token=settings.MOCK_YOUGILE_TOKEN,
-            yougile_board_id=settings.MOCK_YOUGILE_BOARD_ID,
-        )
-        logger.info(f"[MOCK] Group {message.chat.id} reconfigured via /setup")
+        ok = await update_team_kanban(team_id, settings.MOCK_YOUGILE_BOARD_ID, settings.MOCK_YOUGILE_TOKEN, telegram_id=message.from_user.id)
+        logger.info(f"[MOCK] Team {team_id} kanban reconfigured via /setup")
         try:
             await bot.send_message(
                 chat_id=message.from_user.id,

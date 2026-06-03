@@ -25,7 +25,7 @@ import java.util.List;
 @NoArgsConstructor
 public class Team extends AbstractEntity {
 
-    @Column(name = "telegram_chat_id", nullable = false, unique = true)
+    @Column(name = "telegram_chat_id", nullable = true, unique = true)
     private Long telegramChatId;
 
     @Column(name = "chat_title")

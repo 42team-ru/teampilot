@@ -1,0 +1,6 @@
+{"file": "bot/handlers/admin.py", "reason": "add /admin command handler and CreateTeam FSM callbacks"}
+{"file": "bot/keyboards/admin.py", "reason": "add 🏢 Создать команду button to admin_main_keyboard"}
+{"file": "bot/services/admin_service.py", "reason": "add create_team() → POST /admin/teams"}
+{"file": "bot/states/setup.py", "reason": "FSM pattern reference; add CreateTeamStates"}
+{"file": "bot/main.py", "reason": "verify admin_router registered (already is — no change expected)"}
+{"file": ".trellis/tasks/06-04-admin-panel-create-teams-via-admin-command/prd.md", "reason": "requirements and acceptance criteria"}

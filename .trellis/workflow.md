@@ -9,6 +9,7 @@
 3. **Persist everything** — research, decisions, and lessons all go to files; conversations get compacted, files don't
 4. **Incremental development** — one task at a time
 5. **Capture learnings** — after each task, review and write new knowledge back to spec
+6. **Отвечай на русском** — все сообщения ассистента пользователю в этом проекте должны быть написаны на русском; пути к файлам, команды, код, API-идентификаторы, имена пакетов и дословные логи можно оставлять в исходном виде, когда это нужно для точности
 
 ---
 
