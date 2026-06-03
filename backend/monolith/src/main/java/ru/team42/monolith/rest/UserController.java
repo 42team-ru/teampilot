@@ -5,12 +5,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
+import ru.team42.monolith.dto.request.LinkYougileRequest;
 import ru.team42.monolith.dto.response.UserResponse;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.service.UserService;
@@ -44,5 +47,15 @@ public class UserController {
             throw AppException.badRequest("Unknown role: " + role);
         }
         return ResponseUtils.ok(userService.listByRole(parsed));
+    }
+
+    @Operation(summary = "Привязать YouGile аккаунт к пользователю")
+    @PatchMapping("/{telegramId}/yougile")
+    public ResponseEntity<Void> linkYougile(
+            @PathVariable Long telegramId,
+            @RequestBody LinkYougileRequest request
+    ) {
+        userService.linkToYougile(telegramId, request.yougileUserId(), request.yougileDisplayName());
+        return ResponseUtils.noContent();
     }
 }

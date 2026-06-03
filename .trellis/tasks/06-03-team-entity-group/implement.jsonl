@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec index — соглашения по структуре пакетов, именованию, слоям"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Flyway-миграции, соглашения по именованию таблиц и колонок"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException, GlobalExceptionHandler — как бросать ошибки в сервисах"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Общие требования к качеству кода"}

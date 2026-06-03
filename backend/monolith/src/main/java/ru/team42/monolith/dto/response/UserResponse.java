@@ -9,5 +9,7 @@ public record UserResponse(
         String firstName,
         String lastName,
         String position,
-        String telegramLogin
+        String telegramLogin,
+        boolean yougileLinked,
+        String yougileDisplayName
 ) {}

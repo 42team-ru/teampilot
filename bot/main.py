@@ -15,6 +15,7 @@ from handlers.files import router as files_router
 from handlers.group import router as group_router
 from handlers.setup import router as setup_router
 from handlers.tasks import router as tasks_router
+from handlers.upload import router as upload_router
 from kafka.consumer import EventConsumer
 from kafka.producer import EventProducer
 
@@ -48,6 +49,7 @@ async def main() -> None:
     dp.include_router(admin_router)
     dp.include_router(auth_router)
     dp.include_router(tasks_router)
+    dp.include_router(upload_router)
     dp.include_router(files_router)
     dp.include_router(group_router)
 

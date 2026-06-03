@@ -1,7 +1,9 @@
 package ru.team42.monolith.dto.response;
 
-import java.util.UUID;
+import java.time.Instant;
 
 public record InviteResponse(
-        UUID teamId
+        String token,
+        Instant expiresAt,
+        String inviteUrl
 ) {}

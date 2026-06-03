@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Проверить что миграция соответствует соглашениям (V{n}__, snake_case, FK-индексы)"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Проверить что сервисы бросают AppException, не RuntimeException"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Общие чек-листы качества"}
