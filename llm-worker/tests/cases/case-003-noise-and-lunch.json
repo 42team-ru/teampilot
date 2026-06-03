@@ -1,0 +1,60 @@
+{
+  "id": "case-003-noise-and-lunch",
+  "description": "Чистый шум: длинное обсуждение игр и еды, с ложными триггерами",
+  "input_batch": {
+    "event_id": "evt_noise_3",
+    "occurred_at": "2026-06-06T12:00:00",
+    "chat_id": 1003,
+    "messages": [
+      {
+        "user_id": 401,
+        "username": "tester_anna",
+        "full_name": "Анна Тестова",
+        "text": "Кто в Helldivers 2 вечером пойдет? Там новый патч выкатили, надо затестить",
+        "timestamp": "2026-06-06T11:50:00"
+      },
+      {
+        "user_id": 402,
+        "username": "frontend_kirill",
+        "full_name": "Кирилл Версталов",
+        "text": "О, я бы ворвался. А то скучно. Скинь ссылку на патчноут.",
+        "timestamp": "2026-06-06T11:52:00"
+      },
+      {
+        "user_id": 401,
+        "username": "tester_anna",
+        "full_name": "Анна Тестова",
+        "text": "https://store.steampowered.com/news/app/...",
+        "timestamp": "2026-06-06T11:53:00"
+      },
+      {
+        "user_id": 403,
+        "username": "pm_ivan",
+        "full_name": "Иван Менеджеров",
+        "text": "Народ, погнали на бизнес ланч в Теремок? Я бронирую стол на троих.",
+        "timestamp": "2026-06-06T11:55:00"
+      },
+      {
+        "user_id": 402,
+        "username": "frontend_kirill",
+        "full_name": "Кирилл Версталов",
+        "text": "Я пас, у меня куча работы. Сделайте мне одолжение, захватите блинчик с ветчиной если сможете.",
+        "timestamp": "2026-06-06T11:57:00"
+      },
+      {
+        "user_id": 403,
+        "username": "pm_ivan",
+        "full_name": "Иван Менеджеров",
+        "text": "Ок, сделаю.",
+        "timestamp": "2026-06-06T12:00:00"
+      }
+    ],
+    "batch_start": "2026-06-06T12:00:00",
+    "batch_end": "2026-06-06T12:20:00",
+    "team": []
+  },
+  "expected_output": {
+    "type": "none",
+    "data": {}
+  }
+}

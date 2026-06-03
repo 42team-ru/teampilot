@@ -1,0 +1,49 @@
+{
+  "id": "case-009-role-single-match",
+  "description": "Разрешение assignee по роли без неоднозначности (один девопс)",
+  "input_batch": {
+    "event_id": "evt_role_9",
+    "occurred_at": "2026-06-12T16:00:00",
+    "chat_id": 1009,
+    "messages": [
+      {
+        "user_id": 901,
+        "username": "pm_ivan",
+        "full_name": "Иван Менеджеров",
+        "text": "Дайте задачу девопсу, пусть разберётся с CI.",
+        "timestamp": "2026-06-12T15:50:00"
+      },
+      {
+        "user_id": 902,
+        "username": "frontend_kirill",
+        "full_name": "Кирилл Версталов",
+        "text": "Угу, деплой стоит.",
+        "timestamp": "2026-06-12T15:55:00"
+      }
+    ],
+    "batch_start": "2026-06-12T15:40:00",
+    "batch_end": "2026-06-12T16:00:00",
+    "team": [
+      {
+        "user_id": 903,
+        "username": "@devops_max",
+        "full_name": "Максим Девопсов",
+        "role": "DevOps"
+      },
+      {
+        "user_id": 904,
+        "username": "@backend_vlad",
+        "full_name": "Влад Бэкендов",
+        "role": "Developer"
+      }
+    ]
+  },
+  "expected_output": {
+    "type": "task",
+    "data": {
+      "title": "Разобраться с CI-пайплайном",
+      "assignee": "@devops_max",
+      "priority": "MEDIUM"
+    }
+  }
+}
