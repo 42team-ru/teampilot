@@ -27,9 +27,6 @@ public class KafkaAutoConfiguration {
 
     private static final String JACKSON_JSON_SERIALIZER =
         "org.springframework.kafka.support.serializer.JacksonJsonSerializer";
-    private static final String JACKSON_JSON_DESERIALIZER =
-        "org.springframework.kafka.support.serializer.JacksonJsonDeserializer";
-    private static final String TRUSTED_PACKAGES_CONFIG = "spring.json.trusted.packages";
 
     @Bean
     @ConditionalOnMissingBean(ProducerFactory.class)
@@ -64,10 +61,9 @@ public class KafkaAutoConfiguration {
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         props.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class.getName());
-        props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JACKSON_JSON_DESERIALIZER);
+        props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, StringDeserializer.class.getName());
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, appProps.getAutoOffsetReset());
-        props.put(TRUSTED_PACKAGES_CONFIG, appProps.getTrustedPackages());
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
