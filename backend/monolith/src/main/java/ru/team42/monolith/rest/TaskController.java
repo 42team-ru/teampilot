@@ -5,22 +5,21 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.response.TaskResponse;
 import ru.team42.monolith.entity.enums.TaskStatus;
+import ru.team42.monolith.event.LlmTaskCreateEvent;
+import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.service.TaskService;
+
+import java.util.List;
 
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/tasks")
+@RequestMapping("/tasks")
 @RequiredArgsConstructor
 public class TaskController {
 
@@ -32,6 +31,11 @@ public class TaskController {
         return ResponseUtils.ok(TaskResponse.from(taskService.getById(id)));
     }
 
+    @PostMapping
+    public ResponseEntity<TaskResponse> createTest(@RequestBody LlmTaskCreateEvent event) {
+        return ResponseUtils.ok(TaskResponse.from(taskService.createFromLlmEvent(event)));
+    }
+
     /**
      * Идёт в YouGile по externalId, применяет diff (статус, название, исполнитель),
      * записывает историю статусов, возвращает актуальное состояние задачи.
@@ -39,6 +43,12 @@ public class TaskController {
     @PostMapping("/{id}/sync")
     public ResponseEntity<TaskResponse> syncFromYouGile(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.syncFromYouGile(id)));
+    }
+
+    @GetMapping("/yougile")
+    public ResponseEntity<List<YouGileService.YouGileTaskResponse>> listFromYouGile(
+            @RequestParam Long chatId) {
+        return ResponseUtils.ok(taskService.listFromYouGile(chatId));
     }
 
     @GetMapping
