@@ -240,11 +240,14 @@ def main() -> None:
                     elif isinstance(event, StatusChangeEvent):
                         publish(TOPIC_STATUS, event, key=str(batch.chat_id))
                         logger.info(f"Status event published: {event.action}")
-                        
+
+                # Коммитим offset только после успешной публикации
+                # (в finally было бы потеря сообщений при любой ошибке)
+                consumer.commit(msg)
+
             except Exception as e:
                 logger.error(f"Error processing message from Kafka: {e}")
-            finally:
-                consumer.commit(msg)
+                # Намеренно не коммитим — сообщение будет переобработано
                 
     except KeyboardInterrupt:
         logger.info("Graceful shutdown initiated...")
