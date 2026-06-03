@@ -18,20 +18,21 @@ public class DataSeeder implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        seedUser(1L, "seed_admin", "Seed Admin", SystemRole.SYSTEM_ADMIN);
-        seedUser(2L, "seed_user", "Seed User", SystemRole.USER);
+        seedAdminUser(2031863132L, "eiiwoqodhkqoqo", "владмиир", "Мельник");
+        seedAdminUser(713978344L, "idzey878", "Кирилл", "Пантюхин");
     }
 
-    private void seedUser(Long telegramId, String login, String firstName, SystemRole systemRole) {
-        if (userRepository.findByTelegramId(telegramId).isPresent()) {
-            return;
-        }
-        User user = new User();
+    private void seedAdminUser(Long telegramId, String login, String firstName, String lastName) {
+        User user = userRepository.findByTelegramId(telegramId)
+                .orElseGet(User::new);
+
         user.setTelegramId(telegramId);
         user.setTelegramLogin(login);
         user.setFirstName(firstName);
-        user.setSystemRole(systemRole);
+        user.setLastName(lastName);
+        user.setSystemRole(SystemRole.SYSTEM_ADMIN);
+
         userRepository.save(user);
-        log.info("Seeded user: {} ({})", login, systemRole);
+        log.info("Seeded admin user: {}", login);
     }
 }
