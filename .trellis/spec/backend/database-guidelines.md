@@ -6,9 +6,17 @@
 
 ## Overview
 
-The backend uses Spring Data JPA entities and repositories in the monolith module.
-Application Flyway migrations live under `backend/monolith/src/main/resources/db/migration/`
-and use the `V{number}__description.sql` naming style.
+<!--
+Document your project's database conventions here.
+
+Questions to answer:
+- What ORM/query library do you use?
+- How are migrations managed?
+- What are the naming conventions for tables/columns?
+- How do you handle transactions?
+-->
+
+(To be filled by the team)
 
 ---
 
@@ -22,15 +30,9 @@ and use the `V{number}__description.sql` naming style.
 
 ## Migrations
 
-Add monolith schema changes to `backend/monolith/src/main/resources/db/migration/`
-with the next numeric `V{number}__description.sql` filename. When a task also
-needs infrastructure bootstrap SQL, keep that in `infrastructure/database/`, but
-do not treat it as a substitute for the monolith migration path.
+<!-- How to create and run migrations -->
 
-For entities extending `AbstractStoredFileEntity`, keep SQL column definitions in
-sync with the shared annotations: `bucket VARCHAR(255)`, `s3_key VARCHAR(1024)`,
-`original_filename VARCHAR(512)`, `content_type VARCHAR(255)`, `size_bytes BIGINT`,
-and nullable `owner_id UUID`.
+(To be filled by the team)
 
 ---
 

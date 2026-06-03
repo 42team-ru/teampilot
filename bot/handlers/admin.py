@@ -23,6 +23,17 @@ async def show_admin_panel(message: Message) -> None:
     )
 
 
+async def show_member_panel(message: Message, user: dict) -> None:
+    yougile = user.get("yougileDisplayName")
+    if yougile:
+        status = f"✅ Привязан к YouGile: <b>{yougile}</b>"
+    else:
+        status = "⚠️ YouGile аккаунт не привязан"
+    await message.answer(
+        f"Привет! Ты зарегистрирован в системе.\n\n{status}"
+    )
+
+
 # ── Admin callbacks ───────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:back")

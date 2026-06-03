@@ -26,19 +26,6 @@ class AudioUploadEvent(BaseModel):
     timestamp: datetime
 
 
-class FileUploadedEvent(BaseModel):
-    user_id: int
-    chat_id: int
-    username: str | None
-    first_name: str | None
-    original_filename: str
-    content_type: str
-    minio_bucket: str
-    minio_key: str
-    file_size: int
-    uploaded_at: datetime
-
-
 class TaskConfirmedEvent(BaseModel):
     proposal_id: str
     user_id: int

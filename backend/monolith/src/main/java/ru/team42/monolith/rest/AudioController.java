@@ -14,7 +14,7 @@ import ru.team42.monolith.dto.response.AudioUploadResponse;
 import ru.team42.monolith.service.AudioService;
 
 @RestController
-@RequestMapping("/api/audio")
+@RequestMapping("/audio")
 @RequiredArgsConstructor
 public class AudioController {
 

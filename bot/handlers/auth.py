@@ -8,8 +8,7 @@ from aiogram.types import Message
 from loguru import logger
 
 from config import settings
-from handlers.admin import show_admin_panel
-from handlers.member import show_member_panel
+from handlers.admin import show_admin_panel, show_member_panel
 from services.admin_service import get_user_by_telegram_id
 from storage import register_user
 

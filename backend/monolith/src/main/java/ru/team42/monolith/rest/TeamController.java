@@ -2,7 +2,6 @@ package ru.team42.monolith.rest;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,17 +18,17 @@ import ru.team42.monolith.dto.response.TeamResponse;
 import ru.team42.monolith.service.TeamService;
 
 @RestController
-@RequestMapping("/api/teams")
+@RequestMapping("/teams")
 @RequiredArgsConstructor
-@Tag(name = "Teams", description = "Управление командами")
+@Tag(name = "Teams", description = "Управление командами и интеграцией с канбаном")
 public class TeamController {
 
     private final TeamService teamService;
 
-    @Operation(summary = "Создать команду")
+    @Operation(summary = "Зарегистрировать или обновить команду")
     @PostMapping
-    public ResponseEntity<TeamResponse> create(@Valid @RequestBody TeamRequest request) {
-        TeamResponse response = teamService.create(request);
+    public ResponseEntity<TeamResponse> register(@RequestBody TeamRequest request) {
+        TeamResponse response = teamService.register(request);
         return ResponseUtils.created("/api/teams/" + response.telegramChatId(), response);
     }
 
@@ -38,7 +37,7 @@ public class TeamController {
     public ResponseEntity<TeamResponse> getByTelegramChatId(@PathVariable Long telegramChatId) {
         return ResponseUtils.ok(
                 teamService.findByTelegramChatId(telegramChatId)
-                        .orElseThrow(() -> AppException.notFound("Team with chatId %d not found".formatted(telegramChatId)))
+                        .orElseThrow(() -> AppException.notFound("Team with telegramChatId %d not found".formatted(telegramChatId)))
         );
     }
 
