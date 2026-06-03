@@ -42,6 +42,10 @@ public class UserService {
                 user.getId(),
                 user.getTelegramId(),
                 user.getRole().name(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getPosition(),
+                user.getTelegramLogin(),
                 user.getYougileUserId() != null,
                 user.getYougileDisplayName()
         );

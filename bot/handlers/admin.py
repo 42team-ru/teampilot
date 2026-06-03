@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import httpx
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from loguru import logger
 
 from config import settings
 from keyboards.admin import admin_main_keyboard, back_to_admin_keyboard
 from services.admin_service import get_team_members, link_user_to_yougile
+from states.invite import InviteCreationStates
 
 router = Router()
 
@@ -44,37 +46,68 @@ async def admin_back(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "admin:invite")
-async def admin_invite(callback: CallbackQuery) -> None:
+async def admin_invite_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(InviteCreationStates.waiting_for_first_name)
+    await callback.message.edit_text(
+        "📧 <b>Приглашение участника</b>\n\n"
+        "Шаг 1/3 — Введи <b>имя</b> участника:"
+    )
+    await callback.answer()
+
+
+@router.message(InviteCreationStates.waiting_for_first_name)
+async def invite_first_name(message: Message, state: FSMContext) -> None:
+    await state.update_data(invite_first_name=message.text.strip())
+    await state.set_state(InviteCreationStates.waiting_for_last_name)
+    await message.answer("Шаг 2/3 — Введи <b>фамилию</b>:")
+
+
+@router.message(InviteCreationStates.waiting_for_last_name)
+async def invite_last_name(message: Message, state: FSMContext) -> None:
+    await state.update_data(invite_last_name=message.text.strip())
+    await state.set_state(InviteCreationStates.waiting_for_position)
+    await message.answer("Шаг 3/3 — Введи <b>должность</b> (например: «Backend разработчик»):")
+
+
+@router.message(InviteCreationStates.waiting_for_position)
+async def invite_position(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    first_name = data["invite_first_name"]
+    last_name  = data["invite_last_name"]
+    position   = message.text.strip()
+    await state.clear()
+
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
                 f"{settings.BACKEND_URL}/auth/invite",
                 headers={"X-Bot-Secret": settings.BOT_SECRET},
                 json={
-                    "creatorTelegramId": callback.from_user.id,
-                    "createdBy": str(callback.from_user.id),
+                    "creatorTelegramId": message.from_user.id,
+                    "createdBy": str(message.from_user.id),
+                    "firstName": first_name,
+                    "lastName": last_name,
+                    "position": position,
                 },
             )
     except (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError):
-        await callback.answer("❌ Бэкенд недоступен", show_alert=True)
+        await message.answer("❌ Бэкенд недоступен, попробуй позже.")
         return
 
     if resp.status_code == 403:
-        await callback.answer("⛔ Неверный секрет бота", show_alert=True)
+        await message.answer("⛔ Неверный секрет бота.")
         return
 
     if resp.status_code == 200:
         invite_url = resp.json()["inviteUrl"]
-        await callback.message.edit_text(
-            f"📧 <b>Ссылка для приглашения</b>\n\n"
+        await message.answer(
+            f"✅ Ссылка для <b>{first_name} {last_name}</b> ({position}):\n\n"
             f"<code>{invite_url}</code>\n\n"
-            "Действует 7 дней. Одноразовая.\n"
-            "Перешли её участнику — он нажмёт и привяжет свой аккаунт.",
+            "Одноразовая. Перешли участнику.",
             reply_markup=back_to_admin_keyboard(),
         )
-        await callback.answer()
     else:
-        await callback.answer("❌ Ошибка сервера", show_alert=True)
+        await message.answer("❌ Ошибка сервера.")
 
 
 @router.callback_query(F.data == "admin:add_to_chat")
@@ -96,8 +129,7 @@ async def admin_team(callback: CallbackQuery) -> None:
     members = await get_team_members()
     if not members:
         await callback.message.edit_text(
-            "👥 Пока нет зарегистрированных участников.\n"
-            "Пригласи команду через «Пригласить участника».",
+            "👥 Пока нет зарегистрированных участников.",
             reply_markup=back_to_admin_keyboard(),
         )
         await callback.answer()
@@ -105,9 +137,16 @@ async def admin_team(callback: CallbackQuery) -> None:
 
     lines = ["👥 <b>Команда</b>\n"]
     for m in members:
-        icon = "✅" if m.get("yougileLinked") else "⚠️"
-        name = m.get("yougileDisplayName") or m.get("telegramLogin") or str(m.get("telegramId", "?"))
-        lines.append(f"{icon} {name}")
+        first = m.get("firstName") or ""
+        last  = m.get("lastName") or ""
+        name  = f"{first} {last}".strip() or m.get("telegramLogin") or str(m.get("telegramId", "?"))
+        pos   = m.get("position") or "—"
+        tg    = f"@{m['telegramLogin']}" if m.get("telegramLogin") else ""
+        yg    = "✅ YouGile" if m.get("yougileLinked") else "⚠️ YouGile не привязан"
+
+        lines.append(f"<b>{name}</b>")
+        lines.append(f"  📌 {pos}  {tg}")
+        lines.append(f"  {yg}\n")
 
     await callback.message.edit_text(
         "\n".join(lines),

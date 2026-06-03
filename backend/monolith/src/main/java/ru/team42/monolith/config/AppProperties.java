@@ -20,6 +20,6 @@ public class AppProperties {
     @Data
     public static class Invite {
         private long expirationDays = 7;
-        private String botUrl = "t.me/prorab_bot";
+        private String botUrl = "t.me/digital_42TEAMbot";
     }
 }
