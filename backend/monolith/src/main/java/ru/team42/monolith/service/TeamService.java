@@ -39,9 +39,9 @@ public class TeamService {
     }
 
     @Transactional
-    public TeamResponse update(Long telegramChatId, UpdateTeamRequest req) {
-        Team team = teamRepository.findByTelegramChatId(telegramChatId)
-                .orElseThrow(() -> AppException.notFound("Team with telegramChatId %d not found".formatted(telegramChatId)));
+    public TeamResponse update(UUID teamId, UpdateTeamRequest req) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> AppException.notFound("Team with teamId %d not found".formatted(teamId)));
         if (req.telegramChatId() != null) team.setTelegramChatId(req.telegramChatId());
         if (req.chatTitle() != null) team.setChatTitle(req.chatTitle());
         if (req.kanbanId() != null) team.setKanbanId(req.kanbanId());
@@ -82,10 +82,6 @@ public class TeamService {
 
     public Optional<TeamResponse> findByTelegramChatId(Long telegramChatId) {
         return teamRepository.findByTelegramChatId(telegramChatId).map(teamMapper::toResponse);
-    }
-
-    public Optional<TeamResponse> findById(UUID id) {
-        return teamRepository.findById(id).map(this::toResponse);
     }
 
     @Transactional

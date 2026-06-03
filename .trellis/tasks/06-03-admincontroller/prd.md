@@ -7,9 +7,9 @@
 
 ## Requirements
 
-- `POST /admin/teams` принимает: `chatTitle`, `telegramChatId`, `kanbanId`, `kanbanApiKey`, `adminTelegramId`, `adminUsername`
+- `POST /admin/teams` принимает: `chatTitle`, `teamId`, `kanbanId`, `kanbanApiKey`, `adminTelegramId`, `adminUsername`
 - Ищет User по `adminTelegramId`; если нет — создаёт с ролью `SYSTEM_ADMIN`
-- Создаёт `Team` (или upsert по `telegramChatId`)
+- Создаёт `Team` (или upsert по `teamId`)
 - Создаёт `TeamUser` с ролью `TeamRole.ADMIN`, привязывая user к team
 - Возвращает `TeamResponse` (201 Created)
 - Нет `/api` префикса в маппинге (по CLAUDE.md)

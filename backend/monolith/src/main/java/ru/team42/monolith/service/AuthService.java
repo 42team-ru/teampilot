@@ -40,23 +40,23 @@ public class AuthService {
 
         User user = userRepository.findByTelegramId(request.telegramId())
                 .orElseGet(() -> createUser(request));
-
+        // TODO: пизда нахуячено
         // Backfill profile fields from invite if missing on user
-        if (inviteToken.getFirstName() != null && user.getFirstName() == null) {
-            user.setFirstName(inviteToken.getFirstName());
-        }
-        if (inviteToken.getLastName() != null && user.getLastName() == null) {
-            user.setLastName(inviteToken.getLastName());
-        }
+//        if (inviteToken.getFirstName() != null && user.getFirstName() == null) {
+//            user.setFirstName(inviteToken.getFirstName());
+//        }
+//        if (inviteToken.getLastName() != null && user.getLastName() == null) {
+//            user.setLastName(inviteToken.getLastName());
+//        }
         userRepository.save(user);
 
-        if (!alreadyMember) {
-            TeamUser teamUser = new TeamUser();
-            teamUser.setTeam(team);
-            teamUser.setUser(user);
-            teamUser.setRole(TeamRole.USER);
-            teamUserRepository.save(teamUser);
-        }
+//        if (!alreadyMember) {
+//            TeamUser teamUser = new TeamUser();
+//            teamUser.setTeam(team);
+//            teamUser.setUser(user);
+//            teamUser.setRole(TeamRole.USER);
+//            teamUserRepository.save(teamUser);
+//        }
 
         return new AuthResponse(user.getId(), user.getTelegramId(), user.getSystemRole());
     }
