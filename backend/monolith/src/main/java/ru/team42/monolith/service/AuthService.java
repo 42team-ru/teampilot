@@ -71,16 +71,13 @@ public class AuthService {
         if (inviteToken.getLastName() != null && user.getLastName() == null) {
             user.setLastName(inviteToken.getLastName());
         }
-        if (inviteToken.getPosition() != null && user.getPosition() == null) {
-            user.setPosition(inviteToken.getPosition());
-        }
         userRepository.save(user);
 
         inviteToken.setUsedAt(Instant.now());
         inviteToken.setUsedByUser(user);
         inviteTokenRepository.save(inviteToken);
 
-        return new AuthResponse(user.getId(), user.getTelegramId(), user.getRole());
+        return new AuthResponse(user.getId(), user.getTelegramId(), user.getSystemRole());
     }
 
     private User createUser(LoginRequest request, InviteToken inviteToken) {
@@ -90,7 +87,6 @@ public class AuthService {
         // Prefer invite token values; fall back to Telegram-provided data
         user.setFirstName(inviteToken.getFirstName() != null ? inviteToken.getFirstName() : request.firstName());
         user.setLastName(inviteToken.getLastName() != null ? inviteToken.getLastName() : request.lastName());
-        user.setPosition(inviteToken.getPosition());
         return userRepository.save(user);
     }
 }
