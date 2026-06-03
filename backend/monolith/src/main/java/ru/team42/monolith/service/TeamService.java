@@ -19,6 +19,7 @@ import ru.team42.monolith.repository.UserRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -81,6 +82,10 @@ public class TeamService {
 
     public Optional<TeamResponse> findByTelegramChatId(Long telegramChatId) {
         return teamRepository.findByTelegramChatId(telegramChatId).map(teamMapper::toResponse);
+    }
+
+    public Optional<TeamResponse> findById(UUID id) {
+        return teamRepository.findById(id).map(this::toResponse);
     }
 
     @Transactional
