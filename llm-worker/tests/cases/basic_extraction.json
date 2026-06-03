@@ -1,0 +1,130 @@
+[
+  {
+    "id": "case-001-simple-task",
+    "description": "Очевидная постановка задачи с дедлайном и исполнителем",
+    "input_batch": {
+      "event_id": "evt_001",
+      "occurred_at": "2026-06-03T10:00:00",
+      "chat_id": 12345,
+      "messages": [
+        {
+          "user_id": 101,
+          "username": "ivan_pm",
+          "full_name": "Иван Помидоров",
+          "text": "Кирилл, нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3.",
+          "timestamp": "2026-06-03T10:00:00"
+        }
+      ],
+      "batch_start": "2026-06-03T10:00:00",
+      "batch_end": "2026-06-03T10:00:05"
+    },
+    "expected_output": {
+      "type": "task",
+      "data": {
+        "title": "Сделать ручку для загрузки файлов в S3",
+        "assignee": "Кирилл",
+        "priority": "MEDIUM"
+      }
+    }
+  },
+  {
+    "id": "case-002-status-update",
+    "description": "Сообщение о завершении задачи",
+    "input_batch": {
+      "event_id": "evt_002",
+      "occurred_at": "2026-06-03T11:00:00",
+      "chat_id": 12345,
+      "messages": [
+        {
+          "user_id": 102,
+          "username": "kirill_dev",
+          "full_name": "Кирилл Разработчиков",
+          "text": "Я закончил с авторизацией, проверяйте в мастере.",
+          "timestamp": "2026-06-03T11:00:00"
+        }
+      ],
+      "batch_start": "2026-06-03T11:00:00",
+      "batch_end": "2026-06-03T11:00:05"
+    },
+    "expected_output": {
+      "type": "status",
+      "data": {
+        "task_hint": "авторизация",
+        "action": "COMPLETE"
+      }
+    }
+  },
+  {
+    "id": "case-003-slang-and-context",
+    "description": "Сложная дискуссия со сленгом и неявной задачей",
+    "input_batch": {
+      "event_id": "evt_003",
+      "occurred_at": "2026-06-03T12:00:00",
+      "chat_id": 12345,
+      "messages": [
+        {
+          "user_id": 103,
+          "username": "vova_ml",
+          "full_name": "Владимир Эмэлев",
+          "text": "Блин, в квадранте эмбеддинги поплыли. Кажется, надо пересоздать коллекцию с правильным размером вектора.",
+          "timestamp": "2026-06-03T12:00:00"
+        },
+        {
+          "user_id": 102,
+          "username": "kirill_dev",
+          "full_name": "Кирилл Разработчиков",
+          "text": "Вов, возьмешь на себя? А то я на фронте зашиваюсь.",
+          "timestamp": "2026-06-03T12:01:00"
+        },
+        {
+          "user_id": 103,
+          "username": "vova_ml",
+          "full_name": "Владимир Эмэлев",
+          "text": "Ок, сегодня поковыряю.",
+          "timestamp": "2026-06-03T12:02:00"
+        }
+      ],
+      "batch_start": "2026-06-03T12:00:00",
+      "batch_end": "2026-06-03T12:05:00"
+    },
+    "expected_output": {
+      "type": "task",
+      "data": {
+        "title": "Пересоздать коллекцию в Qdrant с правильным размером вектора",
+        "assignee": "Вова",
+        "priority": "HIGH"
+      }
+    }
+  },
+  {
+    "id": "case-004-noise",
+    "description": "Разговор не по делу (шум)",
+    "input_batch": {
+      "event_id": "evt_004",
+      "occurred_at": "2026-06-03T13:00:00",
+      "chat_id": 12345,
+      "messages": [
+        {
+          "user_id": 101,
+          "username": "ivan_pm",
+          "full_name": "Иван Помидоров",
+          "text": "Кто пойдет обедать через 10 минут?",
+          "timestamp": "2026-06-03T13:00:00"
+        },
+        {
+          "user_id": 102,
+          "username": "kirill_dev",
+          "full_name": "Кирилл Разработчиков",
+          "text": "Я пас, у меня созвон.",
+          "timestamp": "2026-06-03T13:01:00"
+        }
+      ],
+      "batch_start": "2026-06-03T13:00:00",
+      "batch_end": "2026-06-03T13:05:00"
+    },
+    "expected_output": {
+      "type": "none",
+      "data": {}
+    }
+  }
+]

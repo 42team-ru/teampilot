@@ -11,10 +11,9 @@ from models import (
     ClassificationResult,
     MessageBatchEvent,
     StatusChangeEvent,
-    StatusExtractionList,
+    StatusExtraction,
     TaskCreateEvent,
-    TaskExtractionList,
-    TeamMember,
+    TaskExtraction,
 )
 from settings import settings
 
@@ -38,52 +37,6 @@ def format_messages(batch: MessageBatchEvent) -> str:
         f"[{m.timestamp.strftime('%H:%M')}] {m.username or m.full_name}: {m.text}"
         for m in batch.messages
     )
-
-
-def format_team_context(batch: MessageBatchEvent) -> str:
-    """
-    Formats the team list into a readable context for the LLM.
-    Includes Russian role synonyms to help LLaMA match slangy references.
-    """
-    if not batch.team:
-        return "TEAM LIST: not provided (use chat log usernames only)"
-
-    # Russian synonyms help LLaMA 8B map "девопс" → DevOps, "фронт" → Frontend, etc.
-    role_synonyms: dict[str, str] = {
-        "devops": "девопс",
-        "developer": "разработчик",
-        "frontend": "фронтенд/фронт",
-        "backend": "бэкенд/бэк",
-        "qa": "тестировщик/QA",
-        "pm": "менеджер/PM",
-        "lead": "лид/тимлид",
-        "designer": "дизайнер",
-    }
-
-    lines = ["TEAM LIST (use this to resolve names and roles to @username):"]
-    for m in batch.team:
-        username = m.username if m.username.startswith("@") else f"@{m.username}"
-        synonym = role_synonyms.get(m.role.lower(), "")
-        role_display = f"{m.role} ({synonym})" if synonym else m.role
-        lines.append(f"  - {username}  |  {m.full_name}  |  {role_display}")
-    return "\n".join(lines)
-
-
-def resolve_assignee_id(assignee: str | None, team: list[TeamMember]) -> int | None:
-    """
-    Looks up the user_id from the team list based on the assignee username.
-    """
-    if not assignee or not team:
-        return None
-    
-    # Normalize assignee (e.g., "@username" -> "username")
-    assignee_clean = assignee.lstrip("@").lower()
-    
-    for member in team:
-        if member.username.lstrip("@").lower() == assignee_clean:
-            return member.user_id
-            
-    return None
 
 
 def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
@@ -123,92 +76,61 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
 
     # Step 2: Task Extraction (Expensive LLM)
     if clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD:
-        task_events = _extract_tasks(batch, text)
-        results.extend(task_events)
+        task_event = _extract_task(batch, text)
+        if task_event:
+            results.append(task_event)
 
     # Step 3: Status Change Extraction (Expensive LLM)
     if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
-        status_events = _extract_statuses(batch, text)
-        results.extend(status_events)
+        status_event = _extract_status(batch, text)
+        if status_event:
+            results.append(status_event)
 
     return results
 
 
-def _extract_tasks(batch: MessageBatchEvent, text: str) -> List[TaskCreateEvent]:
+def _extract_task(batch: MessageBatchEvent, text: str) -> Optional[TaskCreateEvent]:
     """
-    Extracts one or more tasks from the batch text.
-    Uses TaskExtractionList for per-item fault tolerance.
-    """
-    try:
-        raw = task_chain.invoke({
-            "messages": text,
-            "current_datetime": batch.occurred_at.isoformat(),
-            "team_context": format_team_context(batch),
-        })
-        extraction_list = TaskExtractionList.model_validate(raw)
-
-        if extraction_list.failed_items > 0:
-            logger.warning(
-                f"Task extraction: {extraction_list.failed_items} item(s) failed "
-                f"validation and were skipped (batch={batch.event_id})"
-            )
-
-        events = []
-        for extraction in extraction_list.tasks:
-            if is_task_duplicate(extraction.title, extraction.description or ""):
-                logger.info(f"Duplicate task skipped: {extraction.title!r}")
-                continue
-
-            task_id = str(uuid.uuid4())
-            store_task(task_id, extraction.title, extraction.description or "")
-            
-            assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
-            
-            events.append(TaskCreateEvent(
-                chat_id=batch.chat_id,
-                source_batch_id=batch.event_id,
-                assignee_id=assignee_id,
-                **extraction.model_dump(),
-            ))
-
-        return events
-    except Exception as e:
-        logger.error(f"Task extraction chain failed (batch={batch.event_id}): {e}")
-        return []
-
-
-def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeEvent]:
-    """
-    Extracts one or more status changes from the batch text.
-    Uses StatusExtractionList for per-item fault tolerance.
+    Extracts task details from text and performs deduplication.
     """
     try:
-        raw = status_chain.invoke({
-            "messages": text,
-            "team_context": format_team_context(batch),
-        })
-        extraction_list = StatusExtractionList.model_validate(raw)
+        extraction_output = task_chain.invoke({"messages": text})
+        extraction = TaskExtraction.model_validate(extraction_output)
+    except (ValidationError, Exception) as e:
+        logger.error(f"Task extraction chain failed: {e}")
+        return None
 
-        if extraction_list.failed_items > 0:
-            logger.warning(
-                f"Status extraction: {extraction_list.failed_items} item(s) failed "
-                f"validation and were skipped (batch={batch.event_id})"
-            )
+    # Deduplication check via Qdrant
+    if is_task_duplicate(extraction.title, extraction.description or ""):
+        logger.info(f"Duplicate task detected and skipped: {extraction.title!r}")
+        return None
 
-        events = []
-        for extraction in extraction_list.statuses:
-            assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
-            events.append(StatusChangeEvent(
-                chat_id=batch.chat_id,
-                source_batch_id=batch.event_id,
-                assignee_id=assignee_id,
-                **extraction.model_dump(),
-            ))
-        return events
-    except Exception as e:
-        logger.error(f"Status extraction chain failed (batch={batch.event_id}): {e}")
-        return []
+    task_id = str(uuid.uuid4())
+    store_task(task_id, extraction.title, extraction.description or "")
 
+    return TaskCreateEvent(
+        chat_id=batch.chat_id,
+        source_batch_id=batch.event_id,
+        **extraction.model_dump(),
+    )
+
+
+def _extract_status(batch: MessageBatchEvent, text: str) -> Optional[StatusChangeEvent]:
+    """
+    Extracts status change details from text.
+    """
+    try:
+        extraction_output = status_chain.invoke({"messages": text})
+        extraction = StatusExtraction.model_validate(extraction_output)
+    except (ValidationError, Exception) as e:
+        logger.error(f"Status extraction chain failed: {e}")
+        return None
+
+    return StatusChangeEvent(
+        chat_id=batch.chat_id,
+        source_batch_id=batch.event_id,
+        **extraction.model_dump(),
+    )
 
 
 def main() -> None:
