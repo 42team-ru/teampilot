@@ -47,9 +47,14 @@ public class TeamService {
 
     @Transactional
     public TeamResponse update(UUID teamId, UpdateTeamRequest req, Long managerTelegramId) {
+        requireManager(teamId, managerTelegramId);
+
+        return update(teamId, req);
+    }
+
+    public TeamResponse update(UUID teamId, UpdateTeamRequest req) {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> AppException.notFound("Team with teamId %d not found".formatted(teamId)));
-        requireManager(teamId, managerTelegramId);
 
         if (req.telegramChatId() != null) team.setTelegramChatId(req.telegramChatId());
         if (req.chatTitle() != null) team.setChatTitle(req.chatTitle());
