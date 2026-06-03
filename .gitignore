@@ -205,3 +205,6 @@ htmlcov/
 .env
 .env.*
 !.env.example
+
+# Я стесняюсь
+.gemini_mh/
