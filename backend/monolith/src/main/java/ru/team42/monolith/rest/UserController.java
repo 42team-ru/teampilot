@@ -18,7 +18,7 @@ import ru.team42.monolith.service.UserService;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/users")
 @RequiredArgsConstructor
 @Tag(name = "Users", description = "Управление пользователями")
 public class UserController {

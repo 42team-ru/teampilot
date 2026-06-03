@@ -18,7 +18,7 @@ import ru.team42.monolith.dto.response.TeamResponse;
 import ru.team42.monolith.service.TeamService;
 
 @RestController
-@RequestMapping("/api/teams")
+@RequestMapping("/teams")
 @RequiredArgsConstructor
 @Tag(name = "Teams", description = "Управление командами и интеграцией с канбаном")
 public class TeamController {
