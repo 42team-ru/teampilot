@@ -6,9 +6,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 def admin_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🏢 Создать команду", callback_data="admin:create_team")],
-        [InlineKeyboardButton(text="🔗 Ссылка для вступления", callback_data="admin:get_invite")],
-        [InlineKeyboardButton(text="💬 Добавить бота в чат", callback_data="admin:add_to_chat")],
-        [InlineKeyboardButton(text="👥 Участники команды", callback_data="admin:team")],
     ])
 
 

@@ -1,0 +1,3 @@
+{"file": "bot/services/team_service.py", "reason": "verify X-Telegram-Id added when telegram_id provided"}
+{"file": "bot/services/admin_service.py", "reason": "verify X-Telegram-Id added when telegram_id provided"}
+{"file": "bot/services/task_service.py", "reason": "verify X-Telegram-Id added when telegram_id provided"}

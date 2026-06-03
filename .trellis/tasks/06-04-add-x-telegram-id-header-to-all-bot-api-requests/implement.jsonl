@@ -1,0 +1,7 @@
+{"file": "bot/services/team_service.py", "reason": "add telegram_id param to all functions"}
+{"file": "bot/services/admin_service.py", "reason": "add telegram_id param to all functions"}
+{"file": "bot/services/task_service.py", "reason": "add telegram_id param to all functions"}
+{"file": "bot/handlers/auth.py", "reason": "pass from_user.id to service calls"}
+{"file": "bot/handlers/setup.py", "reason": "pass from_user.id to service calls"}
+{"file": "bot/handlers/admin.py", "reason": "pass from_user.id to service calls"}
+{"file": "bot/handlers/tasks_commands.py", "reason": "pass from_user.id to service calls"}

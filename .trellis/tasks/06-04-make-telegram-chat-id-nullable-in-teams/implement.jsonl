@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "JPA entity conventions, nullable column patterns"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Service layer error handling patterns"}

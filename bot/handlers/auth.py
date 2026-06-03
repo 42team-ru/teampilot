@@ -8,7 +8,6 @@ from aiogram.types import Message
 from loguru import logger
 
 from config import settings
-from handlers.admin import show_admin_panel
 from handlers.member import show_member_panel
 from services.admin_service import get_user_by_telegram_id
 from services.team_service import get_my_teams, link_chat_to_team, get_team_id
@@ -145,7 +144,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         await _handle_link(message, state, raw_chat_id)
         return
 
-    # No token — check role via backend
+    # No token — show member/manager panel
     user = await get_user_by_telegram_id(message.from_user.id)
     if user is None:
         await message.answer(
@@ -154,8 +153,4 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         )
         return
 
-    role = user.get("systemRole") or user.get("role", "")
-    if role == "SYSTEM_ADMIN":
-        await show_admin_panel(message)
-    else:
-        await show_member_panel(message, user)
+    await show_member_panel(message, user)
