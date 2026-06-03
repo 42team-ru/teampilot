@@ -10,4 +10,6 @@ public final class KafkaTopics {
     public static final String LLM_STATUS_CHANGE = "llm.status.change";
     public static final String AUDIO_NEW          = "audio.new";
     public static final String FILES_UPLOADED     = "files.uploaded";
+    public static final String BOTS_TASKS         = "bots.tasks";
+    public static final String BOTS_NOTIFICATIONS = "bots.notifications";
 }
