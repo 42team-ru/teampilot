@@ -34,10 +34,10 @@ def manager_team_select_keyboard(teams: list[dict], action: str) -> InlineKeyboa
 def manager_chat_select_keyboard(chats: list, action: str) -> InlineKeyboardMarkup:
     buttons = []
     for chat in chats[:_MAX_TEAMS]:
-        title = chat.chat_title[:_MAX_TITLE_LEN]
+        title = (chat.get("chatTitle") or str(chat["telegramChatId"]))[:_MAX_TITLE_LEN]
         buttons.append([InlineKeyboardButton(
             text=f"💬 {title}",
-            callback_data=f"manager:{action}:{chat.chat_id}",
+            callback_data=f"manager:{action}:{chat['telegramChatId']}",
         )])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="member:back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
