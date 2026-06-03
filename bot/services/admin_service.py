@@ -31,20 +31,20 @@ async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
 
 
 async def get_team_members() -> list[dict]:
-    """GET /api/users?role=USER"""
+    """GET /api/users?systemRole=USER"""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{settings.BACKEND_URL}/api/users",
-                params={"role": "USER"},
+                params={"systemRole": "USER"},
                 headers=_HEADERS,
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on GET /api/users?role=USER: {e}")
+        logger.warning(f"Backend unavailable on GET /api/users?systemRole=USER: {e}")
         return []
 
     if resp.status_code != 200:
-        logger.warning(f"Unexpected status {resp.status_code} on GET /api/users?role=USER")
+        logger.warning(f"Unexpected status {resp.status_code} on GET /api/users?systemRole=USER")
         return []
 
     return resp.json()

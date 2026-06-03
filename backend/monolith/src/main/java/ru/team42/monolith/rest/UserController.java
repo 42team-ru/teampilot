@@ -13,6 +13,7 @@ import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.response.UserResponse;
 import ru.team42.monolith.entity.User;
+import ru.team42.monolith.entity.enums.SystemRole;
 import ru.team42.monolith.service.UserService;
 
 import java.util.List;
@@ -37,9 +38,9 @@ public class UserController {
     @Operation(summary = "Список пользователей по роли")
     @GetMapping
     public ResponseEntity<List<UserResponse>> listByRole(@RequestParam String role) {
-        User.Role parsed;
+        SystemRole parsed;
         try {
-            parsed = User.Role.valueOf(role);
+            parsed = SystemRole.valueOf(role);
         } catch (IllegalArgumentException e) {
             throw AppException.badRequest("Unknown role: " + role);
         }

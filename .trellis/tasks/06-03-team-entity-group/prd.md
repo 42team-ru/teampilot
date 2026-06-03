@@ -47,7 +47,7 @@ TeamUser (таблица: team_users)
   - UUID id
   - Team team (ManyToOne)
   - User user (ManyToOne)
-  - TeamRole role  (ADMIN, MANAGER, USER)
+  - TeamRole systemRole  (ADMIN, MANAGER, USER)
   - String yougileUserId
 
 TaskFromYougile (таблица: tasks_from_yougile)

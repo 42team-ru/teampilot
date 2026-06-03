@@ -32,7 +32,7 @@ public class TelegramAuthFilter extends OncePerRequestFilter {
             try {
                 long telegramId = Long.parseLong(header);
                 userRepository.findByTelegramId(telegramId).ifPresent(user -> {
-                    var authority = new SimpleGrantedAuthority("ROLE_" + user.getRole().name());
+                    var authority = new SimpleGrantedAuthority("ROLE_" + user.getSystemRole().name());
                     var auth = new UsernamePasswordAuthenticationToken(user, null, List.of(authority));
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 });
