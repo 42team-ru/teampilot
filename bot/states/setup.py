@@ -11,6 +11,7 @@ class LinkTeamStates(StatesGroup):
 
 
 class CreateTeamStates(StatesGroup):
+    waiting_for_admin_telegram_id = State()
     waiting_for_chat_title = State()
     waiting_for_kanban_id = State()
     waiting_for_kanban_api_key = State()

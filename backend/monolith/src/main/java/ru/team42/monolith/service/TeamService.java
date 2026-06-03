@@ -51,8 +51,9 @@ public class TeamService {
 
     @Transactional
     public TeamResponse createWithAdmin(AdminCreateTeamRequest req) {
-        Team team = teamRepository.findByTelegramChatId(req.telegramChatId())
-                .orElseGet(Team::new);
+        Team team = req.telegramChatId() != null
+                ? teamRepository.findByTelegramChatId(req.telegramChatId()).orElseGet(Team::new)
+                : new Team();
         team.setTelegramChatId(req.telegramChatId());
         team.setChatTitle(req.chatTitle());
         if (req.kanbanId() != null) team.setKanbanId(req.kanbanId());
