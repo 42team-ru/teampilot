@@ -1,0 +1,48 @@
+package ru.team42.monolith.dto.response;
+
+import ru.team42.monolith.entity.Task;
+import ru.team42.monolith.entity.enums.TaskStatus;
+import ru.team42.monolith.entity.enums.TaskSyncStatus;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+public record TaskResponse(
+        UUID id,
+        UUID teamId,
+        String title,
+        String description,
+        Instant deadline,
+        TaskStatus status,
+        TaskSyncStatus syncStatus,
+        String externalId,
+        AssigneeInfo assignee,
+        AssigneeInfo author,
+        LocalDateTime createdAt
+) {
+    public record AssigneeInfo(UUID teamUserId, Long telegramId, String telegramLogin, String firstName, String lastName) {}
+
+    public static TaskResponse from(Task task) {
+        return new TaskResponse(
+                task.getId(),
+                task.getTeam().getId(),
+                task.getTitle(),
+                task.getDescription(),
+                task.getDeadline(),
+                task.getStatus(),
+                task.getSyncStatus(),
+                task.getExternalId(),
+                toAssigneeInfo(task.getAssignee()),
+                toAssigneeInfo(task.getAuthor()),
+                task.getCreatedAt()
+        );
+    }
+
+    private static AssigneeInfo toAssigneeInfo(ru.team42.monolith.entity.TeamUser tu) {
+        if (tu == null) return null;
+        var u = tu.getUser();
+        return new AssigneeInfo(tu.getId(), u.getTelegramId(), u.getTelegramLogin(),
+                u.getFirstName(), u.getLastName());
+    }
+}
