@@ -101,13 +101,62 @@ async def update_team_kanban(
     return True
 
 
-async def deactivate_team(telegram_chat_id: int) -> None:
-    """DELETE /teams/{telegramChatId} — mark team inactive. No user context available."""
+async def update_team(
+    team_id: str,
+    telegram_id: int,
+    *,
+    telegram_chat_id: int | None = None,
+    chat_title: str | None = None,
+    kanban_id: str | None = None,
+    kanban_api_key: str | None = None,
+) -> dict | None:
+    """PATCH /teams/{teamId} — update manager-owned team settings."""
+    body: dict = {}
+    if telegram_chat_id is not None:
+        body["telegramChatId"] = telegram_chat_id
+    if chat_title is not None:
+        body["chatTitle"] = chat_title
+    if kanban_id is not None:
+        body["kanbanId"] = kanban_id
+    if kanban_api_key is not None:
+        body["kanbanApiKey"] = kanban_api_key
+
+    if not body:
+        logger.warning(f"PATCH /teams/{team_id} skipped: empty update body")
+        return None
+
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.delete(
+            resp = await client.patch(
+                f"{settings.BACKEND_URL}/teams/{team_id}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning(f"Backend unavailable on PATCH /teams/{team_id} (manager update): {e}")
+        return None
+
+    if resp.status_code != 200:
+        logger.warning(f"Unexpected status {resp.status_code} on PATCH /teams/{team_id} (manager update)")
+        return None
+
+    return resp.json()
+
+
+async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None) -> bool:
+    """DELETE /teams/{telegramChatId} — mark team inactive."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.delete(
                 f"{settings.BACKEND_URL}/teams/{telegram_chat_id}",
-                headers=_headers(),
+                headers=_headers(telegram_id),
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on DELETE /teams/{telegram_chat_id}: {e}")
+        return False
+
+    if resp.status_code not in (200, 204):
+        logger.warning(f"Unexpected status {resp.status_code} on DELETE /teams/{telegram_chat_id}")
+        return False
+
+    return True

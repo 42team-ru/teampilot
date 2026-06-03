@@ -74,3 +74,50 @@ def deactivate_group_local(chat_id: int) -> None:
     group = _groups.get(chat_id)
     if group:
         group.active = False
+
+
+@dataclass
+class PendingChat:
+    chat_id: int
+    chat_title: str
+    added_by_telegram_id: int
+    active: bool = True
+
+
+_pending_chats: dict[int, PendingChat] = {}
+
+
+def save_pending_chat(chat_id: int, chat_title: str, added_by_telegram_id: int) -> PendingChat:
+    pending_chat = PendingChat(
+        chat_id=chat_id,
+        chat_title=chat_title,
+        added_by_telegram_id=added_by_telegram_id,
+        active=True,
+    )
+    _pending_chats[chat_id] = pending_chat
+    return pending_chat
+
+
+def list_pending_chats(added_by_telegram_id: int) -> list[PendingChat]:
+    return [
+        chat
+        for chat in _pending_chats.values()
+        if chat.added_by_telegram_id == added_by_telegram_id and chat.active
+    ]
+
+
+def get_pending_chat(chat_id: int, added_by_telegram_id: int) -> Optional[PendingChat]:
+    chat = _pending_chats.get(chat_id)
+    if chat is None or chat.added_by_telegram_id != added_by_telegram_id or not chat.active:
+        return None
+    return chat
+
+
+def remove_pending_chat(chat_id: int) -> None:
+    _pending_chats.pop(chat_id, None)
+
+
+def deactivate_pending_chat(chat_id: int) -> None:
+    chat = _pending_chats.get(chat_id)
+    if chat:
+        chat.active = False

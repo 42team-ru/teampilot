@@ -13,6 +13,7 @@ from handlers.admin import router as admin_router
 from handlers.auth import router as auth_router
 from handlers.files import router as files_router
 from handlers.group import router as group_router
+from handlers.manager import router as manager_router
 from handlers.member import router as member_router
 from handlers.setup import router as setup_router
 from handlers.tasks import router as tasks_router
@@ -49,6 +50,7 @@ async def main() -> None:
     # Order matters: setup first (my_chat_member + setup deep links), generic group last
     dp.include_router(setup_router)
     dp.include_router(admin_router)
+    dp.include_router(manager_router)
     dp.include_router(member_router)
     dp.include_router(auth_router)
     dp.include_router(tasks_router)

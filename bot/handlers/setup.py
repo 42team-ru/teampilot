@@ -18,6 +18,7 @@ from keyboards.task import build_projects_keyboard
 from services.team_service import deactivate_team, get_team_id, update_team_kanban
 from services.yougile import YouGileClient
 from states.setup import GroupSetupStates
+from storage import deactivate_pending_chat, remove_pending_chat, save_pending_chat
 
 router = Router()
 
@@ -69,10 +70,12 @@ async def _send_join_link_to_group(bot: Bot, chat_id: int, telegram_id: int | No
 async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
     adder = event.from_user
     chat = event.chat
+    chat_title = chat.title or str(chat.id)
 
     team_id = await get_team_id(chat.id, telegram_id=adder.id)
 
     if team_id:
+        remove_pending_chat(chat.id)
         # Team already linked — just send the invite button
         bot_info = await bot.get_me()
         deep_link = f"https://t.me/{bot_info.username}?start=join_{team_id}"
@@ -83,7 +86,7 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
             await bot.send_message(
                 chat_id=chat.id,
                 text=(
-                    f"👋 Привет, <b>{chat.title}</b>!\n\n"
+                    f"👋 Привет, <b>{chat_title}</b>!\n\n"
                     "Чтобы начать получать задачи — нажмите кнопку ниже:"
                 ),
                 reply_markup=kb,
@@ -93,8 +96,9 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
         return
 
     # No team linked yet — ask manager to link via DM
+    save_pending_chat(chat.id, chat_title, adder.id)
     group_text = (
-        f"👋 Привет! Я добавлен в <b>{chat.title}</b>.\n\n"
+        f"👋 Привет! Я добавлен в <b>{chat_title}</b>.\n\n"
         "⚠️ Этот чат ещё не привязан к команде.\n"
         "Менеджер команды должен связать чат через личку бота."
     )
@@ -112,9 +116,9 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
         await bot.send_message(
             chat_id=adder.id,
             text=(
-                f"👥 Бот добавлен в <b>{chat.title}</b>.\n\n"
+                f"👥 Бот добавлен в <b>{chat_title}</b>.\n\n"
                 "Чат ещё не привязан ни к одной команде.\n"
-                "Нажмите кнопку, чтобы выбрать команду:"
+                "Нажмите кнопку, чтобы выбрать команду. Также этот чат появится в панели менеджера."
             ),
             reply_markup=kb,
         )
@@ -239,6 +243,7 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext, bo
 @router.my_chat_member(ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))
 async def bot_removed_from_group(event: ChatMemberUpdated) -> None:
     await deactivate_team(event.chat.id)
+    deactivate_pending_chat(event.chat.id)
     logger.info(f"Bot removed from group {event.chat.id} ({event.chat.title})")
 
 
