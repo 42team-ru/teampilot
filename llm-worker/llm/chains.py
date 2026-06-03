@@ -5,17 +5,23 @@ from llm.safe_parser import SafeJsonOutputParser
 from settings import settings
 
 # Температура 0.0 для обеих моделей — нам нужен детерминизм, а не креативность
+# request_timeout — защита от вечного зависания Ollama (Kafka не объявит consumer мёртвым)
+# max_retries=1 — одна попытка повтора, больше не нужно
 _cheap = ChatOpenAI(
     model=settings.LLM_CHEAP_MODEL,
     base_url=settings.LLM_API_BASE,
     api_key=settings.LLM_API_KEY,
     temperature=0.0,
+    request_timeout=60,
+    max_retries=1,
 )
 _expensive = ChatOpenAI(
     model=settings.LLM_EXPENSIVE_MODEL,
     base_url=settings.LLM_API_BASE,
     api_key=settings.LLM_API_KEY,
     temperature=0.0,
+    request_timeout=120,
+    max_retries=1,
 )
 
 _safe_json = SafeJsonOutputParser()
