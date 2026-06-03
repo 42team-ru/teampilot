@@ -110,13 +110,28 @@ async def admin_team(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "admin:create_team")
 async def admin_create_team_start(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(CreateTeamStates.waiting_for_chat_title)
+    await state.set_state(CreateTeamStates.waiting_for_admin_telegram_id)
     await callback.message.edit_text(
         "🏢 <b>Создание команды</b>\n\n"
-        "Шаг 1/3 — Введите <b>название команды</b>:\n"
-        "<i>Например: «Backend Team», «Мобильная разработка»</i>"
+        "Шаг 1/4 — Введите <b>Telegram ID менеджера</b> (числовой ID, не username):\n"
+        "<i>Например: 123456789</i>"
     )
     await callback.answer()
+
+
+@router.message(CreateTeamStates.waiting_for_admin_telegram_id)
+async def create_team_admin_id(message: Message, state: FSMContext) -> None:
+    raw = (message.text or "").strip()
+    if not raw.lstrip("-").isdigit():
+        await message.answer("Введите числовой Telegram ID менеджера (например: 123456789).")
+        return
+
+    await state.update_data(admin_telegram_id=int(raw))
+    await state.set_state(CreateTeamStates.waiting_for_chat_title)
+    await message.answer(
+        "Шаг 2/4 — Введите <b>название команды</b>:\n"
+        "<i>Например: «Backend Team», «Мобильная разработка»</i>"
+    )
 
 
 @router.message(CreateTeamStates.waiting_for_chat_title)
@@ -130,7 +145,7 @@ async def create_team_title(message: Message, state: FSMContext) -> None:
     await state.set_state(CreateTeamStates.waiting_for_kanban_id)
     await message.answer(
         f"✅ Название: <b>{title}</b>\n\n"
-        "Шаг 2/3 — Введите <b>Kanban ID</b> (YouGile board ID) или пропустите:",
+        "Шаг 3/4 — Введите <b>Kanban ID</b> (YouGile board ID) или пропустите:",
         reply_markup=skip_keyboard("admin:skip_kanban_id"),
     )
 
@@ -140,7 +155,7 @@ async def create_team_skip_kanban_id(callback: CallbackQuery, state: FSMContext)
     await state.update_data(kanban_id=None)
     await state.set_state(CreateTeamStates.waiting_for_kanban_api_key)
     await callback.message.edit_text(
-        "Шаг 3/3 — Введите <b>Kanban API Key</b> или пропустите:",
+        "Шаг 4/4 — Введите <b>Kanban API Key</b> или пропустите:",
         reply_markup=skip_keyboard("admin:skip_kanban_key"),
     )
     await callback.answer()
@@ -151,7 +166,7 @@ async def create_team_kanban_id(message: Message, state: FSMContext) -> None:
     await state.update_data(kanban_id=(message.text or "").strip() or None)
     await state.set_state(CreateTeamStates.waiting_for_kanban_api_key)
     await message.answer(
-        "Шаг 3/3 — Введите <b>Kanban API Key</b> или пропустите:",
+        "Шаг 4/4 — Введите <b>Kanban API Key</b> или пропустите:",
         reply_markup=skip_keyboard("admin:skip_kanban_key"),
     )
 
@@ -175,7 +190,7 @@ async def _finish_create_team(message, state: FSMContext, user) -> None:
 
     result = await create_team(
         chat_title=data["chat_title"],
-        admin_telegram_id=user.id,
+        admin_telegram_id=data["admin_telegram_id"],
         admin_username=user.username,
         kanban_id=data.get("kanban_id"),
         kanban_api_key=data.get("kanban_api_key"),
