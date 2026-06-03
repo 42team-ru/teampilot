@@ -137,9 +137,7 @@ public class YouGileService {
     }
 
     private String resolveColumnId(Team team, DefaultApi api, TaskStatus status) {
-        return columnCache
-                .computeIfAbsent(team.getId(), id -> loadColumnMap(team, api))
-                .get(status);
+        return loadColumnMap(team, api).get(status);
     }
 
     private Map<TaskStatus, String> loadColumnMap(Team team, DefaultApi api) {
