@@ -1,0 +1,4 @@
+{"file": "bot/handlers/admin.py", "reason": "verify /admin command, role check, FSM flow correctness"}
+{"file": "bot/keyboards/admin.py", "reason": "verify new button and skip keyboard"}
+{"file": "bot/services/admin_service.py", "reason": "verify create_team API call shape matches AdminCreateTeamRequest"}
+{"file": ".trellis/tasks/06-04-admin-panel-create-teams-via-admin-command/prd.md", "reason": "verify all acceptance criteria are met"}
