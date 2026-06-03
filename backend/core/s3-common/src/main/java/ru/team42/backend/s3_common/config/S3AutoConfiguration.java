@@ -1,8 +1,10 @@
 package ru.team42.backend.s3_common.config;
 
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import ru.team42.backend.s3_common.service.S3Service;
@@ -67,5 +69,11 @@ public class S3AutoConfiguration {
     @ConditionalOnMissingBean
     public S3Service s3Service(S3Client s3Client, S3Presigner s3Presigner, S3Properties props) {
         return new S3Service(s3Client, s3Presigner, props.getPresignedUrlExpiry());
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "app.s3", name = "default-bucket")
+    public ApplicationRunner s3BucketInitializer(S3Service s3Service, S3Properties props) {
+        return args -> s3Service.ensureBucketExists(props.getDefaultBucket());
     }
 }
