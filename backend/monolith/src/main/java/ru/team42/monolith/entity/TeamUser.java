@@ -12,6 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.team42.backend.common_data.entity.AbstractEntity;
+import ru.team42.monolith.entity.enums.TeamRole;
 
 @Entity
 @Table(name = "team_users")
