@@ -9,6 +9,7 @@ import java.util.List;
 
 @Getter
 @Builder
+@Jacksonized
 public class MessageBatchEvent extends BaseEvent {
 
     private final Long chatId;
@@ -18,6 +19,7 @@ public class MessageBatchEvent extends BaseEvent {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class MessageDto {
         private final Long userId;
         private final String username;

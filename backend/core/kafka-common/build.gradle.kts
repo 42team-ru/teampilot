@@ -12,6 +12,8 @@ dependencies {
     compileOnly(libs.spring.boot.starter)
     annotationProcessor(libs.spring.boot.configuration.processor)
 
+    api(libs.jackson.databind)
+
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
 }

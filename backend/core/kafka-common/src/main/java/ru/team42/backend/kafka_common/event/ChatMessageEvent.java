@@ -8,6 +8,7 @@ import java.time.Instant;
 
 @Getter
 @Builder
+@Jacksonized
 public class ChatMessageEvent extends BaseEvent {
 
     private final Long messageId;
