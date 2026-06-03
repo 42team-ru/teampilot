@@ -10,5 +10,7 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByTelegramId(Long telegramId);
 
+    Optional<User> findByTelegramLogin(String telegramLogin);
+
     List<User> findAllByRole(User.Role role);
 }

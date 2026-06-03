@@ -54,3 +54,7 @@ management:
             exposure:
                 include: health,info
 debug: false
+
+app:
+    kanban:
+        sync-rate-ms: ${KANBAN_SYNC_RATE_MS:300000}

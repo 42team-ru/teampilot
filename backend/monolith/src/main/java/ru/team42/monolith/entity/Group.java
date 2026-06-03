@@ -2,6 +2,9 @@ package ru.team42.monolith.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
@@ -33,6 +36,10 @@ public class Group extends AbstractEntity {
 
     @Column(name = "yougile_board_id", nullable = false)
     private String yougileBoardId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "kanban_board_id")
+    private KanbanBoard board;
 
     @Column(name = "active", nullable = false)
     private boolean active = true;

@@ -48,6 +48,7 @@ public class User extends AbstractEntity {
 
     public enum Role {
         USER,
+        MANAGER,
         ADMIN,
         SYSTEM_ADMIN
     }
