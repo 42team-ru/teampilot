@@ -9,13 +9,8 @@ from qdrant_client import QdrantClient
 
 from settings import settings
 
-import functools
-
-@functools.lru_cache(maxsize=1)
-def get_qdrant_client() -> QdrantClient:
-    client = QdrantClient(url=settings.QDRANT_URL)
-    client.set_model(settings.FASTEMBED_MODEL)
-    return client
+_client = QdrantClient(url=settings.QDRANT_URL)
+_client.set_model(settings.FASTEMBED_MODEL)
 
 
 def store_batch(batch_id: str, text: str, chat_id: int) -> None:
