@@ -93,14 +93,14 @@ async def process_link_team_select(callback, state: FSMContext, bot) -> None:
     chat_id: int = data["pending_link_chat_id"]
     await state.clear()
 
-    ok = await link_chat_to_team(team_id, chat_id)
+    ok = await link_chat_to_team(team_id, chat_id, telegram_id=callback.from_user.id)
     if not ok:
         await callback.message.edit_text("❌ Не удалось привязать чат. Попробуй позже.")
         await callback.answer()
         return
 
     # Получаем teamId для построения deep-link и отправляем в группу
-    resolved_team_id = await get_team_id(chat_id)
+    resolved_team_id = await get_team_id(chat_id, telegram_id=callback.from_user.id)
     if resolved_team_id:
         bot_info = await bot.get_me()
         from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup

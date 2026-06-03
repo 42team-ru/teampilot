@@ -78,7 +78,7 @@ async def admin_add_to_chat(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "admin:team")
 async def admin_team(callback: CallbackQuery) -> None:
-    members = await get_team_members()
+    members = await get_team_members(telegram_id=callback.from_user.id)
     if not members:
         await callback.message.edit_text(
             "👥 Пока нет зарегистрированных участников.",

@@ -5,11 +5,19 @@ from loguru import logger
 
 from config import settings
 
-_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
+_BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
+
+
+def _headers(telegram_id: int | None = None) -> dict:
+    h = dict(_BASE_HEADERS)
+    if telegram_id is not None:
+        h["X-Telegram-Id"] = str(telegram_id)
+    return h
 
 
 async def get_tasks(
     chat_id: int,
+    telegram_id: int | None = None,
     status: str | None = None,
     page: int = 0,
     size: int = 10,
@@ -24,7 +32,7 @@ async def get_tasks(
             resp = await client.get(
                 f"{settings.BACKEND_URL}/api/tasks",
                 params=params,
-                headers=_HEADERS,
+                headers=_headers(telegram_id),
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on GET /api/tasks chatId={chat_id}: {e}")
@@ -37,13 +45,13 @@ async def get_tasks(
     return resp.json().get("content", [])
 
 
-async def get_task_by_id(task_id: str) -> dict | None:
+async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict | None:
     """GET /api/tasks/{id} — None if 404."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{settings.BACKEND_URL}/api/tasks/{task_id}",
-                headers=_HEADERS,
+                headers=_headers(telegram_id),
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on GET /api/tasks/{task_id}: {e}")

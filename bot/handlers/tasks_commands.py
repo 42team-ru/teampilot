@@ -91,7 +91,7 @@ async def cmd_tasks(message: Message) -> None:
         )
         return
 
-    tasks = await get_tasks(message.chat.id, status=raw_status)
+    tasks = await get_tasks(message.chat.id, telegram_id=message.from_user.id, status=raw_status)
 
     if not tasks:
         status_label = f" со статусом <b>{raw_status}</b>" if raw_status else ""
@@ -117,7 +117,7 @@ async def cmd_task(message: Message) -> None:
         return
 
     task_id = args[1].strip()
-    task = await get_task_by_id(task_id)
+    task = await get_task_by_id(task_id, telegram_id=message.from_user.id)
 
     if task is None:
         await message.answer(f"❌ Задача <code>{task_id}</code> не найдена.")

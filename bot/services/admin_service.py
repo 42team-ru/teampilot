@@ -5,7 +5,14 @@ from loguru import logger
 
 from config import settings
 
-_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
+_BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
+
+
+def _headers(telegram_id: int | None = None) -> dict:
+    h = dict(_BASE_HEADERS)
+    if telegram_id is not None:
+        h["X-Telegram-Id"] = str(telegram_id)
+    return h
 
 
 async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
@@ -14,7 +21,7 @@ async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{settings.BACKEND_URL}/users/{telegram_id}",
-                headers=_HEADERS,
+                headers=_headers(telegram_id),
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on GET /users/{telegram_id}: {e}")
@@ -30,14 +37,14 @@ async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
     return resp.json()
 
 
-async def get_team_members() -> list[dict]:
+async def get_team_members(telegram_id: int | None = None) -> list[dict]:
     """GET /users?role=USER"""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{settings.BACKEND_URL}/users",
                 params={"role": "USER"},
-                headers=_HEADERS,
+                headers=_headers(telegram_id),
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on GET /users?role=USER: {e}")
@@ -72,7 +79,7 @@ async def create_team(
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
                 f"{settings.BACKEND_URL}/admin/teams",
-                headers=_HEADERS,
+                headers=_headers(admin_telegram_id),
                 json=body,
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
