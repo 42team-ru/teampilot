@@ -44,5 +44,5 @@ public class Team extends AbstractEntity {
     private List<TeamUser> members = new ArrayList<>();
 
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<TaskFromYougile> tasks = new ArrayList<>();
+    private List<Task> tasks = new ArrayList<>();
 }

@@ -7,6 +7,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,9 +26,19 @@ public class TaskController {
 
     private final TaskService taskService;
 
+    /** Читает задачу из локальной БД */
     @GetMapping("/{id}")
     public ResponseEntity<TaskResponse> getById(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.getById(id)));
+    }
+
+    /**
+     * Идёт в YouGile по externalId, применяет diff (статус, название, исполнитель),
+     * записывает историю статусов, возвращает актуальное состояние задачи.
+     */
+    @PostMapping("/{id}/sync")
+    public ResponseEntity<TaskResponse> syncFromYouGile(@PathVariable UUID id) {
+        return ResponseUtils.ok(TaskResponse.from(taskService.syncFromYouGile(id)));
     }
 
     @GetMapping

@@ -11,6 +11,7 @@ import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.enums.TaskStatus;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -119,14 +120,18 @@ public class YouGileService {
     }
 
     public TaskStatus resolveInternalStatus(Team team, String columnId) {
+        String columnName = resolveColumnName(team, columnId);
+        if (columnName == null) return TaskStatus.IN_PROGRESS;
+        return COLUMN_TO_STATUS.getOrDefault(columnName, TaskStatus.IN_PROGRESS);
+    }
+
+    public String resolveColumnName(Team team, String columnId) {
         Map<String, String> columns = fetchColumns(team);
-        String columnName = columns.entrySet().stream()
+        return columns.entrySet().stream()
                 .filter(e -> columnId.equals(e.getValue()))
                 .map(Map.Entry::getKey)
                 .findFirst()
                 .orElse(null);
-        if (columnName == null) return TaskStatus.IN_PROGRESS;
-        return COLUMN_TO_STATUS.getOrDefault(columnName, TaskStatus.IN_PROGRESS);
     }
 
     private String resolveColumnId(Team team, TaskStatus status) {
@@ -161,17 +166,58 @@ public class YouGileService {
         });
     }
 
+    /**
+     * Fetches a single task from YouGile by its external ID.
+     * Returns empty if the task is not found or the call fails.
+     */
+    public Optional<YouGileTaskResponse> fetchTask(Team team, String externalTaskId) {
+        try {
+            YouGileTaskResponse response = restClient.get()
+                    .uri("/tasks/{id}", externalTaskId)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + team.getKanbanApiKey())
+                    .retrieve()
+                    .body(YouGileTaskResponse.class);
+            return Optional.ofNullable(response);
+        } catch (Exception e) {
+            log.error("Failed to fetch YouGile task {}: {}", externalTaskId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    public List<YouGileTaskResponse> fetchAllTasksForBoard(Team team) {
+        Map<String, String> columns = fetchColumns(team);
+        List<YouGileTaskResponse> all = new ArrayList<>();
+        for (String columnId : columns.values()) {
+            try {
+                YouGileTaskListResponse response = restClient.get()
+                        .uri(uri -> uri.path("/tasks").queryParam("columnId", columnId).build())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + team.getKanbanApiKey())
+                        .retrieve()
+                        .body(YouGileTaskListResponse.class);
+                if (response != null && response.getContent() != null) {
+                    all.addAll(response.getContent());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch tasks for column {}: {}", columnId, e.getMessage());
+            }
+        }
+        log.info("Fetched {} tasks from board {} for team {}", all.size(), team.getKanbanId(), team.getId());
+        return all;
+    }
+
     public void evictColumnCache(String boardId) {
         columnCache.remove(boardId);
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Getter
-    static class YouGileTaskResponse {
+    public static class YouGileTaskResponse {
         private String id;
         private String columnId;
         private String title;
         private Boolean completed;
+        /** YouGile user ID of the responsible person (assignee) */
+        private String responsible;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -185,5 +231,11 @@ public class YouGileService {
     static class YouGileColumn {
         private String id;
         private String title;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @Getter
+    static class YouGileTaskListResponse {
+        private List<YouGileTaskResponse> content;
     }
 }

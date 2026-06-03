@@ -8,6 +8,7 @@ import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface TaskRepository extends JpaRepository<Task, UUID> {
@@ -17,4 +18,6 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     Page<Task> findByTeamIdAndStatus(UUID teamId, TaskStatus status, Pageable pageable);
 
     List<Task> findBySyncStatus(TaskSyncStatus syncStatus);
+
+    Optional<Task> findByTeamIdAndExternalId(UUID teamId, String externalId);
 }
