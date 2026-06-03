@@ -1,24 +1,22 @@
 package ru.team42.monolith.rest;
 
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import ru.team42.backend.web_common.dto.ErrorResponse;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
 import ru.team42.monolith.dto.response.AuthResponse;
 import ru.team42.monolith.dto.response.InviteResponse;
 import ru.team42.monolith.service.AuthService;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/auth")
@@ -29,37 +27,23 @@ public class AuthController {
     private final AuthService authService;
 
     @Operation(
-            summary = "Создать инвайт-ссылку",
-            description = "Вызывается Telegram-ботом. Генерирует одноразовый токен для входа пользователя. "
-                    + "Требует секрет бота в заголовке."
+            summary = "Получить инвайт-ссылку по chatId",
+            description = "Вызывается ботом. По telegram chat ID возвращает ID команды для формирования ссылки."
     )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Инвайт создан",
-                    content = @Content(schema = @Schema(implementation = InviteResponse.class)))
-    })
     @PostMapping("/invite")
-    public ResponseEntity<InviteResponse> createInvite(
-            @RequestBody(required = false) CreateInviteRequest request
-    ) {
+    public ResponseEntity<InviteResponse> createInvite(@Valid @RequestBody CreateInviteRequest request) {
         return ResponseEntity.ok(authService.createInvite(request));
     }
 
     @Operation(
-            summary = "Активировать инвайт / войти",
-            description = "Пользователь передаёт одноразовый токен из инвайт-ссылки вместе со своими "
-                    + "Telegram-данными. Токен сгорает после первого использования. "
-                    + "Возвращает JWT для дальнейших запросов."
+            summary = "Вступить в команду по инвайт-ссылке",
+            description = "Пользователь переходит по ссылке. Создаёт пользователя (если новый) и добавляет в команду."
     )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Успешный вход, возвращает JWT",
-                    content = @Content(schema = @Schema(implementation = AuthResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Невалидный запрос",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Токен не найден или истёк",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-    })
-    @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.activateInvite(request));
+    @PostMapping("/invite/{teamId}")
+    public ResponseEntity<AuthResponse> joinTeam(
+            @PathVariable UUID teamId,
+            @Valid @RequestBody LoginRequest request
+    ) {
+        return ResponseEntity.ok(authService.joinTeam(teamId, request));
     }
 }
