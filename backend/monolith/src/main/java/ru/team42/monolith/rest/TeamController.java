@@ -15,6 +15,7 @@ import ru.team42.monolith.entity.User;
 import ru.team42.monolith.service.TeamService;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/teams")
@@ -33,12 +34,12 @@ public class TeamController {
     }
 
     @Operation(summary = "Обновить настройки команды (kanban, chatTitle, telegramChatId)")
-    @PatchMapping("/{telegramChatId}")
+    @PatchMapping("/{teamId}")
     public ResponseEntity<TeamResponse> update(
-            @PathVariable Long telegramChatId,
+            @PathVariable UUID teamId,
             @RequestBody UpdateTeamRequest request
     ) {
-        return ResponseUtils.ok(teamService.update(telegramChatId, request));
+        return ResponseUtils.ok(teamService.update(teamId, request));
     }
 
     @Operation(summary = "Деактивировать команду")
