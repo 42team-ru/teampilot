@@ -33,7 +33,7 @@ public class YouGileBoardSyncService {
     public void syncTeam(Team team) {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return;
 
-        List<YouGileService.YouGileTaskResponse> remoteTasks = youGileService.fetchAllTasksForBoard(team);
+/*        List<YouGileService.YouGileTaskResponse> remoteTasks = youGileService.fetchAllTasksForBoard(team);
         for (YouGileService.YouGileTaskResponse remote : remoteTasks) {
             try {
                 syncRemoteTask(team, remote);
@@ -41,9 +41,10 @@ public class YouGileBoardSyncService {
                 log.warn("Failed to sync YouGile task {} for team {}: {}", remote.getId(), team.getId(), e.getMessage());
             }
         }
-        log.info("Board sync done for team {} — {} remote tasks processed", team.getId(), remoteTasks.size());
+        log.info("Board sync done for team {} — {} remote tasks processed", team.getId(), remoteTasks.size());*/
     }
 
+/*
     private void syncRemoteTask(Team team, YouGileService.YouGileTaskResponse remote) {
         Optional<Task> existing = taskRepository.findByTeamIdAndExternalId(team.getId(), remote.getId());
         if (existing.isPresent()) {
@@ -52,7 +53,9 @@ public class YouGileBoardSyncService {
             importTask(team, remote);
         }
     }
+*/
 
+/*
     private void updateTask(Team team, Task task, YouGileService.YouGileTaskResponse remote) {
         boolean changed = false;
 
@@ -90,7 +93,9 @@ public class YouGileBoardSyncService {
             taskRepository.save(task);
         }
     }
+*/
 
+/*
     private void importTask(Team team, YouGileService.YouGileTaskResponse remote) {
         Task task = new Task();
         task.setTeam(team);
@@ -115,6 +120,7 @@ public class YouGileBoardSyncService {
         log.info("Imported YouGile task {} as local task {} for team {}", remote.getId(), task.getId(), team.getId());
     }
 
+*/
     private void recordHistory(Task task, TaskStatus from, TaskStatus to) {
         TaskStatusHistory h = new TaskStatusHistory();
         h.setTask(task);
