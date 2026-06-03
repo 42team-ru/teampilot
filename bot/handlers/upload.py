@@ -18,6 +18,11 @@ from states.upload import FileUploadStates
 
 router = Router()
 
+UPLOAD_PROMPT_TEXT = (
+    "Отправьте аудио или видео для загрузки. Поддерживаемые типы: аудио, голосовое, видео, видеосообщение.\n"
+    "Используйте /cancel для отмены."
+)
+
 
 @dataclass(frozen=True)
 class TelegramFilePayload:
@@ -30,10 +35,7 @@ class TelegramFilePayload:
 @router.message(Command("upload"))
 async def cmd_upload(message: Message, state: FSMContext) -> None:
     await state.set_state(FileUploadStates.waiting_for_file)
-    await message.answer(
-        "Отправьте файл для загрузки. Поддерживаемые типы: документ, аудио, голосовое, видео, фото, видеосообщение.\n"
-        "Используйте /cancel для отмены."
-    )
+    await message.answer(UPLOAD_PROMPT_TEXT)
 
 
 @router.message(FileUploadStates.waiting_for_file, Command("cancel"))
@@ -44,7 +46,7 @@ async def cmd_cancel_upload(message: Message, state: FSMContext) -> None:
 
 @router.message(
     FileUploadStates.waiting_for_file,
-    F.document | F.audio | F.voice | F.video | F.photo | F.video_note,
+    F.audio | F.voice | F.video | F.video_note,
 )
 async def handle_upload_file(
     message: Message,
@@ -54,7 +56,7 @@ async def handle_upload_file(
 ) -> None:
     payload = _extract_file_payload(message)
     if payload is None:
-        await message.answer("Пожалуйста, отправьте поддерживаемый файл. Используйте /cancel для отмены.")
+        await message.answer("Пожалуйста, отправьте аудио или видео файл. Используйте /cancel для отмены.")
         return
 
     if message.from_user is None:
@@ -93,9 +95,20 @@ async def handle_upload_file(
     await progress_message.edit_text("Файл успешно загружен.")
 
 
+@router.message(
+    FileUploadStates.waiting_for_file,
+    F.document | F.photo,
+)
+async def handle_unsupported_file_type(message: Message) -> None:
+    await message.answer(
+        "Этот тип файла не поддерживается. Отправьте аудио или видео.\n"
+        "Используйте /cancel для отмены."
+    )
+
+
 @router.message(FileUploadStates.waiting_for_file)
 async def handle_non_file_while_waiting(message: Message) -> None:
-    await message.answer("Пожалуйста, отправьте файл. Используйте /cancel для отмены.")
+    await message.answer("Пожалуйста, отправьте аудио или видео файл. Используйте /cancel для отмены.")
 
 
 async def _download_file(bot: Bot, file_id: str) -> bytes:
@@ -109,12 +122,6 @@ async def _download_file(bot: Bot, file_id: str) -> bytes:
 
 
 def _extract_file_payload(message: Message) -> TelegramFilePayload | None:
-    if message.document:
-        return _payload_from_object(
-            message.document,
-            fallback_filename=f"document_{message.document.file_unique_id}",
-            default_content_type="application/octet-stream",
-        )
     if message.audio:
         return _payload_from_object(
             message.audio,
@@ -132,14 +139,6 @@ def _extract_file_payload(message: Message) -> TelegramFilePayload | None:
             message.video,
             fallback_filename=f"video_{message.video.file_unique_id}.mp4",
             default_content_type="video/mp4",
-        )
-    if message.photo:
-        photo = message.photo[-1]
-        return TelegramFilePayload(
-            file_id=photo.file_id,
-            original_filename=f"photo_{photo.file_unique_id}.jpg",
-            content_type="image/jpeg",
-            file_size=photo.file_size,
         )
     if message.video_note:
         return _payload_from_object(
