@@ -4,5 +4,8 @@ import jakarta.validation.constraints.NotNull;
 
 public record CreateInviteRequest(
         @NotNull Long creatorTelegramId,
-        String createdBy
+        String createdBy,
+        String firstName,
+        String lastName,
+        String position
 ) {}
