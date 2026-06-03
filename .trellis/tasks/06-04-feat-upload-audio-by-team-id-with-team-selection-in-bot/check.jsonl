@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Проверить что AudioService/FileUploadService бросают AppException (не RuntimeException) при отсутствии команды"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Общие требования к качеству бэкенд-кода — транзакции, маппинг DTO"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Убедиться что team_id консистентно передаётся и валидируется на всех слоях: bot FSM → Kafka event → backend entity"}

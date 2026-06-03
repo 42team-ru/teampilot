@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException patterns для валидации teamId в AudioService и FileUploadService"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Flyway-миграции V6/V7 — соглашения по nullable FK и именованию колонок"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Где размещать новые файлы: AudioFile entity изменение, UploadedFile entity изменение"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Kafka-событие FileUploadedEvent пересекает bot→backend слои — нужна согласованность полей"}
