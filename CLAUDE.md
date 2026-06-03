@@ -89,6 +89,7 @@ make ps             # статус контейнеров
 ## Соглашения по коду
 
 ### Соглашения по Spring
+Не добавляй в RequestMapping /api. Пиши /auth, /user, /tasks. Не пиши /api/users, /api/tasks
 
 ### Исключения — только через AppException
 

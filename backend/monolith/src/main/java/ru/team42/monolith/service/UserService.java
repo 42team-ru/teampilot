@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.team42.monolith.dto.response.UserResponse;
 import ru.team42.monolith.entity.User;
+import ru.team42.monolith.entity.enums.SystemRole;
 import ru.team42.monolith.repository.UserRepository;
 
 import java.util.List;
@@ -20,8 +21,8 @@ public class UserService {
                 .map(this::toResponse);
     }
 
-    public List<UserResponse> listByRole(User.Role role) {
-        return userRepository.findAllByRole(role).stream()
+    public List<UserResponse> listByRole(SystemRole systemRole) {
+        return userRepository.findAllBySystemRole(systemRole).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -30,10 +31,9 @@ public class UserService {
         return new UserResponse(
                 user.getId(),
                 user.getTelegramId(),
-                user.getRole().name(),
+                user.getSystemRole().name(),
                 user.getFirstName(),
                 user.getLastName(),
-                user.getPosition(),
                 user.getTelegramLogin()
         );
     }
