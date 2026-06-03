@@ -10,16 +10,9 @@ import org.springframework.stereotype.Component;
 public class AppProperties {
 
     private Bot bot = new Bot();
-    private Invite invite = new Invite();
 
     @Data
     public static class Bot {
         private String secret = "changeme";
-    }
-
-    @Data
-    public static class Invite {
-        private long expirationDays = 7;
-        private String botUrl = "t.me/digital_42TEAMbot";
     }
 }
