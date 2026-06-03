@@ -12,9 +12,8 @@ from keyboards.manager import (
     manager_skip_keyboard,
     manager_team_select_keyboard,
 )
-from services.team_service import deactivate_team, get_my_teams, link_chat_to_team, update_team
+from services.team_service import deactivate_team, get_my_teams, get_pending_team_chats, link_chat_to_team, update_team
 from states.manager import ManagerLinkChatStates, ManagerUpdateStates
-from storage import get_pending_chat, list_pending_chats, remove_pending_chat
 
 router = Router()
 
@@ -83,7 +82,7 @@ async def manager_teams(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "manager:link_chat")
 async def manager_link_chat_start(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    chats = list_pending_chats(callback.from_user.id)
+    chats = await get_pending_team_chats(callback.from_user.id)
     if not chats:
         await callback.message.edit_text(
             "<b>Привязка чата</b>\n\n"
@@ -114,7 +113,8 @@ async def manager_link_chat_select(callback: CallbackQuery, state: FSMContext) -
         await callback.answer()
         return
 
-    pending_chat = get_pending_chat(chat_id, callback.from_user.id)
+    pending_chats = await get_pending_team_chats(callback.from_user.id)
+    pending_chat = next((chat for chat in pending_chats if chat.get("telegramChatId") == chat_id), None)
     if pending_chat is None:
         await callback.message.edit_text(
             "Чат не найден или уже привязан.",
@@ -134,12 +134,12 @@ async def manager_link_chat_select(callback: CallbackQuery, state: FSMContext) -
 
     await state.update_data(
         manager_link_chat_id=chat_id,
-        manager_link_chat_title=pending_chat.chat_title,
+        manager_link_chat_title=pending_chat.get("chatTitle") or str(chat_id),
     )
     await state.set_state(ManagerLinkChatStates.waiting_for_team_select)
     await callback.message.edit_text(
         f"<b>Привязка чата</b>\n\n"
-        f"Чат: <b>{pending_chat.chat_title}</b>\n\n"
+        f"Чат: <b>{pending_chat.get('chatTitle') or chat_id}</b>\n\n"
         "Выберите команду:",
         reply_markup=manager_team_select_keyboard(teams, "link_team_select"),
     )
@@ -154,7 +154,7 @@ async def manager_link_team_select(callback: CallbackQuery, state: FSMContext) -
 
     chat_id = int(data["manager_link_chat_id"])
     chat_title = data.get("manager_link_chat_title") or str(chat_id)
-    ok = await link_chat_to_team(team_id, chat_id, telegram_id=callback.from_user.id)
+    ok = await link_chat_to_team(team_id, chat_id, telegram_id=callback.from_user.id, chat_title=chat_title)
     if not ok:
         await callback.message.edit_text(
             "Не удалось привязать чат. Попробуйте позже.",
@@ -163,7 +163,6 @@ async def manager_link_team_select(callback: CallbackQuery, state: FSMContext) -
         await callback.answer()
         return
 
-    remove_pending_chat(chat_id)
     await _send_join_link_to_group(callback, chat_id, team_id)
     await callback.message.edit_text(
         f"Чат <b>{chat_title}</b> привязан к команде.",

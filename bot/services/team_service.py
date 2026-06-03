@@ -56,14 +56,66 @@ async def get_my_teams(manager_telegram_id: int) -> list[dict]:
     return resp.json()
 
 
-async def link_chat_to_team(team_id: str, telegram_chat_id: int, telegram_id: int | None = None) -> bool:
+async def create_pending_team_chat(
+    telegram_chat_id: int,
+    chat_title: str,
+    telegram_id: int,
+) -> dict | None:
+    """POST /teams/pending-chats — persist a chat where manager added the bot."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}/teams/pending-chats",
+                headers=_headers(telegram_id),
+                json={"telegramChatId": telegram_chat_id, "chatTitle": chat_title},
+            )
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning(f"Backend unavailable on POST /teams/pending-chats chatId={telegram_chat_id}: {e}")
+        return None
+
+    if resp.status_code not in (200, 201):
+        logger.warning(f"Unexpected status {resp.status_code} on POST /teams/pending-chats chatId={telegram_chat_id}")
+        return None
+
+    return resp.json()
+
+
+async def get_pending_team_chats(manager_telegram_id: int) -> list[dict]:
+    """GET /teams/pending-chats — chats added by manager and waiting for team link."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.BACKEND_URL}/teams/pending-chats",
+                headers=_headers(manager_telegram_id),
+            )
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning(f"Backend unavailable on GET /teams/pending-chats manager={manager_telegram_id}: {e}")
+        return []
+
+    if resp.status_code != 200:
+        logger.warning(f"Unexpected status {resp.status_code} on GET /teams/pending-chats manager={manager_telegram_id}")
+        return []
+
+    return resp.json()
+
+
+async def link_chat_to_team(
+    team_id: str,
+    telegram_chat_id: int,
+    telegram_id: int | None = None,
+    chat_title: str | None = None,
+) -> bool:
     """PATCH /teams/{teamId} body:{telegramChatId} — link a chat to a team. Returns True on success."""
+    body = {"telegramChatId": telegram_chat_id}
+    if chat_title is not None:
+        body["chatTitle"] = chat_title
+
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.patch(
                 f"{settings.BACKEND_URL}/teams/{team_id}",
                 headers=_headers(telegram_id),
-                json={"telegramChatId": telegram_chat_id},
+                json=body,
             )
     except (httpx.TimeoutException, httpx.ConnectError) as e:
         logger.warning(f"Backend unavailable on PATCH /teams/{team_id}: {e}")
