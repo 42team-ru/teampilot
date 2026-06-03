@@ -7,8 +7,8 @@ import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.config.AppProperties;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
-import ru.team42.monolith.dto.responce.AuthResponse;
-import ru.team42.monolith.dto.responce.InviteResponse;
+import ru.team42.monolith.dto.response.AuthResponse;
+import ru.team42.monolith.dto.response.InviteResponse;
 import ru.team42.monolith.entity.InviteToken;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.repository.InviteTokenRepository;
@@ -38,6 +38,11 @@ public class AuthService {
         inviteToken.setToken(token);
         inviteToken.setExpiresAt(expiresAt);
         inviteToken.setCreatedBy(request != null ? request.createdBy() : null);
+        if (request != null) {
+            inviteToken.setFirstName(request.firstName());
+            inviteToken.setLastName(request.lastName());
+            inviteToken.setPosition(request.position());
+        }
         inviteTokenRepository.save(inviteToken);
 
         String inviteUrl = appProperties.getInvite().getBotUrl() + "?start=" + token;
@@ -57,7 +62,19 @@ public class AuthService {
         }
 
         User user = userRepository.findByTelegramId(request.telegramId())
-                .orElseGet(() -> createUser(request));
+                .orElseGet(() -> createUser(request, inviteToken));
+
+        // Backfill profile fields from invite if missing on user
+        if (inviteToken.getFirstName() != null && user.getFirstName() == null) {
+            user.setFirstName(inviteToken.getFirstName());
+        }
+        if (inviteToken.getLastName() != null && user.getLastName() == null) {
+            user.setLastName(inviteToken.getLastName());
+        }
+        if (inviteToken.getPosition() != null && user.getPosition() == null) {
+            user.setPosition(inviteToken.getPosition());
+        }
+        userRepository.save(user);
 
         inviteToken.setUsedAt(Instant.now());
         inviteToken.setUsedByUser(user);
@@ -66,13 +83,14 @@ public class AuthService {
         return new AuthResponse(user.getId(), user.getTelegramId(), user.getRole());
     }
 
-    private User createUser(LoginRequest request) {
+    private User createUser(LoginRequest request, InviteToken inviteToken) {
         User user = new User();
         user.setTelegramId(request.telegramId());
         user.setTelegramLogin(request.telegramLogin());
-        user.setFirstName(request.firstName());
-        user.setLastName(request.lastName());
-        User saved = userRepository.save(user);
-        return saved;
+        // Prefer invite token values; fall back to Telegram-provided data
+        user.setFirstName(inviteToken.getFirstName() != null ? inviteToken.getFirstName() : request.firstName());
+        user.setLastName(inviteToken.getLastName() != null ? inviteToken.getLastName() : request.lastName());
+        user.setPosition(inviteToken.getPosition());
+        return userRepository.save(user);
     }
 }

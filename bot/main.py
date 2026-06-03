@@ -9,6 +9,7 @@ from aiogram.types import TelegramObject
 from loguru import logger
 
 from config import settings
+from handlers.admin import router as admin_router
 from handlers.auth import router as auth_router
 from handlers.files import router as files_router
 from handlers.group import router as group_router
@@ -44,6 +45,7 @@ async def main() -> None:
 
     # Order matters: setup first (my_chat_member + setup deep links), generic group last
     dp.include_router(setup_router)
+    dp.include_router(admin_router)
     dp.include_router(auth_router)
     dp.include_router(tasks_router)
     dp.include_router(files_router)

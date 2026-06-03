@@ -4,20 +4,15 @@ import httpx
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 from loguru import logger
 
 from config import settings
-from storage import get_user, register_user, save_yougile_token
+from handlers.admin import show_admin_panel, show_member_panel
+from services.admin_service import get_user_by_telegram_id
+from storage import register_user
 
 router = Router()
-
-YOUGILE_API_URL = "https://ru.yougile.com/api-v2/projects"
-
-
-class Registration(StatesGroup):
-    waiting_yougile_token = State()
 
 
 @router.message(Command("invite"), F.chat.type == "private")
@@ -64,93 +59,54 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     args = message.text.split(maxsplit=1)
     token = args[1] if len(args) > 1 else ""
 
-    # setup_ deep links are handled by setup_router (registered before auth_router)
-    if not token or token.startswith("setup_"):
-        user = get_user(message.from_user.id)
-        if user:
-            await message.answer("Вы уже зарегистрированы.")
-        else:
-            await message.answer("Доступ только по приглашению. Обратитесь к администратору.")
-        return
+    # setup_ deep links are intercepted by setup_router (registered first)
+    if token and not token.startswith("setup_"):
+        # Invite token flow
+        u = message.from_user
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    f"{settings.BACKEND_URL}/auth/login",
+                    json={
+                        "inviteToken": token,
+                        "telegramId": u.id,
+                        "telegramLogin": u.username,
+                        "firstName": u.first_name,
+                        "lastName": u.last_name,
+                    },
+                )
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError) as e:
+            logger.warning(f"Backend unavailable on /auth/login: {e}")
+            await message.answer("❌ Бэкенд недоступен, попробуй позже.")
+            return
 
-    # Any non-empty payload that is not "setup_" is treated as an invite token
-    u = message.from_user
+        if resp.status_code == 404:
+            await message.answer("❌ Ссылка-приглашение недействительна или истекла.")
+            return
+        if resp.status_code == 400:
+            await message.answer("❌ Неверный запрос.")
+            return
+        if resp.status_code != 200:
+            await message.answer("❌ Бэкенд недоступен, попробуй позже.")
+            return
 
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{settings.BACKEND_URL}/auth/login",
-                json={
-                    "inviteToken": token,
-                    "telegramId": u.id,
-                    "telegramLogin": u.username,
-                    "firstName": u.first_name,
-                    "lastName": u.last_name,
-                },
-            )
-    except (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError) as e:
-        logger.warning(f"Backend unavailable on /auth/login: {e}")
-        await message.answer("❌ Бэкенд недоступен, попробуй позже.")
-        return
-
-    if resp.status_code == 404:
-        await message.answer("❌ Ссылка-приглашение недействительна или истекла.")
-        return
-
-    if resp.status_code == 400:
-        await message.answer("❌ Неверный запрос.")
-        return
-
-    if resp.status_code == 200:
         data = resp.json()
         register_user(u.id, u.username, u.full_name)
-        logger.info(f"New user registered: {u.id} ({u.full_name}) via backend invite {token}")
-
+        logger.info(f"New user registered: {u.id} ({u.full_name})")
         await message.answer(
-            f"Добро пожаловать, {u.first_name}! 🎉\n\n"
-            "Теперь привяжи аккаунт YouGile —\n"
-            "зайди в YouGile → Настройки → API → скопируй токен и пришли сюда."
-        )
-        await state.set_state(Registration.waiting_yougile_token)
-        return
-
-    logger.warning(f"Unexpected status from /auth/login: {resp.status_code} {resp.text}")
-    await message.answer("❌ Бэкенд недоступен, попробуй позже.")
-
-
-@router.message(Registration.waiting_yougile_token)
-async def receive_yougile_token(message: Message, state: FSMContext) -> None:
-    token = (message.text or "").strip()
-    if not token:
-        await message.answer("Пришли токен YouGile текстом.")
-        return
-
-    await message.answer("⏳ Проверяю токен...")
-
-    if not await _validate_yougile_token(token):
-        await message.answer(
-            "❌ Токен не прошёл проверку. Убедись, что скопировал правильно, и попробуй снова."
+            f"👋 Добро пожаловать, {u.first_name}! 🎉\n\n"
+            "Ты добавлен в команду."
         )
         return
 
-    save_yougile_token(message.from_user.id, token)
-    await state.clear()
-    logger.info(f"YouGile token saved for user {message.from_user.id}")
+    # No token — check role via backend
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if user is None:
+        await message.answer("У вас нет доступа. Запросите инвайт у администратора.")
+        return
 
-    await message.answer(
-        "✅ Аккаунт YouGile привязан!\n"
-        "Ты полностью зарегистрирован и можешь работать с ботом."
-    )
-
-
-async def _validate_yougile_token(token: str) -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                YOUGILE_API_URL,
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        return resp.status_code == 200
-    except Exception as e:
-        logger.warning(f"YouGile token validation error: {e}")
-        return False
+    role = user.get("role", "")
+    if role == "ADMIN":
+        await show_admin_panel(message)
+    else:
+        await show_member_panel(message, user)
