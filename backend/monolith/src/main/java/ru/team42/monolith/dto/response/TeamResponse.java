@@ -2,10 +2,10 @@ package ru.team42.monolith.dto.response;
 
 import java.util.UUID;
 
-public record GroupResponse(
+public record TeamResponse(
         UUID id,
-        Long chatId,
+        Long telegramChatId,
         String chatTitle,
-        String yougileBoardId,
+        String kanbanId,
         boolean active
 ) {}
