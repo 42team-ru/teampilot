@@ -9,7 +9,7 @@ from config import settings
 from services.http_logging import log_http_request_error, log_http_response_error
 
 _BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
-_USER_LOOKUP_TIMEOUT = httpx.Timeout(2.0, connect=0.5)
+_USER_LOOKUP_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 _USER_CACHE_TTL_SECONDS = 30.0
 _USER_MISSING_CACHE_TTL_SECONDS = 5.0
 _USER_CACHE: dict[int, tuple[float, dict | None]] = {}
