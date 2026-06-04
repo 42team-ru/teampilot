@@ -6,17 +6,13 @@
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
+The Python bot uses `loguru` for application logs.
 
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
-
-(To be filled by the team)
+Bot HTTP clients log failed external calls through `bot/services/http_logging.py`.
+Use the shared helper for non-success responses and `httpx.RequestError`
+exceptions so logs include the method, route, status code, expected status,
+safe request context, safe params/body, selected response headers, and response
+body.
 
 ---
 
@@ -24,7 +20,10 @@ Questions to answer:
 
 <!-- When to use each level: debug, info, warn, error -->
 
-(To be filled by the team)
+- `warning`: external service failures that are handled by fallback return
+  values or user-facing retry messages.
+- `error`: unexpected failures that cannot be handled locally or break message
+  processing.
 
 ---
 
@@ -32,7 +31,20 @@ Questions to answer:
 
 <!-- Log format, required fields -->
 
-(To be filled by the team)
+Prefer `loguru` parameterized messages over f-strings for diagnostic payloads:
+
+```python
+logger.warning(
+    "Backend unexpected response: method={} path={} status={} context={}",
+    method,
+    path,
+    response.status_code,
+    context,
+)
+```
+
+For bot HTTP calls, prefer `log_http_request_error(...)` and
+`log_http_response_error(...)` instead of hand-written one-line status logs.
 
 ---
 
@@ -40,7 +52,12 @@ Questions to answer:
 
 <!-- Important events to log -->
 
-(To be filled by the team)
+- External service request failures and non-success responses.
+- HTTP method, route, status code, reason phrase, expected status, request
+  context, params/body after redaction, selected response headers, and response
+  body.
+- Empty response bodies explicitly as `<empty>` so failures like `403` without a
+  body are visible.
 
 ---
 
@@ -48,4 +65,7 @@ Questions to answer:
 
 <!-- Sensitive data, PII, secrets -->
 
-(To be filled by the team)
+- Do not log `X-Bot-Secret`, `Authorization`, tokens, passwords, API keys,
+  MinIO access/secret keys, YouGile tokens, or raw cookies.
+- Use `safe_log_value(...)` or the shared HTTP logging helpers when logging
+  request payloads that may contain secrets such as `kanbanApiKey`.

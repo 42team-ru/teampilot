@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import httpx
-from loguru import logger
 
 from config import settings
+from services.http_logging import log_http_request_error, log_http_response_error
 
 _BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
 
@@ -23,45 +23,77 @@ async def get_tasks(
     size: int = 10,
 ) -> list[dict]:
     """GET /api/tasks?chatId=...&status=...&page=...&size=..."""
+    path = "/api/tasks"
     params: dict = {"chatId": chat_id, "page": page, "size": size}
     if status:
         params["status"] = status.upper()
 
+    context = {
+        "chat_id": chat_id,
+        "telegram_id": telegram_id,
+        "status": status,
+        "page": page,
+        "size": size,
+    }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
-                f"{settings.BACKEND_URL}/api/tasks",
+                f"{settings.BACKEND_URL}{path}",
                 params=params,
                 headers=_headers(telegram_id),
             )
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on GET /api/tasks chatId={chat_id}: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(
+            service="Backend",
+            method="GET",
+            path=path,
+            error=e,
+            context=context,
+            params=params,
+        )
         return []
 
     if resp.status_code != 200:
-        logger.warning(f"Unexpected status {resp.status_code} on GET /api/tasks chatId={chat_id}")
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="GET",
+            path=path,
+            expected="200",
+            context=context,
+            params=params,
+        )
         return []
 
     return resp.json().get("content", [])
 
 
 async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict | None:
-    """GET /api/tasks/{id} — None if 404."""
+    """GET /api/tasks/{id} - None if 404."""
+    path = f"/api/tasks/{task_id}"
+    context = {"task_id": task_id, "telegram_id": telegram_id}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
-                f"{settings.BACKEND_URL}/api/tasks/{task_id}",
+                f"{settings.BACKEND_URL}{path}",
                 headers=_headers(telegram_id),
             )
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on GET /api/tasks/{task_id}: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
         return None
 
     if resp.status_code == 404:
         return None
 
     if resp.status_code != 200:
-        logger.warning(f"Unexpected status {resp.status_code} on GET /api/tasks/{task_id}")
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="GET",
+            path=path,
+            expected="200 or 404",
+            context=context,
+        )
         return None
 
     return resp.json()

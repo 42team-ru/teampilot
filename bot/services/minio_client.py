@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import aioboto3
 from botocore.exceptions import ClientError
+from loguru import logger
 
 from config import settings
 
@@ -29,19 +30,34 @@ class MinioClient:
     ) -> UploadedObject:
         bucket = settings.MINIO_BUCKET
         key = f"uploads/{chat_id}/{uuid4()}/{filename}"
-        async with self._session.client(
-            "s3",
-            endpoint_url=self._endpoint_url(),
-            aws_access_key_id=settings.MINIO_ACCESS_KEY,
-            aws_secret_access_key=settings.MINIO_SECRET_KEY,
-        ) as client:
-            await self._ensure_bucket_exists(client, bucket)
-            await client.put_object(
-                Bucket=bucket,
-                Key=key,
-                Body=data,
-                ContentType=content_type,
+        try:
+            async with self._session.client(
+                "s3",
+                endpoint_url=self._endpoint_url(),
+                aws_access_key_id=settings.MINIO_ACCESS_KEY,
+                aws_secret_access_key=settings.MINIO_SECRET_KEY,
+            ) as client:
+                await self._ensure_bucket_exists(client, bucket)
+                await client.put_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=data,
+                    ContentType=content_type,
+                )
+        except Exception as e:
+            logger.warning(
+                "MinIO upload failed: bucket={} key={} chat_id={} filename={} "
+                "content_type={} size={} error_type={} error={!r}",
+                bucket,
+                key,
+                chat_id,
+                filename,
+                content_type,
+                len(data),
+                type(e).__name__,
+                e,
             )
+            raise
         return UploadedObject(bucket=bucket, key=key)
 
     @staticmethod
