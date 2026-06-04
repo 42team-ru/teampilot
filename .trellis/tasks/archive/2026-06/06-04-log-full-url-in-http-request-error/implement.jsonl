@@ -1,0 +1,2 @@
+{"file": "bot/services/http_logging.py", "reason": "Сигнатура log_http_request_error / log_http_response_error — менять не нужно, только для справки"}
+{"file": "bot/config.py", "reason": "settings.BACKEND_URL — источник базового URL"}
