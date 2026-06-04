@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Bot handlers and services follow the repository backend conventions."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Keep the FSM simplification scoped and remove obsolete code."}
