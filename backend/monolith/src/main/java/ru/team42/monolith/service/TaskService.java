@@ -27,6 +27,7 @@ import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,6 +38,12 @@ public class TaskService {
 
     private static final int YOUGILE_MAX_RETRIES = 3;
     private static final long RETRY_BASE_MS = 1_000;
+    private static final List<TaskStatus> ACTIVE_STATUSES = List.of(
+            TaskStatus.OPEN,
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.REVIEW,
+            TaskStatus.BLOCKED
+    );
 
     private final TaskRepository taskRepository;
     private final TaskStatusHistoryRepository historyRepository;
@@ -231,6 +238,46 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
+    public Page<Task> list(Long chatId, Long assigneeTelegramId, String rawStatus, Pageable pageable) {
+        List<TaskStatus> statuses = resolveStatusFilter(rawStatus);
+        UUID teamId = null;
+        if (chatId != null) {
+            Team team = teamRepository.findByTelegramChatId(chatId)
+                    .orElseThrow(() -> AppException.notFound(
+                            "Team not found for chatId %d".formatted(chatId)));
+            teamId = team.getId();
+        }
+
+        if (teamId == null && assigneeTelegramId == null) {
+            throw AppException.badRequest("chatId or assignee is required");
+        }
+
+        if (teamId != null && assigneeTelegramId != null) {
+            if (statuses != null) {
+                return taskRepository.findByTeamIdAndAssigneeUserTelegramIdAndStatusIn(
+                        teamId,
+                        assigneeTelegramId,
+                        statuses,
+                        pageable
+                );
+            }
+            return taskRepository.findByTeamIdAndAssigneeUserTelegramId(teamId, assigneeTelegramId, pageable);
+        }
+
+        if (teamId != null) {
+            if (statuses != null) {
+                return taskRepository.findByTeamIdAndStatusIn(teamId, statuses, pageable);
+            }
+            return taskRepository.findByTeamId(teamId, pageable);
+        }
+
+        if (statuses != null) {
+            return taskRepository.findByAssigneeUserTelegramIdAndStatusIn(assigneeTelegramId, statuses, pageable);
+        }
+        return taskRepository.findByAssigneeUserTelegramId(assigneeTelegramId, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public List<YouGileService.YouGileTaskResponse> listFromYouGile(Long chatId) {
         Team team = teamRepository.findByTelegramChatId(chatId)
                 .orElseThrow(() -> AppException.notFound(
@@ -279,6 +326,23 @@ public class TaskService {
 
     private Optional<TeamUser> resolveTeamUser(Team team, Long telegramId) {
         return teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), telegramId);
+    }
+
+    private List<TaskStatus> resolveStatusFilter(String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank()) {
+            return null;
+        }
+
+        String normalized = rawStatus.trim().toUpperCase(Locale.ROOT);
+        if ("ACTIVE".equals(normalized)) {
+            return ACTIVE_STATUSES;
+        }
+
+        try {
+            return List.of(TaskStatus.valueOf(normalized));
+        } catch (IllegalArgumentException e) {
+            throw AppException.badRequest("Unknown task status: " + rawStatus);
+        }
     }
 
     private void recordHistory(Task task, TaskStatus from, TaskStatus to, Long telegramId) {

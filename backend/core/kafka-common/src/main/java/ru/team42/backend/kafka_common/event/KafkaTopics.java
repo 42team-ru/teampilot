@@ -12,5 +12,6 @@ public final class KafkaTopics {
     public static final String AUDIO_NEW          = "audio.new";
     public static final String FILES_UPLOADED     = "files.uploaded";
     public static final String BOTS_TASKS         = "bots.tasks";
-    public static final String BOTS_NOTIFICATIONS = "bots.notifications";
+    public static final String BOTS_NOTIFICATIONS  = "bots.notifications";
+    public static final String TRANSCRIPT_READY    = "audio.transcript.ready";
 }

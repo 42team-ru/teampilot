@@ -3,7 +3,7 @@ package ru.team42.monolith.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.team42.backend.kafka_common.event.FileUploadedEvent;
+import ru.team42.monolith.event.FileUploadedEvent;
 import ru.team42.monolith.entity.UploadedFile;
 import ru.team42.monolith.repository.UploadedFileRepository;
 

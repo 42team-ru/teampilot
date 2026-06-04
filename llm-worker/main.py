@@ -1,10 +1,13 @@
+import threading
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional, Union
 
 from loguru import logger
 from pydantic import ValidationError
 
 from infra.kafka import BatchConsumer, flush, publish
+from infra.minio import download_file
 from infra.qdrant import is_task_duplicate, store_batch, store_task
 from llm.chains import classifier_chain, status_chain, task_chain
 from models import (
@@ -15,6 +18,7 @@ from models import (
     TaskCreateEvent,
     TaskExtractionList,
     TeamMember,
+    TranscriptReadyEvent,
     proto_to_batch_event,
 )
 
@@ -25,6 +29,7 @@ from settings import settings
 TOPIC_IN = "messages.batches"
 TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
+TOPIC_TRANSCRIPT = "audio.transcript.ready"
 
 
 def format_messages(batch: MessageBatchEvent) -> str:
@@ -267,11 +272,107 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
 
 
 
+def process_transcript(event: TranscriptReadyEvent) -> None:
+    logger.info(f"Processing transcript file_id={event.file_id} from {event.bucket}/{event.s3_key}")
+
+    try:
+        text = download_file(event.bucket, event.s3_key).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Failed to download transcript {event.s3_key}: {e}")
+        return
+
+    logger.info(f"Transcript received [{event.s3_key}]:\n{'-' * 60}\n{text}\n{'-' * 60}")
+
+    try:
+        clf_output = classifier_chain.invoke({"messages": text})
+        clf = ClassificationResult.model_validate(clf_output)
+    except Exception as e:
+        logger.error(f"Classifier failed for transcript {event.file_id}: {e}")
+        return
+
+    logger.debug(f"Transcript {event.file_id} classification: {clf}")
+
+    if clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD:
+        try:
+            raw = task_chain.invoke({
+                "messages": text,
+                "current_datetime": datetime.now(timezone.utc).isoformat(),
+                "team_context": "TEAM LIST: not provided",
+                "columns_context": "KANBAN COLUMNS: not provided — set column_id = null",
+            })
+            extraction_list = TaskExtractionList.model_validate(raw)
+            if extraction_list.failed_items > 0:
+                logger.warning(f"Transcript task extraction: {extraction_list.failed_items} item(s) skipped")
+            for extraction in extraction_list.tasks:
+                if is_task_duplicate(extraction.title, extraction.description or ""):
+                    logger.info(f"Duplicate task skipped: {extraction.title!r}")
+                    continue
+                task_id = str(uuid.uuid4())
+                store_task(task_id, extraction.title, extraction.description or "")
+                task_data = extraction.model_dump()
+                task_data["column_id"] = None
+                publish(TOPIC_TASKS, TaskCreateEvent(
+                    chat_id=0,
+                    source_batch_id=event.file_id,
+                    assignee_id=None,
+                    **task_data,
+                ), key=event.file_id)
+                logger.info(f"Transcript task published: {extraction.title!r}")
+        except Exception as e:
+            logger.error(f"Task extraction failed for transcript {event.file_id}: {e}")
+
+    if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
+        try:
+            raw = status_chain.invoke({
+                "messages": text,
+                "team_context": "TEAM LIST: not provided",
+            })
+            extraction_list = StatusExtractionList.model_validate(raw)
+            if extraction_list.failed_items > 0:
+                logger.warning(f"Transcript status extraction: {extraction_list.failed_items} item(s) skipped")
+            for extraction in extraction_list.statuses:
+                publish(TOPIC_STATUS, StatusChangeEvent(
+                    chat_id=0,
+                    source_batch_id=event.file_id,
+                    assignee_id=None,
+                    **extraction.model_dump(),
+                ), key=event.file_id)
+                logger.info(f"Transcript status published: {extraction.action}")
+        except Exception as e:
+            logger.error(f"Status extraction failed for transcript {event.file_id}: {e}")
+
+
+def run_transcript_consumer(stop_event: threading.Event) -> None:
+    consumer = BatchConsumer(TOPIC_TRANSCRIPT)
+    try:
+        while not stop_event.is_set():
+            msg = consumer.poll(timeout=1.0)
+            if msg is None:
+                continue
+            try:
+                event = TranscriptReadyEvent.model_validate_json(msg.value().decode())
+                process_transcript(event)
+                consumer.commit(msg)
+            except Exception as e:
+                logger.error(f"Error processing transcript event: {e}")
+    finally:
+        consumer.close()
+
+
 def main() -> None:
     """
     Kafka Consumer loop entry point.
     """
     logger.info("LLM Worker starting in Kafka Consumer mode...")
+
+    stop_event = threading.Event()
+    transcript_thread = threading.Thread(
+        target=run_transcript_consumer,
+        args=(stop_event,),
+        daemon=True,
+        name="transcript-consumer",
+    )
+    transcript_thread.start()
 
     consumer = BatchConsumer(TOPIC_IN)
     try:
@@ -309,9 +410,11 @@ def main() -> None:
                 
     except KeyboardInterrupt:
         logger.info("Graceful shutdown initiated...")
+        stop_event.set()
     finally:
         consumer.close()
         flush()
+        transcript_thread.join(timeout=5)
 
 
 if __name__ == "__main__":

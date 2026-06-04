@@ -32,10 +32,46 @@ class TelegramFilePayload:
     file_size: int | None
 
 
+_MEDIA_DOCUMENT_PREFIXES = ("audio/", "video/")
+
+
 @router.message(Command("upload"))
 async def cmd_upload(message: Message, state: FSMContext) -> None:
-    await state.set_state(FileUploadStates.waiting_for_file)
-    await message.answer(UPLOAD_PROMPT_TEXT)
+    from services.team_service import get_member_teams, get_my_teams
+    import asyncio
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(message.from_user.id),
+        get_member_teams(message.from_user.id),
+    )
+    all_teams = [t for t in (manager_teams + member_teams) if t.get("telegramChatId")]
+
+    if not all_teams:
+        await message.answer(
+            "⚠️ Нет команд с привязанным чатом.\n"
+            "Менеджер должен сначала привязать Telegram-чат к команде.\n\n"
+            "Используйте кнопку 📤 в контексте нужной команды через меню 🏢 Мои команды."
+        )
+        return
+
+    if len(all_teams) == 1:
+        team = all_teams[0]
+        chat_id = int(team["telegramChatId"])
+        await state.update_data(upload_team_chat_id=chat_id)
+        await state.set_state(FileUploadStates.waiting_for_file)
+        team_title = team.get("chatTitle") or str(team.get("id"))
+        from html import escape
+        await message.answer(
+            f"📤 Загрузка файла для команды <b>{escape(team_title)}</b>\n\n"
+            + UPLOAD_PROMPT_TEXT
+        )
+        return
+
+    # Multiple teams — ask user to use the button in team context
+    await message.answer(
+        "Вы состоите в нескольких командах.\n"
+        "Используйте кнопку 📤 Загрузить файл в контексте нужной команды:\n\n"
+        "🏢 Мои команды → выберите команду → 📤 Загрузить файл"
+    )
 
 
 @router.message(FileUploadStates.waiting_for_file, Command("cancel"))
@@ -63,11 +99,21 @@ async def handle_upload_file(
         await message.answer("Не удалось загрузить файл: отсутствуют данные пользователя Telegram.")
         return
 
+    data = await state.get_data()
+    team_chat_id: int | None = data.get("upload_team_chat_id")
+    if team_chat_id is None:
+        await message.answer(
+            "⚠️ Не выбрана команда для загрузки.\n"
+            "Используйте кнопку 📤 в контексте команды через меню 🏢 Мои команды."
+        )
+        await state.clear()
+        return
+
     progress_message = await message.answer("Загружаю файл...")
     try:
         file_bytes = await _download_file(bot, payload.file_id)
         uploaded = await minio_client.upload_file(
-            chat_id=message.chat.id,
+            chat_id=team_chat_id,
             data=file_bytes,
             filename=payload.original_filename,
             content_type=payload.content_type,
@@ -75,7 +121,7 @@ async def handle_upload_file(
 
         event = FileUploadedEvent(
             user_id=message.from_user.id,
-            chat_id=message.chat.id,
+            chat_id=team_chat_id,
             username=message.from_user.username,
             first_name=message.from_user.first_name,
             original_filename=payload.original_filename,
@@ -92,7 +138,49 @@ async def handle_upload_file(
         return
 
     await state.clear()
-    await progress_message.edit_text("Файл успешно загружен.")
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="member:back")],
+    ])
+    await progress_message.edit_text("✅ Файл успешно загружен.", reply_markup=kb)
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.audio | F.voice | F.video | F.video_note | F.document,
+)
+async def handle_group_media_auto(
+    message: Message,
+    bot: Bot,
+    producer: EventProducer,
+) -> None:
+    payload = _extract_file_payload(message, allow_media_document=True)
+    if payload is None:
+        logger.debug(
+            "Ignored unsupported group media: chat_id={} message_id={} content_type={}",
+            message.chat.id,
+            message.message_id,
+            getattr(message.document, "mime_type", None),
+        )
+        return
+
+    if message.from_user is None:
+        logger.warning(
+            "Cannot upload group media without from_user: chat_id={} message_id={}",
+            message.chat.id,
+            message.message_id,
+        )
+        return
+
+    progress_message = await message.reply("Загружаю медиа...")
+    try:
+        await _upload_and_publish(message, bot, producer, message.chat.id, payload)
+    except Exception as e:
+        logger.exception(f"Failed to auto-upload group media: {e}")
+        await progress_message.edit_text("Ошибка загрузки медиа. Попробуйте позже.")
+        return
+
+    await progress_message.edit_text("✅ Медиа загружено.")
 
 
 @router.message(
@@ -111,6 +199,36 @@ async def handle_non_file_while_waiting(message: Message) -> None:
     await message.answer("Пожалуйста, отправьте аудио или видео файл. Используйте /cancel для отмены.")
 
 
+async def _upload_and_publish(
+    message: Message,
+    bot: Bot,
+    producer: EventProducer,
+    team_chat_id: int,
+    payload: TelegramFilePayload,
+) -> None:
+    file_bytes = await _download_file(bot, payload.file_id)
+    uploaded = await minio_client.upload_file(
+        chat_id=team_chat_id,
+        data=file_bytes,
+        filename=payload.original_filename,
+        content_type=payload.content_type,
+    )
+
+    event = FileUploadedEvent(
+        user_id=message.from_user.id,
+        chat_id=team_chat_id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        original_filename=payload.original_filename,
+        content_type=payload.content_type,
+        minio_bucket=uploaded.bucket,
+        minio_key=uploaded.key,
+        file_size=payload.file_size or len(file_bytes),
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    await producer.publish(Topics.FILES_UPLOADED, event, key=uploaded.key)
+
+
 async def _download_file(bot: Bot, file_id: str) -> bytes:
     file_info = await bot.get_file(file_id)
     if not file_info.file_path:
@@ -121,7 +239,7 @@ async def _download_file(bot: Bot, file_id: str) -> bytes:
     return file_bytes.getvalue()
 
 
-def _extract_file_payload(message: Message) -> TelegramFilePayload | None:
+def _extract_file_payload(message: Message, *, allow_media_document: bool = False) -> TelegramFilePayload | None:
     if message.audio:
         return _payload_from_object(
             message.audio,
@@ -146,7 +264,27 @@ def _extract_file_payload(message: Message) -> TelegramFilePayload | None:
             fallback_filename=f"video_note_{message.video_note.file_unique_id}.mp4",
             default_content_type="video/mp4",
         )
+    if allow_media_document and message.document and _is_media_document(message.document):
+        content_type = getattr(message.document, "mime_type", None) or "application/octet-stream"
+        return _payload_from_object(
+            message.document,
+            fallback_filename=f"media_{message.document.file_unique_id}{_document_extension(content_type)}",
+            default_content_type=content_type,
+        )
     return None
+
+
+def _is_media_document(document: object) -> bool:
+    content_type = getattr(document, "mime_type", None)
+    return isinstance(content_type, str) and content_type.startswith(_MEDIA_DOCUMENT_PREFIXES)
+
+
+def _document_extension(content_type: str) -> str:
+    if content_type.startswith("audio/"):
+        return ".audio"
+    if content_type.startswith("video/"):
+        return ".video"
+    return ""
 
 
 def _payload_from_object(
