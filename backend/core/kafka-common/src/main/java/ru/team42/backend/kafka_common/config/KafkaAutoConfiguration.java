@@ -29,7 +29,6 @@ public class KafkaAutoConfiguration {
         "org.springframework.kafka.support.serializer.JacksonJsonSerializer";
 
     @Bean
-    @ConditionalOnMissingBean(ProducerFactory.class)
     public ProducerFactory<String, BaseEvent> kafkaProducerFactory(KafkaProperties kafkaProps) {
         var props = kafkaProps.buildProducerProperties();
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JACKSON_JSON_SERIALIZER);
@@ -40,7 +39,6 @@ public class KafkaAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(KafkaTemplate.class)
     public KafkaTemplate<String, BaseEvent> kafkaTemplate(
             ProducerFactory<String, BaseEvent> kafkaProducerFactory) {
         return new KafkaTemplate<>(kafkaProducerFactory);
