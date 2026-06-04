@@ -53,7 +53,7 @@ async def lookup_user_by_telegram_id(telegram_id: int) -> UserLookupResult:
                 headers=_headers(telegram_id),
             )
     except httpx.RequestError as e:
-        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
+        log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
         return UserLookupResult(ok=False, user=None)
 
     if resp.status_code == 404:
@@ -65,7 +65,7 @@ async def lookup_user_by_telegram_id(telegram_id: int) -> UserLookupResult:
             resp,
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 404",
             context=context,
         )
@@ -96,7 +96,7 @@ async def get_team_members(telegram_id: int | None = None) -> list[dict]:
         log_http_request_error(
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             params=params,
@@ -108,7 +108,7 @@ async def get_team_members(telegram_id: int | None = None) -> list[dict]:
             resp,
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200",
             context=context,
             params=params,
@@ -156,7 +156,7 @@ async def create_team(
         log_http_request_error(
             service="Backend",
             method="POST",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             request_json=body,
@@ -168,7 +168,7 @@ async def create_team(
             resp,
             service="Backend",
             method="POST",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 201",
             context=context,
             request_json=body,
