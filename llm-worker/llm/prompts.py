@@ -105,6 +105,15 @@ USE THIS LIST TO RESOLVE NAMES AND ROLES:
 - Return their @username from the TEAM LIST when they are identified as the assignee.
 - If not found in team list AND no username in chat log → use exact name from text.
 
+=== KANBAN COLUMNS ===
+{columns_context}
+
+COLUMN SELECTION RULE:
+- Pick the column where a new task should LAND when created (usually "To Do", "Backlog", "Новые", "Открытые" or equivalent).
+- If the chat says "сразу в работу", "срочно", HIGH priority → pick In Progress column if it exists.
+- Use the exact id string from the list above as column_id.
+- If no columns provided or no clear match → column_id = null (backend will decide).
+
 === ROLE AMBIGUITY RULE ===
 If the assignee is specified by ROLE (not name), e.g. "пусть фронт займётся":  
 1. Count how many team members have that role.  
@@ -129,15 +138,20 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
   Example: «ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»
 
 === OUTPUT FORMAT ===
-[{{"title": "...", "description": "...", "assignee": "..." | null, "deadline": "ISO-8601" | null, "priority": "HIGH"|"MEDIUM"|"LOW"}}, ...]
+[{{"title": "...", "description": "...", "assignee": "..." | null, "deadline": "ISO-8601" | null, "priority": "HIGH"|"MEDIUM"|"LOW", "column_id": "..." | null}}, ...]
 
 === FEW-SHOT EXAMPLES ===
 
 [INPUT]
 [10:00] ivan_pm: @kirill_dev Кирилл, нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3.
 
+// KANBAN COLUMNS:
+//   - id: "col-001"  |  title: "To Do"
+//   - id: "col-002"  |  title: "In Progress"
+//   - id: "col-003"  |  title: "Done"
+
 [OUTPUT]
-[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee": "@kirill_dev", "deadline": "2026-06-04T23:59:00", "priority": "HIGH"}}]
+[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee": "@kirill_dev", "deadline": "2026-06-04T23:59:00", "priority": "HIGH", "column_id": "col-001"}}]
 
 ---
 
@@ -147,7 +161,7 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 [12:02] vova_ml: Ок, сегодня поковыряю.
 
 [OUTPUT]
-[{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee": "vova_ml", "deadline": "2026-06-03T23:59:00", "priority": "HIGH"}}]
+[{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee": "vova_ml", "deadline": "2026-06-03T23:59:00", "priority": "HIGH", "column_id": null}}]
 
 ---
 
@@ -159,9 +173,9 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 
 [OUTPUT]
 [
-  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "«ivan_pm: разбери ошибки в логах после деплоя» — «frontend_kirill: Беру логи»", "assignee": "frontend_kirill", "deadline": null, "priority": "MEDIUM"}},
-  {{"title": "Обновить зависимости в pyproject.toml", "description": "«ivan_pm: обнови зависимости в pyproject до конца недели» — «vova_ml: Зависимости за мной»", "assignee": "vova_ml", "deadline": "2026-06-07T23:59:00", "priority": "MEDIUM"}},
-  {{"title": "Написать документацию по API", "description": "«ivan_pm: Маша, с тебя доки по API»", "assignee": "@qa_masha", "deadline": null, "priority": "MEDIUM"}}
+  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "«ivan_pm: разбери ошибки в логах после деплоя» — «frontend_kirill: Беру логи»", "assignee": "frontend_kirill", "deadline": null, "priority": "MEDIUM", "column_id": null}},
+  {{"title": "Обновить зависимости в pyproject.toml", "description": "«ivan_pm: обнови зависимости в pyproject до конца недели» — «vova_ml: Зависимости за мной»", "assignee": "vova_ml", "deadline": "2026-06-07T23:59:00", "priority": "MEDIUM", "column_id": null}},
+  {{"title": "Написать документацию по API", "description": "«ivan_pm: Маша, с тебя доки по API»", "assignee": "@qa_masha", "deadline": null, "priority": "MEDIUM", "column_id": null}}
 ]
 
 ---
@@ -174,7 +188,7 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 //   - @mikhail_be  |  Михаил Беккеров  |  Developer
 
 [OUTPUT]
-[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "«pm_ivan: Мишаня, посмотришь на баг с авторизацией?» — «mikhail_be: Да, возьму»", "assignee": "@mikhail_be", "deadline": null, "priority": "MEDIUM"}}]
+[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "«pm_ivan: Мишаня, посмотришь на баг с авторизацией?» — «mikhail_be: Да, возьму»", "assignee": "@mikhail_be", "deadline": null, "priority": "MEDIUM", "column_id": null}}]
 
 // REASONING: pm addressed "Мишаня" → team list maps to @mikhail_be. mikhail_be himself confirmed → assignee = @mikhail_be.
 
@@ -189,7 +203,7 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 //   - @front_dasha  |  Дарья Фронтендова  |  Developer
 
 [OUTPUT]
-[{{"title": "Исправить баг на стороне фронтенда", "description": "«pm: Пусть фронт займётся этим багом.»", "assignee": null, "deadline": null, "priority": "MEDIUM"}}]
+[{{"title": "Исправить баг на стороне фронтенда", "description": "«pm: Пусть фронт займётся этим багом.»", "assignee": null, "deadline": null, "priority": "MEDIUM", "column_id": null}}]
 
 // REASONING: role="фронт" → 2 Developers in team → ROLE AMBIGUITY → assignee = null.
 
@@ -209,7 +223,7 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 [09:01] kirill: Беру, смотрю.
 
 [OUTPUT]
-[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю»", "assignee": "kirill", "deadline": null, "priority": "HIGH"}}]
+[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю»", "assignee": "kirill", "deadline": null, "priority": "HIGH", "column_id": null}}]
 
 ---
 
@@ -219,7 +233,7 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 [11:10] devops_oleg: Ладно, завтра займусь.
 
 [OUTPUT]
-[{{"title": "Настроить сбор логов в ELK", "description": "«backend_sasha: Можешь ещё настроить сбор логов в ELK? У нас логи теряются» — «devops_oleg: Ладно, завтра займусь»", "assignee": "devops_oleg", "deadline": "2026-06-06T23:59:00", "priority": "MEDIUM"}}]
+[{{"title": "Настроить сбор логов в ELK", "description": "«backend_sasha: Можешь ещё настроить сбор логов в ELK? У нас логи теряются» — «devops_oleg: Ладно, завтра займусь»", "assignee": "devops_oleg", "deadline": "2026-06-06T23:59:00", "priority": "MEDIUM", "column_id": null}}]
 
 // "я настроил мониторинг" = ALREADY DONE, NOT a new task. Only the NEW request (ELK) is extracted.
 // devops_oleg agreed in chat → assignee = devops_oleg (taken from chat log username).
@@ -236,7 +250,7 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 //   - @frontend_anna  |  Анна Фронтова  |  Frontend
 
 [OUTPUT]
-[{{"title": "Настроить мониторинг на новом сервере", "description": "«pm_lead: Пусть девопс настроит мониторинг на новом сервере.»", "assignee": "@ops_sasha", "deadline": null, "priority": "MEDIUM"}}]
+[{{"title": "Настроить мониторинг на новом сервере", "description": "«pm_lead: Пусть девопс настроит мониторинг на новом сервере.»", "assignee": "@ops_sasha", "deadline": null, "priority": "MEDIUM", "column_id": null}}]
 
 // REASONING: "девопс" = role keyword → TEAM LIST has 1 DevOps (@ops_sasha) → assignee = @ops_sasha.
 // frontend_anna commented but was NOT assigned — she is Frontend, not DevOps.
