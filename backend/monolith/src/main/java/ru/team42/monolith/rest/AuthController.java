@@ -53,9 +53,9 @@ public class AuthController {
             summary = "Создать пользователя",
             description = "Создаёт обычного пользователя по имени и фамилии."
     )
-    @PostMapping("/register")
+    @PostMapping({"/register", "/registration"})
     public ResponseEntity<AuthResponse> registerUser(@Valid @RequestBody CreateUserRequest request) {
-        return ResponseUtils.created("/auth/register", authService.registerUser(request));
+        return ResponseUtils.created("/auth/registration", authService.registerUser(request));
     }
 
     @Operation(

@@ -70,6 +70,12 @@ def manager_members_list_keyboard(members: list[dict], team_id: str) -> InlineKe
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def back_to_team_ctx_keyboard(team_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="← Назад к команде", callback_data=f"team_ctx:manager:{team_id}")],
+    ])
+
+
 def manager_member_remove_confirm_keyboard(team_user_id: str, team_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"manager:mbr_remove:{team_user_id}")],
