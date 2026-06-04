@@ -195,6 +195,44 @@ async def update_team(
     return resp.json()
 
 
+async def get_team_members(team_id: str, telegram_id: int) -> list[dict]:
+    """GET /teams/{teamId}/members — list all members of a team (manager only)."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.BACKEND_URL}/teams/{team_id}/members",
+                headers=_headers(telegram_id),
+            )
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning(f"Backend unavailable on GET /teams/{team_id}/members: {e}")
+        return []
+
+    if resp.status_code != 200:
+        logger.warning(f"Unexpected status {resp.status_code} on GET /teams/{team_id}/members")
+        return []
+
+    return resp.json()
+
+
+async def remove_team_member(team_id: str, team_user_id: str, telegram_id: int) -> bool:
+    """DELETE /teams/{teamId}/members/{teamUserId} — remove member from team (manager only)."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.delete(
+                f"{settings.BACKEND_URL}/teams/{team_id}/members/{team_user_id}",
+                headers=_headers(telegram_id),
+            )
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning(f"Backend unavailable on DELETE /teams/{team_id}/members/{team_user_id}: {e}")
+        return False
+
+    if resp.status_code not in (200, 204):
+        logger.warning(f"Unexpected status {resp.status_code} on DELETE /teams/{team_id}/members/{team_user_id}")
+        return False
+
+    return True
+
+
 async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None) -> bool:
     """DELETE /teams/{telegramChatId} — mark team inactive."""
     try:

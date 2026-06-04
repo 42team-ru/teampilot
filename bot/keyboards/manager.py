@@ -48,3 +48,41 @@ def manager_deactivate_confirm_keyboard(team_id: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🗑 Деактивировать", callback_data=f"manager:deactivate_confirm:{team_id}")],
         [InlineKeyboardButton(text="← Назад", callback_data="manager:deactivate")],
     ])
+
+
+def manager_members_list_keyboard(members: list[dict], team_id: str) -> InlineKeyboardMarkup:
+    buttons = []
+    for member in members:
+        role = member.get("role", "USER")
+        display = _member_display(member)
+        if role == "USER":
+            member_user_id = member["id"]
+            buttons.append([
+                InlineKeyboardButton(text=display, callback_data="noop"),
+                InlineKeyboardButton(
+                    text="❌",
+                    callback_data=f"manager:mbr_confirm:{member_user_id}",
+                ),
+            ])
+        else:
+            buttons.append([InlineKeyboardButton(text=f"{display} 🔑", callback_data="noop")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="manager:members")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def manager_member_remove_confirm_keyboard(team_user_id: str, team_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"manager:mbr_remove:{team_user_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"manager:members_list:{team_id}")],
+    ])
+
+
+def _member_display(member: dict) -> str:
+    parts = []
+    if member.get("firstName"):
+        parts.append(member["firstName"])
+    if member.get("lastName"):
+        parts.append(member["lastName"])
+    name = " ".join(parts) if parts else "Без имени"
+    login = member.get("telegramLogin")
+    return f"{name} (@{login})" if login else name
