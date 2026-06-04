@@ -83,13 +83,51 @@ def resolve_assignee_id(assignee: str | None, team: list[TeamMember]) -> int | N
     return None
 
 
-def format_columns_context(batch: MessageBatchEvent) -> str:
+_DONE_KEYWORDS = {"готово", "done", "завершен", "завершено", "закрыт", "closed", "complete"}
+_PROGRESS_KEYWORDS = {"процесс", "progress", "работ", "in progress", "в работе", "делается"}
+_TODO_KEYWORDS = {"бэклог", "backlog", "to do", "todo", "новые", "открыт", "очередь", "open", "queue"}
+
+
+def _pick_column(columns: list, priority: str = "MEDIUM") -> "ColumnInfo":
+    """Pick the right column based on priority. Never picks Done columns."""
+    if not columns:
+        return None
+
+    def score(col) -> int:
+        t = col.title.lower()
+        if any(k in t for k in _DONE_KEYWORDS):
+            return -10  # never for new tasks
+        if priority == "HIGH" and any(k in t for k in _PROGRESS_KEYWORDS):
+            return 20   # urgent → In Progress
+        if any(k in t for k in _TODO_KEYWORDS):
+            return 10   # default → Backlog/To Do
+        if any(k in t for k in _PROGRESS_KEYWORDS):
+            return 5
+        return 1        # anything beats Done
+
+    best = max(columns, key=score)
+    if score(best) < 0:
+        # All columns are "done" style — just use last
+        return columns[-1]
+    return best
+
+
+def build_column_map(batch: MessageBatchEvent) -> dict[str, str]:
+    """Returns {short_id -> real_uuid}, e.g. {"1": "b12e90bd-...", "2": "2933a06c-..."}"""
+    return {str(i + 1): col.id for i, col in enumerate(batch.columns)}
+
+
+def format_columns_context(batch: MessageBatchEvent) -> tuple[str, dict[str, str]]:
+    """Returns (prompt_text, short_to_real mapping)."""
     if not batch.columns:
-        return "KANBAN COLUMNS: not provided — set column_id = null"
-    lines = ["KANBAN COLUMNS (use id value as column_id for the new task):"]
+        return "KANBAN COLUMNS: not provided — set column_id = null", {}
+    col_map = build_column_map(batch)
+    real_to_short = {v: k for k, v in col_map.items()}
+    lines = ["KANBAN COLUMNS (use the short id as column_id):"]
     for col in batch.columns:
-        lines.append(f"  - id: \"{col.id}\"  |  title: \"{col.title}\"")
-    return "\n".join(lines)
+        short = real_to_short[col.id]
+        lines.append(f"  - column_id: \"{short}\"  |  title: \"{col.title}\"")
+    return "\n".join(lines), col_map
 
 
 def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
@@ -146,11 +184,12 @@ def _extract_tasks(batch: MessageBatchEvent, text: str) -> List[TaskCreateEvent]
     Uses TaskExtractionList for per-item fault tolerance.
     """
     try:
+        columns_ctx, col_map = format_columns_context(batch)
         raw = task_chain.invoke({
             "messages": text,
             "current_datetime": batch.occurred_at.isoformat(),
             "team_context": format_team_context(batch),
-            "columns_context": format_columns_context(batch),
+            "columns_context": columns_ctx,
         })
         extraction_list = TaskExtractionList.model_validate(raw)
 
@@ -168,14 +207,24 @@ def _extract_tasks(batch: MessageBatchEvent, text: str) -> List[TaskCreateEvent]
 
             task_id = str(uuid.uuid4())
             store_task(task_id, extraction.title, extraction.description or "")
-            
+
             assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
-            
+            task_data = extraction.model_dump()
+
+            # Map short id ("1","2","3") back to real UUID
+            short_id = str(task_data.get("column_id") or "")
+            real_id = col_map.get(short_id)
+            if not real_id and batch.columns:
+                fallback = _pick_column(batch.columns, task_data.get("priority", "MEDIUM"))
+                real_id = fallback.id
+                logger.warning(f"column_id={short_id!r} not in map → fallback '{fallback.title}'")
+            task_data["column_id"] = real_id
+
             events.append(TaskCreateEvent(
                 chat_id=batch.chat_id,
                 source_batch_id=batch.event_id,
                 assignee_id=assignee_id,
-                **extraction.model_dump(),
+                **task_data,
             ))
 
         return events
@@ -236,7 +285,7 @@ def main() -> None:
                 proto_event = message_batch_pb2.MessageBatchEvent()
                 proto_event.ParseFromString(msg.value())
                 batch = proto_to_batch_event(proto_event)
-                logger.info(f"Processing batch {batch.event_id} ({len(batch.messages)} msgs) from chat {batch.chat_id}")
+                logger.info(f"Processing batch {batch} ({len(batch.messages)} msgs) from chat {batch.chat_id}")
                 
                 # Process the batch and get results
                 events = process_batch(batch)

@@ -40,7 +40,15 @@ public class YouGileService {
         CreateTaskDto dto = new CreateTaskDto();
         dto.setTitle(task.getTitle());
         dto.setDescription(task.getDescription());
-        dto.setColumnId(task.getExternalColumnId());
+
+        String columnId = task.getExternalColumnId();
+        if (columnId == null) {
+            columnId = loadColumnMap(team, api).get(TaskStatus.OPEN);
+            if (columnId != null) {
+                log.warn("task {} had no columnId — resolved default OPEN column {}", task.getId(), columnId);
+            }
+        }
+        dto.setColumnId(columnId);
 
         if (task.getDeadline() != null) {
             Deadline dl = new Deadline();
