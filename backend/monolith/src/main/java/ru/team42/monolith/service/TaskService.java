@@ -11,18 +11,21 @@ import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.TaskStatusHistory;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
+import ru.team42.monolith.entity.enums.TaskLocalStatus;
+import ru.team42.monolith.entity.enums.TaskSource;
 import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
-import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.event.LlmUpdateTaskEvent;
 import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.mapper.LlmTaskUpdateMapper;
+import ru.team42.monolith.mapper.YouGileTaskMapper;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,6 +45,7 @@ public class TaskService {
     private final YouGileService youGileService;
     private final TaskEventPublisher taskEventPublisher;
     private final LlmTaskUpdateMapper llmTaskUpdateMapper;
+    private final YouGileTaskMapper youGileTaskMapper;
 
     @Transactional
     public Task createFromLlmEvent(LlmTaskCreateEvent event) {
@@ -170,6 +174,60 @@ public class TaskService {
             return taskRepository.findByTeamIdAndStatus(team.getId(), status, pageable);
         }
         return taskRepository.findByTeamId(team.getId(), pageable);
+    }
+
+    @Transactional
+    public List<Task> listTasksForUser(Long telegramId) {
+        List<TeamUser> memberships = teamUserRepository.findAllByUserTelegramId(telegramId);
+        if (memberships.isEmpty()) {
+            throw AppException.notFound("No teams found for telegramId %d".formatted(telegramId));
+        }
+
+        List<Task> result = new ArrayList<>();
+        for (TeamUser member : memberships) {
+            if (member.getYougileUserId() == null) continue;
+            Team team = member.getTeam();
+            List<YouGileService.YouGileTaskResponse> remoteTasks =
+                    youGileService.fetchTasksForUser(team, member.getYougileUserId());
+            for (YouGileService.YouGileTaskResponse remote : remoteTasks) {
+                result.add(syncYouGileTask(remote, team));
+            }
+        }
+        return result;
+    }
+
+    private Task syncYouGileTask(YouGileService.YouGileTaskResponse remote, Team team) {
+        Task task = taskRepository.findByTeamIdAndExternalId(team.getId(), remote.id())
+                .orElseGet(Task::new);
+
+        boolean isNew = task.getId() == null;
+        TaskStatus prevStatus = task.getStatus();
+
+        youGileTaskMapper.apply(remote, task);
+        task.setTeam(team);
+
+        if (remote.columnId() != null) {
+            TaskStatus newStatus = youGileService.resolveInternalStatus(team, remote.columnId());
+            task.setStatus(newStatus);
+            task.setYougileStatus(youGileService.resolveColumnName(team, remote.columnId()));
+            if (isNew) {
+                recordHistory(task, null, newStatus, null);
+            } else if (newStatus != prevStatus) {
+                recordHistory(task, prevStatus, newStatus, null);
+            }
+        }
+
+        if (isNew) {
+            task.setSyncStatus(TaskSyncStatus.SYNCED);
+            task.setSource(TaskSource.YOUGILE);
+        }
+
+        if (remote.responsible() != null) {
+            teamUserRepository.findByTeamIdAndYougileUserId(team.getId(), remote.responsible())
+                    .ifPresent(task::setAssignee);
+        }
+
+        return taskRepository.save(task);
     }
 
     @Transactional(readOnly = true)
