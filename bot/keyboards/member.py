@@ -62,12 +62,6 @@ def team_context_member_keyboard(team_id: str = "", has_chat: bool = True) -> In
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def back_to_team_ctx_keyboard(team_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="← Назад к команде", callback_data=f"team_ctx:manager:{team_id}")],
-    ])
-
-
 def back_to_teams_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="← Мои команды", callback_data="member:teams_overview")],
