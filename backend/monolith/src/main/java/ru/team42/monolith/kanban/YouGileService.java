@@ -166,28 +166,9 @@ public class YouGileService {
         columnCache.remove(teamId);
     }
 
-    public List<YouGileTaskResponse> fetchTasksForUser(Team team, String yougileUserId) {
-        if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
-        DefaultApi api = buildApi(team);
-        try {
-            var columns = api.columnControllerSearch(false, null, null, null, team.getKanbanId()).block();
-            if (columns == null) return List.of();
-            return columns.getContent().stream()
-                    .flatMap(col -> fetchTasksInColumn(api, col.getId(), yougileUserId))
-                    .toList();
-        } catch (Exception e) {
-            log.error("Failed to fetch tasks for user {} in team {}: {}", yougileUserId, team.getId(), e.getMessage());
-            return List.of();
-        }
-    }
-
     private Stream<YouGileTaskResponse> fetchTasksForColumn(DefaultApi api, String columnId) {
-        return fetchTasksInColumn(api, columnId, null);
-    }
-
-    private Stream<YouGileTaskResponse> fetchTasksInColumn(DefaultApi api, String columnId, String assignedTo) {
         try {
-            var result = api.taskControllerSearch(false, BigDecimal.valueOf(100), null, null, columnId, assignedTo, null, null).block();
+            var result = api.taskControllerSearch(false, BigDecimal.valueOf(100), null, null, columnId, null, null, null).block();
             if (result == null) return Stream.empty();
             return result.getContent().stream().map(t -> {
                 String responsible = (t.getAssigned() != null && !t.getAssigned().isEmpty())
@@ -195,7 +176,7 @@ public class YouGileService {
                 return new YouGileTaskResponse(t.getId(), t.getTitle(), t.getColumnId(), responsible);
             });
         } catch (Exception e) {
-            log.warn("Failed to fetch tasks for column {} assignedTo={}: {}", columnId, assignedTo, e.getMessage());
+            log.warn("Failed to fetch tasks for column {}: {}", columnId, e.getMessage());
             return Stream.empty();
         }
     }
