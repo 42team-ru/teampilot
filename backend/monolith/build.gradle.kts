@@ -23,9 +23,6 @@ dependencies {
 
     // Security
     implementation(libs.spring.boot.starter.security)
-    implementation(libs.jjwt.api)
-    runtimeOnly(libs.jjwt.impl)
-    runtimeOnly(libs.jjwt.jackson)
 
     // Database
     implementation(libs.spring.boot.starter.validation)

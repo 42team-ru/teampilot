@@ -46,6 +46,15 @@ public class TeamService {
                 .toList();
     }
 
+    public List<TeamResponse> getUserTeams(Long telegramId) {
+        return teamUserRepository.findAllByUserTelegramId(telegramId)
+                .stream()
+                .map(TeamUser::getTeam)
+                .filter(Team::isActive)
+                .map(teamMapper::toResponse)
+                .toList();
+    }
+
     @Transactional
     public TeamResponse update(UUID teamId, UpdateTeamRequest req, Long managerTelegramId) {
         requireManager(teamId, managerTelegramId);
@@ -55,7 +64,7 @@ public class TeamService {
 
     public TeamResponse update(UUID teamId, UpdateTeamRequest req) {
         Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> AppException.notFound("Team with teamId %d not found".formatted(teamId)));
+                .orElseThrow(() -> AppException.notFound("Team with ID %s not found".formatted(teamId)));
 
         if (req.telegramChatId() != null) team.setTelegramChatId(req.telegramChatId());
         if (req.chatTitle() != null) team.setChatTitle(req.chatTitle());
@@ -117,7 +126,9 @@ public class TeamService {
     @Transactional
     public PendingTeamChatResponse upsertPendingChat(Long managerTelegramId, CreatePendingTeamChatRequest req) {
         User manager = userRepository.findByTelegramId(managerTelegramId)
-                .orElseThrow(() -> AppException.unauthorized("Telegram user %d not found".formatted(managerTelegramId)));
+                .orElseThrow(() -> AppException.notFound(
+                        "User with Telegram ID %d not found".formatted(managerTelegramId)
+                ));
         Instant now = Instant.now();
         PendingTeamChat chat = pendingTeamChatRepository.findByTelegramChatId(req.telegramChatId())
                 .orElseGet(PendingTeamChat::new);
@@ -176,7 +187,9 @@ public class TeamService {
         requireManager(teamId, managerTelegramId);
         TeamUser member = teamUserRepository.findById(teamUserId)
                 .filter(tu -> tu.getTeam().getId().equals(teamId))
-                .orElseThrow(() -> AppException.notFound("TeamUser %s not found in team %s".formatted(teamUserId, teamId)));
+                .orElseThrow(() -> AppException.notFound(
+                        "Team member with ID %s not found in team %s".formatted(teamUserId, teamId)
+                ));
         if (member.getUser().getTelegramId().equals(managerTelegramId)) {
             throw AppException.badRequest("Manager cannot remove themselves from the team");
         }
@@ -185,13 +198,20 @@ public class TeamService {
 
     private void requireManager(UUID teamId, Long telegramId) {
         if (telegramId == null) {
-            throw AppException.unauthorized("Telegram user is required");
+            throw AppException.unauthorized(
+                    "Telegram user authentication required: provide a valid X-Telegram-Id header"
+            );
+        }
+        if (!teamRepository.existsById(teamId)) {
+            throw AppException.notFound("Team with ID %s not found".formatted(teamId));
         }
         boolean manager = teamUserRepository.findByTeamIdAndUserTelegramId(teamId, telegramId)
                 .map(teamUser -> teamUser.getRole() == TeamRole.MANAGER)
                 .orElse(false);
         if (!manager) {
-            throw AppException.forbidden("Only team manager can update team %s".formatted(teamId));
+            throw AppException.forbidden(
+                    "Access denied: Telegram user %d is not a manager of team %s".formatted(telegramId, teamId)
+            );
         }
     }
 }

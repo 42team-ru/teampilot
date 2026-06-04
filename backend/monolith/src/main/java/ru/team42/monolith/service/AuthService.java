@@ -12,7 +12,6 @@ import ru.team42.monolith.config.YougileClientConfig;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
-import ru.team42.monolith.dto.request.TelegramOAuthRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.request.YouGileAuthRequest;
 import ru.team42.monolith.dto.request.YouGileBoardSelectRequest;
@@ -21,7 +20,6 @@ import ru.team42.monolith.dto.request.YouGileCredentialsRequest;
 import ru.team42.monolith.dto.response.AuthResponse;
 import ru.team42.monolith.dto.response.InviteResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
-import ru.team42.monolith.dto.response.TelegramAuthResponse;
 import ru.team42.monolith.dto.response.YouGileAuthResponse;
 import ru.team42.monolith.dto.response.YouGileBoardResponse;
 import ru.team42.monolith.dto.response.YouGileCompanyResponse;
@@ -33,8 +31,6 @@ import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 import ru.team42.monolith.repository.UserRepository;
-import ru.team42.monolith.security.JwtService;
-import ru.team42.monolith.security.TelegramOAuthVerifier;
 
 import java.util.List;
 import java.util.UUID;
@@ -49,8 +45,6 @@ public class AuthService {
     private final UserRepository userRepository;
     private final TeamService teamService;
     private final DefaultApi yougileUnauthenticatedApi;
-    private final TelegramOAuthVerifier telegramOAuthVerifier;
-    private final JwtService jwtService;
 
     @Transactional(readOnly = true)
     public InviteResponse createInvite(CreateInviteRequest request) {
@@ -236,22 +230,6 @@ public class AuthService {
             throw AppException.badRequest("Team %s has no YouGile API key — run /auth/yougile/connect first".formatted(teamId));
         }
         return YougileClientConfig.createAuthenticatedApi(team.getKanbanApiKey());
-    }
-
-    @Transactional
-    public TelegramAuthResponse telegramOAuth(TelegramOAuthRequest request) {
-        if (!telegramOAuthVerifier.verify(request)) {
-            throw AppException.unauthorized("Telegram OAuth signature invalid or expired");
-        }
-        User user = userRepository.findByTelegramId(request.id())
-                .orElseGet(User::new);
-        user.setTelegramId(request.id());
-        if (request.username() != null) user.setTelegramLogin(request.username());
-        if (request.firstName() != null) user.setFirstName(request.firstName());
-        if (request.lastName() != null) user.setLastName(request.lastName());
-        user = userRepository.save(user);
-        String token = jwtService.generateToken(user);
-        return new TelegramAuthResponse(user.getId(), user.getTelegramId(), user.getSystemRole(), token);
     }
 
     @Transactional

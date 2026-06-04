@@ -7,7 +7,6 @@ public final class KafkaTopics {
     public static final String MESSAGES_RAW     = "messages.raw";
     public static final String MESSAGES_BATCHES = "messages.batches";
     public static final String LLM_TASKS_CREATE  = "llm.tasks.create";
-    public static final String LLM_TASKS_UPDATE  = "llm.tasks.update";
     public static final String LLM_STATUS_CHANGE = "llm.status.change";
     public static final String AUDIO_NEW          = "audio.new";
     public static final String FILES_UPLOADED     = "files.uploaded";
