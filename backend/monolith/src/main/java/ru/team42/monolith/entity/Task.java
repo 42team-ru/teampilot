@@ -39,6 +39,9 @@ public class Task extends AbstractEntity {
     @Column(name = "deadline")
     private Instant deadline;
 
+    @Column(name = "deleted")
+    private boolean deleted = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private TaskStatus status = TaskStatus.OPEN;
