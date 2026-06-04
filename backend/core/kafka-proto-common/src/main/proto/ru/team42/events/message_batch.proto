@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package ru.team42.events;
+
+option java_package = "ru.team42.backend.proto.events";
+option java_outer_classname = "MessageBatchProto";
+option java_multiple_files = false;
+
+import "google/protobuf/timestamp.proto";
+
+message MessageBatchEvent {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  int64 chat_id = 3;
+  google.protobuf.Timestamp batch_start = 4;
+  google.protobuf.Timestamp batch_end = 5;
+  repeated MessageDto messages = 6;
+  repeated TeamMemberDto team = 7;
+  repeated ColumnDto columns = 8;
+
+  message MessageDto {
+    int64 user_id = 1;
+    string username = 2;
+    string full_name = 3;
+    string text = 4;
+    google.protobuf.Timestamp timestamp = 5;
+  }
+
+  message TeamMemberDto {
+    int64 telegram_id = 1;
+    string username = 2;
+    string full_name = 3;
+    string role = 4;
+    string position = 5;
+  }
+
+  message ColumnDto {
+    string id = 1;
+    string title = 2;
+  }
+}

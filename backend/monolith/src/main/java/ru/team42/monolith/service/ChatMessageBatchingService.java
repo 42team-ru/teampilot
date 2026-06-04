@@ -6,7 +6,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.entity.ChatMessage;
+import ru.team42.monolith.entity.Team;
+import ru.team42.monolith.entity.TeamUser;
+import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.repository.ChatMessageRepository;
+import ru.team42.monolith.repository.TeamRepository;
+import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -22,6 +27,9 @@ public class ChatMessageBatchingService {
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatMessageBatchPublisher batchPublisher;
+    private final TeamRepository teamRepository;
+    private final TeamUserRepository teamUserRepository;
+    private final YouGileService youGileService;
 
     @Scheduled(fixedDelay = 60_000)
     @Transactional
@@ -41,13 +49,29 @@ public class ChatMessageBatchingService {
 
             if (!sizeThresholdReached && !timeThresholdReached) continue;
 
-            batchPublisher.publishBatch(chatId, messages);
+            List<TeamUser> teamMembers = loadTeamMembers(chatId);
+            List<YouGileService.ColumnInfo> columns = loadColumns(chatId);
+
+            batchPublisher.publishBatch(chatId, messages, teamMembers, columns);
             messages.forEach(m -> m.setSentToLlmAt(now));
             chatMessageRepository.saveAll(messages);
 
-            log.info("Flushed batch: chatId={} size={} reason={}",
+            log.info("Flushed batch: chatId={} size={} reason={} teamSize={} columns={}",
                     chatId, messages.size(),
-                    sizeThresholdReached ? "size" : "timeout");
+                    sizeThresholdReached ? "size" : "timeout",
+                    teamMembers.size(), columns.size());
         }
+    }
+
+    private List<TeamUser> loadTeamMembers(Long chatId) {
+        return teamRepository.findByTelegramChatId(chatId)
+                .map(team -> teamUserRepository.findByTeamId(team.getId()))
+                .orElse(List.of());
+    }
+
+    private List<YouGileService.ColumnInfo> loadColumns(Long chatId) {
+        return teamRepository.findByTelegramChatId(chatId)
+                .map(youGileService::fetchColumns)
+                .orElse(List.of());
     }
 }
