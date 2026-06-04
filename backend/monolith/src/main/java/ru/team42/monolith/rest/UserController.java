@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -45,27 +46,22 @@ public class UserController {
     }
 
     @Operation(summary = "Обновить имя и фамилию текущего пользователя")
+    @PreAuthorize("isAuthenticated()")
     @PatchMapping("/me")
     public ResponseEntity<UserResponse> updateMe(
             @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody UpdateUserRequest request
     ) {
-        if (currentUser == null) {
-            throw AppException.unauthorized(
-                    "Telegram user authentication required: provide a valid X-Telegram-Id header"
-            );
-        }
         return ResponseUtils.ok(userService.update(currentUser.getId(), request));
     }
 
     @Operation(summary = "Обновить имя и фамилию пользователя (только бот, системный админ или сам пользователь)")
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN') or authentication.principal.id == #id")
     @PatchMapping("/{id}")
     public ResponseEntity<UserResponse> update(
             @PathVariable UUID id,
-            @Parameter(hidden = true) @AuthenticationPrincipal Object principal,
             @Valid @RequestBody UpdateUserRequest request
     ) {
-        requireCanUpdate(id, principal);
         return ResponseUtils.ok(userService.update(id, request));
     }
 
@@ -81,16 +77,4 @@ public class UserController {
         return ResponseUtils.ok(userService.listByRole(parsed));
     }
 
-    private void requireCanUpdate(UUID id, Object principal) {
-        if ("bot".equals(principal)) {
-            return;
-        }
-        if (principal instanceof User user
-                && (user.getId().equals(id) || user.getSystemRole() == SystemRole.SYSTEM_ADMIN)) {
-            return;
-        }
-        throw AppException.forbidden(
-                "Access denied: only the bot, a system administrator, or user %s can update this profile".formatted(id)
-        );
-    }
 }

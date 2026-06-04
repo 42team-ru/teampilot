@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
@@ -24,21 +25,19 @@ public class TaskController {
 
     private final TaskService taskService;
 
-    /** Читает задачу из локальной БД */
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/{id}")
     public ResponseEntity<TaskResponse> getById(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.getById(id)));
     }
 
-    /**
-     * Идёт в YouGile по externalId, применяет diff (статус, название, исполнитель),
-     * записывает историю статусов, возвращает актуальное состояние задачи.
-     */
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
     @PostMapping("/{id}/sync")
     public ResponseEntity<TaskResponse> syncFromYouGile(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.syncFromYouGile(id)));
     }
 
+    @PreAuthorize("isAuthenticated()")
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(
             @RequestParam(required = false) Long chatId,
@@ -53,11 +52,14 @@ public class TaskController {
 
 // ============================================== ПАРАША ДЛЯ ТЕСТОВ ПОТОМ УДАЛИТЬ ==================================================
 
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @GetMapping("/yougile")
     public ResponseEntity<List<YouGileService.YouGileTaskResponse>> listFromYouGile(
             @RequestParam Long chatId) {
         return ResponseUtils.ok(taskService.listFromYouGile(chatId));
     }
+
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
     @PostMapping
     public ResponseEntity<TaskResponse> createTest(@RequestBody LlmTaskCreateEvent event) {
         return ResponseUtils.ok(TaskResponse.from(taskService.createFromLlmEvent(event)));
