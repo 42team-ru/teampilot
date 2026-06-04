@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+import time
+
 import httpx
 
 from config import settings
 from services.http_logging import log_http_request_error, log_http_response_error
 
 _BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
+_USER_LOOKUP_TIMEOUT = httpx.Timeout(2.0, connect=0.5)
+_USER_CACHE_TTL_SECONDS = 30.0
+_USER_MISSING_CACHE_TTL_SECONDS = 5.0
+_USER_CACHE: dict[int, tuple[float, dict | None]] = {}
+
+
+@dataclass(frozen=True)
+class UserLookupResult:
+    ok: bool
+    user: dict | None
 
 
 def _headers(telegram_id: int | None = None) -> dict:
@@ -17,20 +30,35 @@ def _headers(telegram_id: int | None = None) -> dict:
 
 async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
     """GET /users/{telegramId} - None if 404."""
+    result = await lookup_user_by_telegram_id(telegram_id)
+    return result.user if result.ok else None
+
+
+async def lookup_user_by_telegram_id(telegram_id: int) -> UserLookupResult:
+    """GET /users/{telegramId}; distinguishes not found from backend failure."""
+    cached = _USER_CACHE.get(telegram_id)
+    now = time.monotonic()
+    if cached is not None:
+        expires_at, user = cached
+        if expires_at > now:
+            return UserLookupResult(ok=True, user=user)
+        _USER_CACHE.pop(telegram_id, None)
+
     path = f"/users/{telegram_id}"
     context = {"telegram_id": telegram_id}
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=_USER_LOOKUP_TIMEOUT) as client:
             resp = await client.get(
                 f"{settings.BACKEND_URL}{path}",
                 headers=_headers(telegram_id),
             )
     except httpx.RequestError as e:
         log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
-        return None
+        return UserLookupResult(ok=False, user=None)
 
     if resp.status_code == 404:
-        return None
+        _USER_CACHE[telegram_id] = (now + _USER_MISSING_CACHE_TTL_SECONDS, None)
+        return UserLookupResult(ok=True, user=None)
 
     if resp.status_code != 200:
         log_http_response_error(
@@ -41,9 +69,15 @@ async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
             expected="200 or 404",
             context=context,
         )
-        return None
+        return UserLookupResult(ok=False, user=None)
 
-    return resp.json()
+    user = resp.json()
+    _USER_CACHE[telegram_id] = (now + _USER_CACHE_TTL_SECONDS, user)
+    return UserLookupResult(ok=True, user=user)
+
+
+def clear_user_cache(telegram_id: int) -> None:
+    _USER_CACHE.pop(telegram_id, None)
 
 
 async def get_team_members(telegram_id: int | None = None) -> list[dict]:
