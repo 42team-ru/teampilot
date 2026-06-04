@@ -16,8 +16,6 @@ public class MessageBatchEvent extends BaseEvent {
     private final List<MessageDto> messages;
     private final Instant batchStart;
     private final Instant batchEnd;
-    private final List<TeamMemberDto> team;
-    private final List<ColumnDto> columns;
 
     @Getter
     @Builder
@@ -28,24 +26,5 @@ public class MessageBatchEvent extends BaseEvent {
         private final String fullName;
         private final String text;
         private final Instant timestamp;
-    }
-
-    @Getter
-    @Builder
-    @Jacksonized
-    public static class TeamMemberDto {
-        private final Long telegramId;
-        private final String username;
-        private final String fullName;
-        private final String role;
-        private final String position;
-    }
-
-    @Getter
-    @Builder
-    @Jacksonized
-    public static class ColumnDto {
-        private final String id;
-        private final String title;
     }
 }

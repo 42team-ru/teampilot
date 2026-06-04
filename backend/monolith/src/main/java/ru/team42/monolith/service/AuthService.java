@@ -11,7 +11,6 @@ import ru.team42.monolith.client.yougile.model.CredentialsWithNameDto;
 import ru.team42.monolith.config.YougileClientConfig;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
-import ru.team42.monolith.dto.request.CreateUserRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.request.YouGileConnectRequest;
@@ -66,7 +65,6 @@ public class AuthService {
             teamUser.setTeam(team);
             teamUser.setUser(user);
             teamUser.setRole(TeamRole.USER);
-            teamUser.setPosition(request.position());
             teamUserRepository.save(teamUser);
         }
 
@@ -149,15 +147,6 @@ public class AuthService {
             throw AppException.badRequest("Team %s has no YouGile API key — run /auth/yougile/connect first".formatted(teamId));
         }
         return YougileClientConfig.createAuthenticatedApi(team.getKanbanApiKey());
-    }
-
-    @Transactional
-    public AuthResponse registerUser(CreateUserRequest request) {
-        User user = new User();
-        user.setFirstName(request.firstName());
-        user.setLastName(request.lastName());
-        user = userRepository.save(user);
-        return new AuthResponse(user.getId(), user.getTelegramId(), user.getSystemRole());
     }
 
     private User createUser(LoginRequest request) {

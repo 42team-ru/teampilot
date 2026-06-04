@@ -6,6 +6,5 @@ public record LoginRequest(
         @NotNull Long telegramId,
         String telegramLogin,
         String firstName,
-        String lastName,
-        String position
+        String lastName
 ) {}

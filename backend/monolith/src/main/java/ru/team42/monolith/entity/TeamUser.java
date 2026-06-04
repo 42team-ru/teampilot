@@ -33,9 +33,6 @@ public class TeamUser extends AbstractEntity {
     @Column(name = "role", nullable = false, length = 20)
     private TeamRole role;
 
-    @Column(name = "position", length = 100)
-    private String position;
-
     @Column(name = "yougile_user_id")
     private String yougileUserId;
 }

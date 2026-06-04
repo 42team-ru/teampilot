@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
-import ru.team42.monolith.dto.request.CreateUserRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
 import ru.team42.monolith.dto.request.YouGileConnectRequest;
 import ru.team42.monolith.dto.request.YouGileCredentialsRequest;
@@ -23,7 +22,6 @@ import ru.team42.monolith.dto.response.TeamResponse;
 import ru.team42.monolith.dto.response.YouGileBoardResponse;
 import ru.team42.monolith.dto.response.YouGileCompanyResponse;
 import ru.team42.monolith.dto.response.YouGileProjectResponse;
-import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.service.AuthService;
 
 import java.util.List;
@@ -37,15 +35,6 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService authService;
-
-    @Operation(
-            summary = "Создать пользователя",
-            description = "Создаёт обычного пользователя по имени и фамилии."
-    )
-    @PostMapping("/register")
-    public ResponseEntity<AuthResponse> registerUser(@Valid @RequestBody CreateUserRequest request) {
-        return ResponseUtils.created("/auth/register", authService.registerUser(request));
-    }
 
     @Operation(
             summary = "Получить инвайт-ссылку по chatId",

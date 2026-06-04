@@ -9,10 +9,20 @@ from keyboards.manager import (
     manager_back_keyboard,
     manager_chat_select_keyboard,
     manager_deactivate_confirm_keyboard,
+    manager_member_remove_confirm_keyboard,
+    manager_members_list_keyboard,
     manager_skip_keyboard,
     manager_team_select_keyboard,
 )
-from services.team_service import deactivate_team, get_my_teams, get_pending_team_chats, link_chat_to_team, update_team
+from services.team_service import (
+    deactivate_team,
+    get_my_teams,
+    get_pending_team_chats,
+    get_team_members,
+    link_chat_to_team,
+    remove_team_member,
+    update_team,
+)
 from states.manager import ManagerLinkChatStates, ManagerUpdateStates
 
 router = Router()
@@ -57,6 +67,149 @@ async def _send_join_link_to_group(callback: CallbackQuery, chat_id: int, team_i
         )
     except TelegramForbiddenError:
         pass
+
+
+@router.callback_query(F.data == "manager:members")
+async def manager_members_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(members_team_id=None)
+    teams = await get_my_teams(callback.from_user.id)
+    if not teams:
+        await callback.message.edit_text(
+            "У вас пока нет команд.",
+            reply_markup=manager_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    await callback.message.edit_text(
+        "<b>Участники команды</b>\n\nВыберите команду:",
+        reply_markup=manager_team_select_keyboard(teams, "members_list"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manager:members_list:"))
+async def manager_members_list(callback: CallbackQuery, state: FSMContext) -> None:
+    team_id = callback.data.split(":", 2)[2]
+    await state.update_data(members_team_id=team_id)
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    team_title = _team_title(team) if team else team_id
+
+    if not members:
+        await callback.message.edit_text(
+            f"<b>{team_title}</b>\n\nВ команде нет участников.",
+            reply_markup=manager_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    lines = [f"<b>Участники: {team_title}</b> ({len(members)})\n"]
+    for m in members:
+        role_label = "менеджер 🔑" if m.get("role") == "MANAGER" else "участник"
+        parts = []
+        if m.get("firstName"):
+            parts.append(m["firstName"])
+        if m.get("lastName"):
+            parts.append(m["lastName"])
+        name = " ".join(parts) if parts else "Без имени"
+        login = m.get("telegramLogin")
+        display = f"{name} (@{login})" if login else name
+        lines.append(f"• {display} — {role_label}")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=manager_members_list_keyboard(members, team_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manager:mbr_confirm:"))
+async def manager_member_remove_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id")
+
+    if not team_id:
+        await callback.answer("Сессия истекла, начните заново.", show_alert=True)
+        return
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    member = next((m for m in members if str(m.get("id")) == team_user_id), None)
+    if member is None:
+        await callback.message.edit_text(
+            "Участник не найден.",
+            reply_markup=manager_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    parts = []
+    if member.get("firstName"):
+        parts.append(member["firstName"])
+    if member.get("lastName"):
+        parts.append(member["lastName"])
+    name = " ".join(parts) if parts else "Без имени"
+    login = member.get("telegramLogin")
+    display = f"{name} (@{login})" if login else name
+
+    await callback.message.edit_text(
+        f"Удалить <b>{display}</b> из команды?",
+        reply_markup=manager_member_remove_confirm_keyboard(team_user_id, team_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manager:mbr_remove:"))
+async def manager_member_remove(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id")
+
+    if not team_id:
+        await callback.answer("Сессия истекла, начните заново.", show_alert=True)
+        return
+
+    ok = await remove_team_member(team_id, team_user_id, callback.from_user.id)
+    if not ok:
+        await callback.message.edit_text(
+            "Не удалось удалить участника. Попробуйте позже.",
+            reply_markup=manager_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    team_title = _team_title(team) if team else team_id
+
+    if not members:
+        await callback.message.edit_text(
+            f"✅ Участник удалён.\n\n<b>{team_title}</b>\n\nВ команде больше нет участников.",
+            reply_markup=manager_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    lines = [f"✅ Участник удалён.\n\n<b>Участники: {team_title}</b> ({len(members)})\n"]
+    for m in members:
+        role_label = "менеджер 🔑" if m.get("role") == "MANAGER" else "участник"
+        parts = []
+        if m.get("firstName"):
+            parts.append(m["firstName"])
+        if m.get("lastName"):
+            parts.append(m["lastName"])
+        name = " ".join(parts) if parts else "Без имени"
+        login = m.get("telegramLogin")
+        display = f"{name} (@{login})" if login else name
+        lines.append(f"• {display} — {role_label}")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=manager_members_list_keyboard(members, team_id),
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data == "manager:teams")

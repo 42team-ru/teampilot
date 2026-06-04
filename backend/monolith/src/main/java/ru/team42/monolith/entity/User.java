@@ -22,7 +22,7 @@ import ru.team42.monolith.entity.enums.SystemRole;
 @NoArgsConstructor
 public class User extends AbstractEntity {
 
-    @Column(name = "telegram_id", unique = true)
+    @Column(name = "telegram_id", nullable = false, unique = true)
     private Long telegramId;
 
     @Column(name = "telegram_login", length = 100)

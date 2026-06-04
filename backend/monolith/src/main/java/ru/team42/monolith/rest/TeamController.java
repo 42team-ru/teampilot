@@ -13,6 +13,7 @@ import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.request.CreatePendingTeamChatRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.response.PendingTeamChatResponse;
+import ru.team42.monolith.dto.response.TeamMemberResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.service.TeamService;
@@ -61,6 +62,26 @@ public class TeamController {
             @RequestBody UpdateTeamRequest request
     ) {
         return ResponseUtils.ok(teamService.update(teamId, request, requireTelegramId(currentUser)));
+    }
+
+    @Operation(summary = "Получить список участников команды")
+    @GetMapping("/{teamId}/members")
+    public ResponseEntity<List<TeamMemberResponse>> getMembers(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID teamId
+    ) {
+        return ResponseUtils.ok(teamService.getTeamMembers(teamId, requireTelegramId(currentUser)));
+    }
+
+    @Operation(summary = "Удалить участника из команды")
+    @DeleteMapping("/{teamId}/members/{teamUserId}")
+    public ResponseEntity<Void> removeMember(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID teamId,
+            @PathVariable UUID teamUserId
+    ) {
+        teamService.removeMember(teamId, teamUserId, requireTelegramId(currentUser));
+        return ResponseUtils.noContent();
     }
 
     @Operation(summary = "Деактивировать команду")
