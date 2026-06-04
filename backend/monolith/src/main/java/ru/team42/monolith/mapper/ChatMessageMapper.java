@@ -2,8 +2,8 @@ package ru.team42.monolith.mapper;
 
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import ru.team42.backend.kafka_common.event.ChatMessageEvent;
-import ru.team42.backend.kafka_common.event.MessageBatchEvent;
+import ru.team42.monolith.event.ChatMessageEvent;
+import ru.team42.monolith.event.MessageBatchEvent;
 import ru.team42.monolith.entity.ChatMessage;
 import ru.team42.monolith.entity.User;
 

@@ -1,10 +1,11 @@
-package ru.team42.backend.kafka_common.event;
+package ru.team42.monolith.event;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.jackson.Jacksonized;
+import ru.team42.backend.kafka_common.event.BaseEvent;
 
 import java.time.Instant;
 
