@@ -38,7 +38,9 @@ public class UserController {
     public ResponseEntity<UserResponse> getByTelegramId(@PathVariable Long telegramId) {
         return ResponseUtils.ok(
                 userService.findByTelegramId(telegramId)
-                        .orElseThrow(() -> AppException.notFound("User with telegramId %d not found".formatted(telegramId)))
+                        .orElseThrow(() -> AppException.notFound(
+                                "User with Telegram ID %d not found".formatted(telegramId)
+                        ))
         );
     }
 
@@ -48,6 +50,11 @@ public class UserController {
             @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody UpdateUserRequest request
     ) {
+        if (currentUser == null) {
+            throw AppException.unauthorized(
+                    "Telegram user authentication required: provide a valid X-Telegram-Id header"
+            );
+        }
         return ResponseUtils.ok(userService.update(currentUser.getId(), request));
     }
 
@@ -82,6 +89,8 @@ public class UserController {
                 && (user.getId().equals(id) || user.getSystemRole() == SystemRole.SYSTEM_ADMIN)) {
             return;
         }
-        throw AppException.forbidden("Only bot, system admin, or target user can update user %s".formatted(id));
+        throw AppException.forbidden(
+                "Access denied: only the bot, a system administrator, or user %s can update this profile".formatted(id)
+        );
     }
 }

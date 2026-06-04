@@ -28,7 +28,7 @@ public class UserService {
     @Transactional
     public UserResponse update(UUID id, UpdateUserRequest request) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> AppException.notFound("User %s not found".formatted(id)));
+                .orElseThrow(() -> AppException.notFound("User with ID %s not found".formatted(id)));
         if (request.firstName() != null) user.setFirstName(request.firstName());
         if (request.lastName() != null) user.setLastName(request.lastName());
         if (request.telegramLogin() != null && user.getTelegramLogin() == null)
