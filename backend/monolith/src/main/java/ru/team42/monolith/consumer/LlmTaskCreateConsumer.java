@@ -24,15 +24,7 @@ public class LlmTaskCreateConsumer {
     }
 
     @KafkaListener(topics = KafkaTopics.LLM_TASKS_UPDATE)
-    public void consumeUpdate(String json) {
-        LlmUpdateTaskEvent event;
-        try {
-            event = MAPPER.readValue(json, LlmUpdateTaskEvent.class);
-        } catch (Exception e) {
-            log.error("Failed to deserialize LlmUpdateTaskEvent: {}", e.getMessage());
-            return;
-        }
-
+    public void consumeUpdate(LlmUpdateTaskEvent event) {
         log.info("Received llm.tasks.update for taskId={}", event.getTaskId());
 
         try {
