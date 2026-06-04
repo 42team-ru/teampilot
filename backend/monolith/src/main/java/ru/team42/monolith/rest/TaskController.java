@@ -50,6 +50,15 @@ public class TaskController {
         return ResponseUtils.page(PageResponse.fromPage(page));
     }
 
+    @GetMapping("/user")
+    public ResponseEntity<List<TaskResponse>> listForUser(@RequestParam Long telegramId) {
+        List<TaskResponse> tasks = taskService.listTasksForUser(telegramId)
+                .stream()
+                .map(TaskResponse::from)
+                .toList();
+        return ResponseUtils.ok(tasks);
+    }
+
 // ============================================== ПАРАША ДЛЯ ТЕСТОВ ПОТОМ УДАЛИТЬ ==================================================
 
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
