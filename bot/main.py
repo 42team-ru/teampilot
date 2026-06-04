@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
 from typing import Any, Awaitable, Callable
 
 from aiogram import Bot, BaseMiddleware, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -23,6 +25,8 @@ from handlers.tasks_commands import router as tasks_commands_router
 from handlers.upload import router as upload_router
 from kafka.consumer import EventConsumer
 from kafka.producer import EventProducer
+from services.backend_error import BackendApiError
+from services.http_client import http_client
 
 
 class KafkaProducerMiddleware(BaseMiddleware):
@@ -56,15 +60,47 @@ class TelegramStaleCallbackMiddleware(BaseMiddleware):
             raise
 
 
+class BackendApiErrorMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        try:
+            return await handler(event, data)
+        except BackendApiError as error:
+            logger.warning(
+                "Backend error shown to user: status={} detail={} trace_id={} instance={}",
+                error.status,
+                error.detail,
+                error.trace_id,
+                error.instance,
+            )
+            message = getattr(event, "message", None)
+            callback = getattr(event, "callback_query", None)
+            if callback is not None:
+                message = callback.message
+
+            if message is not None:
+                await message.answer(error.user_message())
+            if callback is not None:
+                await callback.answer()
+            return None
+
+
 async def main() -> None:
+    session = AiohttpSession(timeout=settings.HTTP_TIMEOUT_SECONDS)
     bot = Bot(
         token=settings.BOT_TOKEN,
+        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=MemoryStorage())
 
     producer = EventProducer(settings.KAFKA_BOOTSTRAP_SERVERS)
     dp.update.middleware(TelegramStaleCallbackMiddleware())
+    dp.update.middleware(BackendApiErrorMiddleware())
     dp.update.middleware(KafkaProducerMiddleware(producer))
 
     # Order matters: registration guard first, setup before generic auth/group handlers.
@@ -81,13 +117,17 @@ async def main() -> None:
     dp.include_router(group_router)
 
     consumer = EventConsumer()
-    asyncio.create_task(consumer.start(bot))
+    consumer_task = asyncio.create_task(consumer.start(bot))
 
     logger.info("Starting bot polling...")
     try:
         await dp.start_polling(bot)
     finally:
+        consumer_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await consumer_task
         producer.flush()
+        await http_client.close()
         await bot.session.close()
 
 
