@@ -11,4 +11,6 @@ public class WhisperProperties {
     private String baseUrl = "http://localhost:8002";
     private String endpoint = "/inference";
     private String model = "whisper-1";
+    private String language = "ru";
+    private int timeoutSeconds = 120;
 }
