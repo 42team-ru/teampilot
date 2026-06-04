@@ -14,9 +14,15 @@ from aiogram.types import (
 from loguru import logger
 
 from config import settings
-from keyboards.task import build_projects_keyboard
-from services.team_service import create_pending_team_chat, deactivate_team, get_team_id, update_team_kanban
-from services.yougile import YouGileClient
+from keyboards.task import build_companies_keyboard, build_projects_keyboard
+from services.team_service import (
+    create_pending_team_chat,
+    deactivate_team,
+    get_team_id,
+    update_team_kanban,
+    yougile_auth,
+    yougile_select_board,
+)
 from states.setup import GroupSetupStates
 
 router = Router()
@@ -29,8 +35,6 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
 
 
 class _SetupDeepLink(BaseFilter):
-    """Matches /start setup_{chat_id} deep links only."""
-
     async def __call__(self, message: Message) -> bool:
         if not message.text:
             return False
@@ -38,13 +42,11 @@ class _SetupDeepLink(BaseFilter):
         return len(parts) == 2 and parts[1].startswith("setup_")
 
 
-# ── Helper: send join-link to group ─────────────────────────────────────────
+# ── Helper ───────────────────────────────────────────────────────────────────
 
 async def _send_join_link_to_group(bot: Bot, chat_id: int, telegram_id: int | None = None) -> None:
-    """Fetch teamId and send an invite button to the group."""
     team_id = await get_team_id(chat_id, telegram_id=telegram_id)
     if not team_id:
-        logger.warning(f"Could not get teamId for chat {chat_id} after linking")
         return
     bot_info = await bot.get_me()
     deep_link = f"https://t.me/{bot_info.username}?start=join_{team_id}"
@@ -54,13 +56,24 @@ async def _send_join_link_to_group(bot: Bot, chat_id: int, telegram_id: int | No
     try:
         await bot.send_message(
             chat_id=chat_id,
-            text=(
-                "👋 Бот настроен! Чтобы начать получать задачи — нажмите кнопку ниже:"
-            ),
+            text="👋 Бот настроен! Чтобы начать получать задачи — нажмите кнопку ниже:",
             reply_markup=kb,
         )
     except TelegramForbiddenError:
-        logger.warning(f"Cannot send join link to group {chat_id}: bot was removed or no access")
+        logger.warning(f"Cannot send join link to group {chat_id}")
+
+
+async def _ask_for_login(target: Message | CallbackQuery, state: FSMContext, chat_id: int, chat_title: str) -> None:
+    await state.update_data(pending_chat_id=chat_id, pending_chat_title=chat_title)
+    await state.set_state(GroupSetupStates.waiting_for_login)
+    text = (
+        f"Подключение YouGile для группы <b>{chat_title}</b>\n\n"
+        "Введи <b>логин</b> от YouGile-аккаунта:"
+    )
+    if isinstance(target, CallbackQuery):
+        await target.message.answer(text)
+    else:
+        await target.answer(text)
 
 
 # ── 1. Bot added to group ────────────────────────────────────────────────────
@@ -74,7 +87,6 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
     team_id = await get_team_id(chat.id, telegram_id=adder.id)
 
     if team_id:
-        # Team already linked — just send the invite button
         bot_info = await bot.get_me()
         deep_link = f"https://t.me/{bot_info.username}?start=join_{team_id}"
         kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -83,25 +95,23 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
         try:
             await bot.send_message(
                 chat_id=chat.id,
-                text=(
-                    f"👋 Привет, <b>{chat_title}</b>!\n\n"
-                    "Чтобы начать получать задачи — нажмите кнопку ниже:"
-                ),
+                text=f"👋 Привет, <b>{chat_title}</b>!\n\nЧтобы начать получать задачи — нажмите кнопку ниже:",
                 reply_markup=kb,
             )
         except TelegramForbiddenError:
             pass
         return
 
-    # No team linked yet — ask manager to link via DM
     await create_pending_team_chat(chat.id, chat_title, telegram_id=adder.id)
-    group_text = (
-        f"👋 Привет! Я добавлен в <b>{chat_title}</b>.\n\n"
-        "⚠️ Этот чат ещё не привязан к команде.\n"
-        "Менеджер команды должен связать чат через личку бота."
-    )
     try:
-        await bot.send_message(chat_id=chat.id, text=group_text)
+        await bot.send_message(
+            chat_id=chat.id,
+            text=(
+                f"👋 Привет! Я добавлен в <b>{chat_title}</b>.\n\n"
+                "⚠️ Этот чат ещё не привязан к команде.\n"
+                "Менеджер команды должен связать чат через личку бота."
+            ),
+        )
     except TelegramForbiddenError:
         pass
 
@@ -116,15 +126,15 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
             text=(
                 f"👥 Бот добавлен в <b>{chat_title}</b>.\n\n"
                 "Чат ещё не привязан ни к одной команде.\n"
-                "Нажмите кнопку, чтобы выбрать команду. Также этот чат появится в панели менеджера."
+                "Нажмите кнопку, чтобы выбрать команду."
             ),
             reply_markup=kb,
         )
     except TelegramForbiddenError:
-        logger.warning(f"Cannot DM adder {adder.id} — no private chat open")
+        logger.warning(f"Cannot DM adder {adder.id}")
 
 
-# ── 2. Deep link fallback — /start setup_{chat_id} ──────────────────────────
+# ── 2. Deep link /start setup_{chat_id} ─────────────────────────────────────
 
 @router.message(_SetupDeepLink())
 async def start_with_setup_deep_link(message: Message, state: FSMContext) -> None:
@@ -141,102 +151,122 @@ async def start_with_setup_deep_link(message: Message, state: FSMContext) -> Non
     except Exception:
         chat_title = str(chat_id)
 
-    await state.update_data(pending_chat_id=chat_id, pending_chat_title=chat_title)
-    await state.set_state(GroupSetupStates.waiting_for_token)
-
-    await message.answer(
-        f"Настройка для группы <b>{chat_title}</b>\n\n"
-        "Отправь API токен YouGile:\n"
-        "<i>YouGile → Настройки → API → Создать токен</i>"
-    )
-
-
-# ── 3. Receive YouGile token → validate → show board list ───────────────────
-
-@router.message(GroupSetupStates.waiting_for_token)
-async def process_yougile_token(message: Message, state: FSMContext) -> None:
-    token = (message.text or "").strip()
-    if not token:
-        await message.answer("Пришли токен YouGile текстом.")
+    if settings.MOCK_YOUGILE:
+        team_id = await get_team_id(chat_id, telegram_id=message.from_user.id)
+        if team_id:
+            ok = await update_team_kanban(team_id, settings.MOCK_YOUGILE_BOARD_ID, settings.MOCK_YOUGILE_TOKEN, telegram_id=message.from_user.id)
+            logger.info(f"[MOCK] Team {team_id} kanban configured")
+        await message.answer(f"✅ [MOCK] Группа <b>{chat_title}</b> настроена с mock YouGile.")
         return
 
-    checking_msg = await message.answer("⏳ Проверяю токен...")
+    await _ask_for_login(message, state, chat_id, chat_title)
 
-    client = YouGileClient(token)
-    is_valid = await client.validate_token()
 
-    if not is_valid:
-        await checking_msg.delete()
-        await message.answer(
-            "❌ Токен не подходит. Проверь и попробуй ещё раз.\n"
-            "<i>YouGile → Настройки → API → Создать токен</i>"
+# ── 3. Receive login ─────────────────────────────────────────────────────────
+
+@router.message(GroupSetupStates.waiting_for_login)
+async def process_yougile_login(message: Message, state: FSMContext) -> None:
+    login = (message.text or "").strip()
+    if not login:
+        await message.answer("Пришли логин от YouGile текстом.")
+        return
+    await state.update_data(yougile_login=login)
+    await state.set_state(GroupSetupStates.waiting_for_password)
+    await message.answer("Теперь введи <b>пароль</b> от YouGile:")
+
+
+# ── 4. Receive password → call backend ──────────────────────────────────────
+
+@router.message(GroupSetupStates.waiting_for_password)
+async def process_yougile_password(message: Message, state: FSMContext) -> None:
+    password = (message.text or "").strip()
+    if not password:
+        await message.answer("Пришли пароль YouGile текстом.")
+        return
+
+    # Delete password message so it's not visible in history
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    data = await state.get_data()
+    chat_id: int = data["pending_chat_id"]
+    login: str = data["yougile_login"]
+
+    await state.update_data(yougile_password=password)
+
+    checking_msg = await message.answer("⏳ Подключаюсь к YouGile...")
+
+    result = await yougile_auth(chat_id, login, password, telegram_id=message.from_user.id)
+
+    if result is None:
+        await checking_msg.edit_text(
+            "❌ Не удалось подключиться к YouGile. Проверь логин/пароль и попробуй снова.\n"
+            "/cancel — отменить"
         )
+        await state.set_state(GroupSetupStates.waiting_for_login)
         return
 
-    projects = await client.get_projects()
+    await _handle_auth_result(checking_msg, state, result)
 
-    if not projects:
-        await checking_msg.delete()
-        await message.answer(
-            "⚠️ Нет доступных проектов в этом воркспейсе.\n"
-            "Создай хотя бы один проект в YouGile и попробуй снова."
-        )
+
+# ── 5. Company selected (multiple companies case) ────────────────────────────
+
+@router.callback_query(GroupSetupStates.waiting_for_company_select, F.data.startswith("yougile_company:"))
+async def process_company_selection(callback: CallbackQuery, state: FSMContext) -> None:
+    company_id = callback.data.split(":")[1]
+    data = await state.get_data()
+    chat_id: int = data["pending_chat_id"]
+    login: str = data["yougile_login"]
+    password: str = data["yougile_password"]
+
+    await callback.message.edit_text("⏳ Получаю список досок...")
+
+    result = await yougile_auth(
+        chat_id, login, password,
+        company_id=company_id,
+        telegram_id=callback.from_user.id,
+    )
+
+    if result is None:
+        await callback.message.edit_text("❌ Ошибка подключения. Попробуй /cancel и начни заново.")
+        await callback.answer()
         return
 
-    await state.update_data(
-        yougile_token=token,
-        pending_projects={p["id"]: p["title"] for p in projects},
-    )
-    await state.set_state(GroupSetupStates.waiting_for_board_select)
-
-    keyboard = build_projects_keyboard(projects)
-    await checking_msg.delete()
-    await message.answer(
-        "✅ Токен подтверждён! Выбери борд куда создавать задачи:",
-        reply_markup=keyboard,
-    )
+    await _handle_auth_result(callback.message, state, result)
+    await callback.answer()
 
 
-# ── 4. Board selected ────────────────────────────────────────────────────────
+# ── 6. Board selected ────────────────────────────────────────────────────────
 
 @router.callback_query(GroupSetupStates.waiting_for_board_select, F.data.startswith("select_board:"))
 async def process_board_selection(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     board_id = callback.data.split(":")[1]
-
     data = await state.get_data()
     chat_id: int = data["pending_chat_id"]
     chat_title: str = data["pending_chat_title"]
-    yougile_token: str = data["yougile_token"]
-    projects: dict[str, str] = data.get("pending_projects", {})
-    board_title = projects.get(board_id, board_id)
+    boards: list[dict] = data.get("boards", [])
+    board_title = next((b["title"] for b in boards if b["id"] == board_id), board_id)
 
-    # Get teamId to update kanban settings
-    team_id = await get_team_id(chat_id, telegram_id=callback.from_user.id)
-    if team_id:
-        ok = await update_team_kanban(team_id, board_id, yougile_token, telegram_id=callback.from_user.id)
-        if not ok:
-            await callback.message.edit_text(
-                "❌ Не удалось сохранить настройки канбана. Попробуй позже."
-            )
-            await callback.answer()
-            return
-    else:
-        logger.warning(f"No team found for chat {chat_id} during board selection — kanban not saved")
+    ok = await yougile_select_board(chat_id, board_id, telegram_id=callback.from_user.id)
+    if not ok:
+        await callback.message.edit_text("❌ Не удалось сохранить доску. Попробуй позже.")
+        await callback.answer()
+        return
 
     await state.clear()
-
     await callback.message.edit_text(
         f"✅ Готово!\n\n"
         f"Группа: <b>{chat_title}</b>\n"
-        f"Борд: <b>{board_title}</b>\n\n"
-        "Настройка сохранена."
+        f"Доска: <b>{board_title}</b>\n\n"
+        "Канбан подключён."
     )
-
     await _send_join_link_to_group(bot, chat_id, telegram_id=callback.from_user.id)
     await callback.answer()
 
 
-# ── 5. Bot removed from group ────────────────────────────────────────────────
+# ── 7. Bot removed from group ────────────────────────────────────────────────
 
 @router.my_chat_member(ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))
 async def bot_removed_from_group(event: ChatMemberUpdated) -> None:
@@ -244,7 +274,7 @@ async def bot_removed_from_group(event: ChatMemberUpdated) -> None:
     logger.info(f"Bot removed from group {event.chat.id} ({event.chat.title})")
 
 
-# ── 6. /setup command in group (admins only) ─────────────────────────────────
+# ── 8. /setup command in group ───────────────────────────────────────────────
 
 @router.message(Command("setup"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> None:
@@ -287,16 +317,47 @@ async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> N
         await bot.send_message(
             chat_id=message.from_user.id,
             text=(
-                f"Настройка группы <b>{message.chat.title}</b>\n\n"
-                "Отправь API токен YouGile:\n"
-                "<i>YouGile → Настройки → API → Создать токен</i>"
+                f"Подключение YouGile для группы <b>{message.chat.title}</b>\n\n"
+                "Введи <b>логин</b> от YouGile-аккаунта:"
             ),
         )
-        await state.set_state(GroupSetupStates.waiting_for_token)
+        await state.set_state(GroupSetupStates.waiting_for_login)
     except TelegramForbiddenError:
         bot_info = await bot.get_me()
         deep_link = f"https://t.me/{bot_info.username}?start=setup_{message.chat.id}"
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="⚙️ Открыть настройку", url=deep_link)
         ]])
-        await message.answer("Нажми для настройки:", reply_markup=kb)
+        await message.answer("Нажми для настройки в личке:", reply_markup=kb)
+
+
+# ── Internal helper ──────────────────────────────────────────────────────────
+
+async def _handle_auth_result(msg: Message, state: FSMContext, result: dict) -> None:
+    """Processes YouGileAuthResponse: shows companies or boards."""
+    if not result.get("connected"):
+        companies = result.get("companies") or []
+        if not companies:
+            await msg.edit_text("⚠️ Нет доступных компаний YouGile.")
+            return
+        await state.set_state(GroupSetupStates.waiting_for_company_select)
+        await msg.edit_text(
+            "В каком воркспейсе работает команда?",
+            reply_markup=build_companies_keyboard(companies),
+        )
+        return
+
+    boards = result.get("boards") or []
+    if not boards:
+        await msg.edit_text(
+            "✅ YouGile подключён, но досок не найдено.\n"
+            "Создай доску в YouGile и повтори /setup."
+        )
+        return
+
+    await state.update_data(boards=boards)
+    await state.set_state(GroupSetupStates.waiting_for_board_select)
+    await msg.edit_text(
+        "✅ Подключено! Выбери доску для задач:",
+        reply_markup=build_projects_keyboard(boards),
+    )

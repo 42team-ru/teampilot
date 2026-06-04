@@ -233,6 +233,55 @@ async def remove_team_member(team_id: str, team_user_id: str, telegram_id: int) 
     return True
 
 
+async def yougile_auth(
+    chat_id: int,
+    login: str,
+    password: str,
+    company_id: str | None = None,
+    telegram_id: int | None = None,
+) -> dict | None:
+    """POST /auth/yougile/auth — returns YouGileAuthResponse or None on error."""
+    body: dict = {"chatId": chat_id, "login": login, "password": password}
+    if company_id:
+        body["companyId"] = company_id
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}/auth/yougile/auth",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning(f"Backend unavailable on POST /auth/yougile/auth: {e}")
+        return None
+    if resp.status_code != 200:
+        logger.warning(f"POST /auth/yougile/auth → {resp.status_code}: {resp.text[:200]}")
+        return None
+    return resp.json()
+
+
+async def yougile_select_board(
+    chat_id: int,
+    board_id: str,
+    telegram_id: int | None = None,
+) -> bool:
+    """POST /auth/yougile/board — saves selected board. Returns True on success."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}/auth/yougile/board",
+                headers=_headers(telegram_id),
+                json={"chatId": chat_id, "boardId": board_id},
+            )
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning(f"Backend unavailable on POST /auth/yougile/board: {e}")
+        return False
+    if resp.status_code != 200:
+        logger.warning(f"POST /auth/yougile/board → {resp.status_code}: {resp.text[:200]}")
+        return False
+    return True
+
+
 async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None) -> bool:
     """DELETE /teams/{telegramChatId} — mark team inactive."""
     try:
