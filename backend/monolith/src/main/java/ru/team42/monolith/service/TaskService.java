@@ -7,13 +7,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.backend.web_common.exception.AppException;
-import ru.team42.monolith.entity.Task;
-import ru.team42.monolith.entity.TaskColumn;
-import ru.team42.monolith.entity.TaskStatusHistory;
-import ru.team42.monolith.entity.Team;
-import ru.team42.monolith.entity.TeamUser;
+import ru.team42.monolith.entity.*;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
+import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.event.LlmUpdateTaskEvent;
 import ru.team42.monolith.kanban.YouGileService;
@@ -76,9 +73,15 @@ public class TaskService {
     }
 
     @Transactional
-    public Task approve(UUID taskId, Long telegramId) {
+    public Task approve(UUID taskId, User user) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(taskId)));
+
+        TeamUser membership = teamUserRepository.findByTeamIdAndUserId(task.getTeam().getId(), user.getId())
+                .orElseThrow(() -> AppException.forbidden("You are not a member of this team"));
+        if (membership.getRole() != TeamRole.MANAGER) {
+            throw AppException.forbidden("Only a team manager can approve tasks");
+        }
 
         if (task.getLocalStatus() != TaskLocalStatus.PENDING_APPROVAL) {
             throw AppException.badRequest("Task %s is not pending approval".formatted(taskId));

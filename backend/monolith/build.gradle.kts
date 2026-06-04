@@ -40,6 +40,7 @@ dependencies {
 
     // Testing
     testImplementation(libs.spring.security.test)
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
 openApiGenerate {
