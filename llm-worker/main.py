@@ -17,6 +17,7 @@ from models import (
     TeamMember,
     proto_to_batch_event,
 )
+
 from proto_generated.ru.team42.events import message_batch_pb2
 from settings import settings
 
@@ -67,25 +68,28 @@ def format_team_context(batch: MessageBatchEvent) -> str:
         username = m.username if m.username.startswith("@") else f"@{m.username}"
         synonym = role_synonyms.get(m.role.lower(), "")
         role_display = f"{m.role} ({synonym})" if synonym else m.role
-        lines.append(f"  - {username}  |  {m.full_name}  |  {role_display}")
+        position_display = f"  [{m.position}]" if m.position else ""
+        lines.append(f"  - {username}  |  {m.full_name}  |  {role_display}{position_display}")
     return "\n".join(lines)
 
 
 def resolve_assignee_id(assignee: str | None, team: list[TeamMember]) -> int | None:
-    """
-    Looks up the user_id from the team list based on the assignee username.
-    """
     if not assignee or not team:
         return None
-    
-    # Normalize assignee (e.g., "@username" -> "username")
     assignee_clean = assignee.lstrip("@").lower()
-    
     for member in team:
         if member.username.lstrip("@").lower() == assignee_clean:
-            return member.user_id
-            
+            return member.telegram_id
     return None
+
+
+def format_columns_context(batch: MessageBatchEvent) -> str:
+    if not batch.columns:
+        return "KANBAN COLUMNS: not provided — set column_id = null"
+    lines = ["KANBAN COLUMNS (use id value as column_id for the new task):"]
+    for col in batch.columns:
+        lines.append(f"  - id: \"{col.id}\"  |  title: \"{col.title}\"")
+    return "\n".join(lines)
 
 
 def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
@@ -146,6 +150,7 @@ def _extract_tasks(batch: MessageBatchEvent, text: str) -> List[TaskCreateEvent]
             "messages": text,
             "current_datetime": batch.occurred_at.isoformat(),
             "team_context": format_team_context(batch),
+            "columns_context": format_columns_context(batch),
         })
         extraction_list = TaskExtractionList.model_validate(raw)
 

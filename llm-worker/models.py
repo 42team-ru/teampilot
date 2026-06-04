@@ -88,6 +88,7 @@ class TaskCreateEvent(BaseModel):
     assignee_id: int | None = None
     deadline: str | None = None
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
+    column_id: str | None = None
     source_batch_id: str
 
 
