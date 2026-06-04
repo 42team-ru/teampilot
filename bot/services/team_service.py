@@ -32,7 +32,7 @@ async def get_team_id(chat_id: int, telegram_id: int | None = None) -> str | Non
         log_http_request_error(
             service="Backend",
             method="POST",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             request_json=body,
@@ -46,7 +46,7 @@ async def get_team_id(chat_id: int, telegram_id: int | None = None) -> str | Non
             resp,
             service="Backend",
             method="POST",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 404",
             context=context,
             request_json=body,
@@ -67,7 +67,7 @@ async def get_my_teams(manager_telegram_id: int) -> list[dict]:
                 headers=_headers(manager_telegram_id),
             )
     except httpx.RequestError as e:
-        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
+        log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
         return []
 
     if resp.status_code != 200:
@@ -75,7 +75,7 @@ async def get_my_teams(manager_telegram_id: int) -> list[dict]:
             resp,
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200",
             context=context,
         )
@@ -108,7 +108,7 @@ async def create_pending_team_chat(
         log_http_request_error(
             service="Backend",
             method="POST",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             request_json=body,
@@ -120,7 +120,7 @@ async def create_pending_team_chat(
             resp,
             service="Backend",
             method="POST",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 201",
             context=context,
             request_json=body,
@@ -141,7 +141,7 @@ async def get_pending_team_chats(manager_telegram_id: int) -> list[dict]:
                 headers=_headers(manager_telegram_id),
             )
     except httpx.RequestError as e:
-        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
+        log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
         return []
 
     if resp.status_code != 200:
@@ -149,7 +149,7 @@ async def get_pending_team_chats(manager_telegram_id: int) -> list[dict]:
             resp,
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200",
             context=context,
         )
@@ -187,7 +187,7 @@ async def link_chat_to_team(
         log_http_request_error(
             service="Backend",
             method="PATCH",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             request_json=body,
@@ -199,7 +199,7 @@ async def link_chat_to_team(
             resp,
             service="Backend",
             method="PATCH",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 204",
             context=context,
             request_json=body,
@@ -236,7 +236,7 @@ async def update_team_kanban(
         log_http_request_error(
             service="Backend",
             method="PATCH",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             request_json=body,
@@ -248,7 +248,7 @@ async def update_team_kanban(
             resp,
             service="Backend",
             method="PATCH",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 204",
             context=context,
             request_json=body,
@@ -304,7 +304,7 @@ async def update_team(
         log_http_request_error(
             service="Backend",
             method="PATCH",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             request_json=body,
@@ -316,7 +316,7 @@ async def update_team(
             resp,
             service="Backend",
             method="PATCH",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200",
             context=context,
             request_json=body,
@@ -337,7 +337,7 @@ async def get_team_members(team_id: str, telegram_id: int) -> list[dict]:
                 headers=_headers(telegram_id),
             )
     except httpx.RequestError as e:
-        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
+        log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
         return []
 
     if resp.status_code != 200:
@@ -345,7 +345,7 @@ async def get_team_members(team_id: str, telegram_id: int) -> list[dict]:
             resp,
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200",
             context=context,
         )
@@ -365,7 +365,7 @@ async def remove_team_member(team_id: str, team_user_id: str, telegram_id: int) 
                 headers=_headers(telegram_id),
             )
     except httpx.RequestError as e:
-        log_http_request_error(service="Backend", method="DELETE", path=path, error=e, context=context)
+        log_http_request_error(service="Backend", method="DELETE", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
         return False
 
     if resp.status_code not in (200, 204):
@@ -373,7 +373,7 @@ async def remove_team_member(team_id: str, team_user_id: str, telegram_id: int) 
             resp,
             service="Backend",
             method="DELETE",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 204",
             context=context,
         )
@@ -393,18 +393,35 @@ async def yougile_auth(
     body: dict = {"chatId": chat_id, "login": login, "password": password}
     if company_id:
         body["companyId"] = company_id
+    path = "/auth/yougile/auth"
+    context = {"chat_id": chat_id, "has_company_id": company_id is not None, "telegram_id": telegram_id}
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
-                f"{settings.BACKEND_URL}/auth/yougile/auth",
+                f"{settings.BACKEND_URL}{path}",
                 headers=_headers(telegram_id),
                 json=body,
             )
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on POST /auth/yougile/auth: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(
+            service="Backend",
+            method="POST",
+            path=f"{settings.BACKEND_URL}{path}",
+            error=e,
+            context=context,
+            request_json=body,
+        )
         return None
     if resp.status_code != 200:
-        logger.warning(f"POST /auth/yougile/auth → {resp.status_code}: {resp.text[:200]}")
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="POST",
+            path=f"{settings.BACKEND_URL}{path}",
+            expected="200",
+            context=context,
+            request_json=body,
+        )
         return None
     return resp.json()
 
@@ -415,18 +432,36 @@ async def yougile_select_board(
     telegram_id: int | None = None,
 ) -> bool:
     """POST /auth/yougile/board — saves selected board. Returns True on success."""
+    path = "/auth/yougile/board"
+    body = {"chatId": chat_id, "boardId": board_id}
+    context = {"chat_id": chat_id, "board_id": board_id, "telegram_id": telegram_id}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"{settings.BACKEND_URL}/auth/yougile/board",
+                f"{settings.BACKEND_URL}{path}",
                 headers=_headers(telegram_id),
-                json={"chatId": chat_id, "boardId": board_id},
+                json=body,
             )
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on POST /auth/yougile/board: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(
+            service="Backend",
+            method="POST",
+            path=f"{settings.BACKEND_URL}{path}",
+            error=e,
+            context=context,
+            request_json=body,
+        )
         return False
     if resp.status_code != 200:
-        logger.warning(f"POST /auth/yougile/board → {resp.status_code}: {resp.text[:200]}")
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="POST",
+            path=f"{settings.BACKEND_URL}{path}",
+            expected="200",
+            context=context,
+            request_json=body,
+        )
         return False
     return True
 
@@ -442,7 +477,7 @@ async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None)
                 headers=_headers(telegram_id),
             )
     except httpx.RequestError as e:
-        log_http_request_error(service="Backend", method="DELETE", path=path, error=e, context=context)
+        log_http_request_error(service="Backend", method="DELETE", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
         return False
 
     if resp.status_code not in (200, 204):
@@ -450,7 +485,7 @@ async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None)
             resp,
             service="Backend",
             method="DELETE",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 204",
             context=context,
         )

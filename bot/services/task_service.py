@@ -46,7 +46,7 @@ async def get_tasks(
         log_http_request_error(
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             error=e,
             context=context,
             params=params,
@@ -58,7 +58,7 @@ async def get_tasks(
             resp,
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200",
             context=context,
             params=params,
@@ -79,7 +79,7 @@ async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict |
                 headers=_headers(telegram_id),
             )
     except httpx.RequestError as e:
-        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
+        log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
         return None
 
     if resp.status_code == 404:
@@ -90,7 +90,7 @@ async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict |
             resp,
             service="Backend",
             method="GET",
-            path=path,
+            path=f"{settings.BACKEND_URL}{path}",
             expected="200 or 404",
             context=context,
         )
