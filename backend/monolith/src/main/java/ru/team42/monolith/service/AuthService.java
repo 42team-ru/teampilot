@@ -9,18 +9,16 @@ import ru.team42.monolith.client.yougile.api.DefaultApi;
 import ru.team42.monolith.client.yougile.model.CredentialsWithCompanyDto;
 import ru.team42.monolith.client.yougile.model.CredentialsWithNameDto;
 import ru.team42.monolith.config.YougileClientConfig;
+import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
-import ru.team42.monolith.dto.request.YouGileAuthRequest;
-import ru.team42.monolith.dto.request.YouGileBoardSelectRequest;
 import ru.team42.monolith.dto.request.YouGileConnectRequest;
 import ru.team42.monolith.dto.request.YouGileCredentialsRequest;
 import ru.team42.monolith.dto.response.AuthResponse;
 import ru.team42.monolith.dto.response.InviteResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
-import ru.team42.monolith.dto.response.YouGileAuthResponse;
 import ru.team42.monolith.dto.response.YouGileBoardResponse;
 import ru.team42.monolith.dto.response.YouGileCompanyResponse;
 import ru.team42.monolith.dto.response.YouGileProjectResponse;
@@ -141,85 +139,6 @@ public class AuthService {
         } catch (Exception e) {
             log.error("Failed to list YouGile boards for team {}: {}", teamId, e.getMessage());
             throw AppException.internalError("YouGile API unavailable: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public YouGileAuthResponse yougileAuth(YouGileAuthRequest request) {
-        var companies = fetchCompanies(request.login(), request.password());
-
-        String companyId = request.companyId();
-        if (companyId == null && companies.size() == 1) {
-            companyId = companies.get(0).id();
-        }
-
-        if (companyId == null) {
-            return new YouGileAuthResponse(false, companies, null);
-        }
-
-        String apiKey = fetchApiKey(request.login(), request.password(), companyId);
-        Team team = teamRepository.findByTelegramChatId(request.chatId())
-                .orElseThrow(() -> AppException.notFound("Team for chatId %d not found".formatted(request.chatId())));
-        team.setKanbanApiKey(apiKey);
-        teamRepository.save(team);
-
-        var boards = fetchBoards(apiKey);
-        return new YouGileAuthResponse(true, null, boards);
-    }
-
-    @Transactional
-    public TeamResponse yougileSelectBoard(YouGileBoardSelectRequest request) {
-        Team team = teamRepository.findByTelegramChatId(request.chatId())
-                .orElseThrow(() -> AppException.notFound("Team for chatId %d not found".formatted(request.chatId())));
-        return teamService.update(team.getId(), new UpdateTeamRequest(null, null, request.boardId(), null));
-    }
-
-    private List<YouGileCompanyResponse> fetchCompanies(String login, String password) {
-        var creds = new CredentialsWithNameDto();
-        creds.setLogin(login);
-        creds.setPassword(password);
-        try {
-            var result = yougileUnauthenticatedApi.getCompanies(creds, null, null).block();
-            if (result == null) return List.of();
-            return result.getContent().stream()
-                    .map(c -> new YouGileCompanyResponse(c.getId(), c.getName(), c.getIsAdmin()))
-                    .toList();
-        } catch (Exception e) {
-            log.error("Failed to list YouGile companies: {}", e.getMessage());
-            throw AppException.internalError("YouGile API unavailable: " + e.getMessage());
-        }
-    }
-
-    private String fetchApiKey(String login, String password, String companyId) {
-        var creds = new CredentialsWithCompanyDto();
-        creds.setLogin(login);
-        creds.setPassword(password);
-        creds.setCompanyId(companyId);
-        try {
-            var keyDto = yougileUnauthenticatedApi.authKeyControllerCreate(creds).block();
-            if (keyDto == null || keyDto.getKey() == null) {
-                throw AppException.internalError("YouGile returned no API key");
-            }
-            return keyDto.getKey();
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Failed to get YouGile API key: {}", e.getMessage());
-            throw AppException.internalError("YouGile API unavailable: " + e.getMessage());
-        }
-    }
-
-    private List<YouGileBoardResponse> fetchBoards(String apiKey) {
-        var api = YougileClientConfig.createAuthenticatedApi(apiKey);
-        try {
-            var result = api.boardControllerSearch(false, null, null, null, null).block();
-            if (result == null) return List.of();
-            return result.getContent().stream()
-                    .map(b -> new YouGileBoardResponse(b.getId(), b.getTitle(), b.getProjectId()))
-                    .toList();
-        } catch (Exception e) {
-            log.warn("Failed to fetch boards: {}", e.getMessage());
-            return List.of();
         }
     }
 

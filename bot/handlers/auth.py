@@ -10,6 +10,7 @@ from loguru import logger
 from config import settings
 from handlers.member import show_member_panel
 from services.admin_service import get_user_by_telegram_id
+from services.http_logging import log_http_request_error, log_http_response_error
 from services.team_service import get_my_teams, link_chat_to_team, get_team_id
 from keyboards.team import build_teams_keyboard
 from states.setup import LinkTeamStates
@@ -24,27 +25,59 @@ _BOT_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
 
 async def _handle_join(message: Message, team_id: str) -> None:
     u = message.from_user
+    path = f"/auth/invite/{team_id}"
+    body = {
+        "telegramId": u.id,
+        "telegramLogin": u.username,
+        "firstName": u.first_name,
+        "lastName": u.last_name,
+    }
+    context = {
+        "team_id": team_id,
+        "telegram_id": u.id,
+        "telegram_login": u.username,
+    }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"{settings.BACKEND_URL}/auth/invite/{team_id}",
+                f"{settings.BACKEND_URL}{path}",
                 headers=_BOT_HEADERS,
-                json={
-                    "telegramId": u.id,
-                    "telegramLogin": u.username,
-                    "firstName": u.first_name,
-                    "lastName": u.last_name,
-                },
+                json=body,
             )
-    except (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError) as e:
-        logger.warning(f"Backend unavailable on POST /auth/invite/{team_id}: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(
+            service="Backend",
+            method="POST",
+            path=path,
+            error=e,
+            context=context,
+            request_json=body,
+        )
         await message.answer("❌ Бэкенд недоступен, попробуй позже.")
         return
 
     if resp.status_code == 400:
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="POST",
+            path=path,
+            expected="200",
+            context=context,
+            request_json=body,
+        )
         await message.answer("❌ Неверный запрос.")
         return
     if resp.status_code != 200:
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="POST",
+            path=path,
+            expected="200",
+            context=context,
+            request_json=body,
+        )
         await message.answer("❌ Не удалось вступить в команду. Попробуй позже.")
         return
 

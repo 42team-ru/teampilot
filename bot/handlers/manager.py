@@ -376,11 +376,67 @@ async def manager_update_chat_title(message: Message, state: FSMContext) -> None
     fields = dict(data.get("manager_update_fields", {}))
     fields["chat_title"] = title
     await state.update_data(manager_update_fields=fields)
-    await _finish_update(message, state)
+    await _ask_kanban_id(message, state)
 
 
 @router.callback_query(ManagerUpdateStates.waiting_for_chat_title, F.data == "manager:update_skip_chat_title")
 async def manager_update_skip_chat_title(callback: CallbackQuery, state: FSMContext) -> None:
+    await _ask_kanban_id(callback.message, state)
+    await callback.answer()
+
+
+async def _ask_kanban_id(message: Message, state: FSMContext) -> None:
+    await state.set_state(ManagerUpdateStates.waiting_for_kanban_id)
+    await message.answer(
+        "Введите новый Kanban ID или пропустите шаг:",
+        reply_markup=manager_skip_keyboard("manager:update_skip_kanban_id"),
+    )
+
+
+@router.message(ManagerUpdateStates.waiting_for_kanban_id)
+async def manager_update_kanban_id(message: Message, state: FSMContext) -> None:
+    kanban_id = (message.text or "").strip()
+    if not kanban_id:
+        await message.answer("Введите Kanban ID текстом или нажмите «Пропустить».")
+        return
+
+    data = await state.get_data()
+    fields = dict(data.get("manager_update_fields", {}))
+    fields["kanban_id"] = kanban_id
+    await state.update_data(manager_update_fields=fields)
+    await _ask_kanban_api_key(message, state)
+
+
+@router.callback_query(ManagerUpdateStates.waiting_for_kanban_id, F.data == "manager:update_skip_kanban_id")
+async def manager_update_skip_kanban_id(callback: CallbackQuery, state: FSMContext) -> None:
+    await _ask_kanban_api_key(callback.message, state)
+    await callback.answer()
+
+
+async def _ask_kanban_api_key(message: Message, state: FSMContext) -> None:
+    await state.set_state(ManagerUpdateStates.waiting_for_kanban_api_key)
+    await message.answer(
+        "Введите новый Kanban API Key или пропустите шаг:",
+        reply_markup=manager_skip_keyboard("manager:update_skip_kanban_api_key"),
+    )
+
+
+@router.message(ManagerUpdateStates.waiting_for_kanban_api_key)
+async def manager_update_kanban_api_key(message: Message, state: FSMContext) -> None:
+    kanban_api_key = (message.text or "").strip()
+    if not kanban_api_key:
+        await message.answer("Введите Kanban API Key текстом или нажмите «Пропустить».")
+        return
+
+    data = await state.get_data()
+    fields = dict(data.get("manager_update_fields", {}))
+    fields["kanban_api_key"] = kanban_api_key
+    await state.update_data(manager_update_fields=fields)
+    await _finish_update(message, state)
+
+
+@router.callback_query(ManagerUpdateStates.waiting_for_kanban_api_key, F.data == "manager:update_skip_kanban_api_key")
+async def manager_update_skip_kanban_api_key(callback: CallbackQuery, state: FSMContext) -> None:
     await _finish_update(callback.message, state, telegram_id=callback.from_user.id)
     await callback.answer()
 
@@ -391,53 +447,26 @@ async def _finish_update(message: Message, state: FSMContext, telegram_id: int |
 
     team_id = data["manager_update_team_id"]
     fields = data.get("manager_update_fields", {})
+    if not fields:
+        await message.answer(
+            "Ничего не изменено.",
+            reply_markup=manager_back_keyboard(),
+        )
+        return
+
     user_id = telegram_id or message.from_user.id
+    updated = await update_team(team_id, user_id, **fields)
+    if updated is None:
+        await message.answer(
+            "Не удалось обновить команду. Попробуйте позже.",
+            reply_markup=manager_back_keyboard(),
+        )
+        return
 
-    if fields:
-        updated = await update_team(team_id, user_id, **fields)
-        if updated is None:
-            await message.answer(
-                "Не удалось обновить команду. Попробуйте позже.",
-                reply_markup=manager_back_keyboard(),
-            )
-            return
-        team = updated
-        result_text = "<b>Команда обновлена</b>\n\n" + _format_team(team)
-    else:
-        teams = await get_my_teams(user_id)
-        team = next((t for t in teams if t["id"] == team_id), None)
-        result_text = "Название не изменено."
-
-    chat_id = team.get("telegramChatId") if team else None
-    kb = _yougile_setup_keyboard(chat_id) if chat_id else manager_back_keyboard()
-    await message.answer(result_text, reply_markup=kb)
-
-
-def _yougile_setup_keyboard(chat_id: int):
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")],
-        [InlineKeyboardButton(text="« Назад", callback_data="manager:back")],
-    ])
-
-
-@router.callback_query(F.data.startswith("manager:setup_yougile:"))
-async def manager_setup_yougile(callback: CallbackQuery, state: FSMContext) -> None:
-    chat_id = int(callback.data.rsplit(":", 1)[1])
-    try:
-        chat = await callback.bot.get_chat(chat_id)
-        chat_title = chat.title or str(chat_id)
-    except Exception:
-        chat_title = str(chat_id)
-
-    from states.setup import GroupSetupStates
-    await state.update_data(pending_chat_id=chat_id, pending_chat_title=chat_title)
-    await state.set_state(GroupSetupStates.waiting_for_login)
-    await callback.message.answer(
-        f"Подключение YouGile для группы <b>{chat_title}</b>\n\n"
-        "Введи <b>логин</b> от YouGile-аккаунта:"
+    await message.answer(
+        "<b>Команда обновлена</b>\n\n" + _format_team(updated),
+        reply_markup=manager_back_keyboard(),
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "manager:update_cancel")

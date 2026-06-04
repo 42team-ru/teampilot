@@ -153,6 +153,7 @@ async def _finish_create_team(message, state: FSMContext, user) -> None:
         chat_title=data["chat_title"],
         admin_telegram_id=data["admin_telegram_id"],
         admin_username=user.username,
+        requester_telegram_id=user.id,
     )
 
     if result is None:
