@@ -13,6 +13,7 @@ dependencies = [
     "loguru>=0.7",
     "python-dotenv>=1.0",
     "minio>=7.2",
+    "protobuf>=5.0",
 ]
 
 [tool.uv]
@@ -20,6 +21,7 @@ dev-dependencies = [
     "pytest>=8",
     "pytest-mock>=3",
     "ruff>=0.7",
+    "grpcio-tools>=1.62",
 ]
 
 [tool.ruff.lint]
