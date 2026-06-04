@@ -11,6 +11,7 @@ dependencies {
     implementation(project(":core:common-data"))
     implementation(project(":core:web-common"))
     implementation(project(":core:kafka-common"))
+    implementation(project(":core:kafka-proto-common"))
     implementation(project(":core:security-common"))
     implementation(project(":core:s3-common"))
 

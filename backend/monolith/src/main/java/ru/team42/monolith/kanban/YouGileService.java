@@ -36,12 +36,11 @@ public class YouGileService {
             return Optional.empty();
         }
         DefaultApi api = buildApi(team);
-        String columnId = resolveColumnId(team, api, task.getStatus());
 
         CreateTaskDto dto = new CreateTaskDto();
         dto.setTitle(task.getTitle());
         dto.setDescription(task.getDescription());
-        dto.setColumnId(columnId);
+        dto.setColumnId(task.getExternalColumnId());
 
         if (task.getDeadline() != null) {
             Deadline dl = new Deadline();
@@ -117,6 +116,22 @@ public class YouGileService {
         }
     }
 
+    public record ColumnInfo(String id, String title) {}
+
+    public List<ColumnInfo> fetchColumns(Team team) {
+        if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
+        try {
+            var result = buildApi(team).columnControllerSearch(false, null, null, null, team.getKanbanId()).block();
+            if (result == null) return List.of();
+            return result.getContent().stream()
+                    .map(col -> new ColumnInfo(col.getId(), col.getTitle()))
+                    .toList();
+        } catch (Exception e) {
+            log.warn("Failed to fetch columns for team {}: {}", team.getId(), e.getMessage());
+            return List.of();
+        }
+    }
+
     public void invalidateColumnCache(UUID teamId) {
         columnCache.remove(teamId);
     }
@@ -152,6 +167,9 @@ public class YouGileService {
             }
             if (!map.containsKey(TaskStatus.OPEN) && !content.isEmpty()) {
                 map.put(TaskStatus.OPEN, content.get(0).getId());
+            }
+            if (!map.containsKey(TaskStatus.IN_PROGRESS) && !content.isEmpty()) {
+                map.put(TaskStatus.IN_PROGRESS, content.get(0).getId());
             }
         } catch (Exception e) {
             log.error("Failed to load column map for team {}: {}", team.getId(), e.getMessage());
