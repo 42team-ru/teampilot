@@ -156,10 +156,7 @@ async def start_with_setup_deep_link(message: Message, state: FSMContext) -> Non
         if team_id:
             ok = await update_team_kanban(team_id, settings.MOCK_YOUGILE_BOARD_ID, settings.MOCK_YOUGILE_TOKEN, telegram_id=message.from_user.id)
             logger.info(f"[MOCK] Team {team_id} kanban configured")
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="member:back")],
-        ])
-        await message.answer(f"✅ [MOCK] Группа <b>{chat_title}</b> настроена с mock YouGile.", reply_markup=kb)
+        await message.answer(f"✅ [MOCK] Группа <b>{chat_title}</b> настроена с mock YouGile.")
         return
 
     await _ask_for_login(message, state, chat_id, chat_title)
@@ -259,15 +256,11 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext, bo
         return
 
     await state.clear()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="member:back")],
-    ])
     await callback.message.edit_text(
         f"✅ Готово!\n\n"
         f"Группа: <b>{chat_title}</b>\n"
         f"Доска: <b>{board_title}</b>\n\n"
-        "Канбан подключён.",
-        reply_markup=kb,
+        "Канбан подключён."
     )
     await _send_join_link_to_group(bot, chat_id, telegram_id=callback.from_user.id)
     await callback.answer()

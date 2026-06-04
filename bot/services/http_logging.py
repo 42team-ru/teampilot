@@ -3,9 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import httpx
 from loguru import logger
-
-from services.http_client import HttpResponse
 
 _MAX_LOG_VALUE_LENGTH = 2000
 _SENSITIVE_KEY_PARTS = (
@@ -65,7 +64,7 @@ def safe_log_value(value: Any, *, key: str | None = None) -> Any:
     return value
 
 
-def safe_response_headers(headers: Mapping[str, str]) -> dict[str, str]:
+def safe_response_headers(headers: httpx.Headers) -> dict[str, str]:
     safe_headers: dict[str, str] = {}
     for name, value in headers.items():
         normalized = name.lower()
@@ -74,7 +73,7 @@ def safe_response_headers(headers: Mapping[str, str]) -> dict[str, str]:
     return safe_headers
 
 
-def response_body_for_log(response: HttpResponse) -> str:
+def response_body_for_log(response: httpx.Response) -> str:
     body = response.text
     if not body:
         return "<empty>"
@@ -106,7 +105,7 @@ def log_http_request_error(
 
 
 def log_http_response_error(
-    response: HttpResponse,
+    response: httpx.Response,
     *,
     service: str,
     method: str,

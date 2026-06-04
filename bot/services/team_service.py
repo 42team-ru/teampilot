@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import httpx
 from loguru import logger
 
 from config import settings
-from services.backend_error import BackendApiError
-from services.http_client import HttpRequestError, http_client
 from services.http_logging import log_http_request_error, log_http_response_error
 
 _BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
@@ -23,12 +22,13 @@ async def get_team_id(chat_id: int, telegram_id: int | None = None) -> str | Non
     body = {"chatId": chat_id}
     context = {"chat_id": chat_id, "telegram_id": telegram_id}
     try:
-        resp = await http_client.post(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="POST",
@@ -37,7 +37,7 @@ async def get_team_id(chat_id: int, telegram_id: int | None = None) -> str | Non
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return None
 
     if resp.status_code == 404:
         return None
@@ -51,7 +51,7 @@ async def get_team_id(chat_id: int, telegram_id: int | None = None) -> str | Non
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return None
 
     return resp.json().get("teamId")
 
@@ -61,13 +61,14 @@ async def get_my_teams(manager_telegram_id: int) -> list[dict]:
     path = "/teams/my"
     context = {"manager_telegram_id": manager_telegram_id}
     try:
-        resp = await http_client.get(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(manager_telegram_id),
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(manager_telegram_id),
+            )
+    except httpx.RequestError as e:
         log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
-        raise BackendApiError.unavailable() from e
+        return []
 
     if resp.status_code != 200:
         log_http_response_error(
@@ -78,34 +79,7 @@ async def get_my_teams(manager_telegram_id: int) -> list[dict]:
             expected="200",
             context=context,
         )
-        raise BackendApiError.from_response(resp)
-
-    return resp.json()
-
-
-async def get_member_teams(telegram_id: int) -> list[dict]:
-    """GET /teams/member-of - list active teams where the user is a member."""
-    path = "/teams/member-of"
-    context = {"telegram_id": telegram_id}
-    try:
-        resp = await http_client.get(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-        )
-    except HttpRequestError as e:
-        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
-        raise BackendApiError.unavailable() from e
-
-    if resp.status_code != 200:
-        log_http_response_error(
-            resp,
-            service="Backend",
-            method="GET",
-            path=path,
-            expected="200",
-            context=context,
-        )
-        raise BackendApiError.from_response(resp)
+        return []
 
     return resp.json()
 
@@ -124,12 +98,13 @@ async def create_pending_team_chat(
         "telegram_id": telegram_id,
     }
     try:
-        resp = await http_client.post(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="POST",
@@ -138,7 +113,7 @@ async def create_pending_team_chat(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return None
 
     if resp.status_code not in (200, 201):
         log_http_response_error(
@@ -150,7 +125,7 @@ async def create_pending_team_chat(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return None
 
     return resp.json()
 
@@ -160,13 +135,14 @@ async def get_pending_team_chats(manager_telegram_id: int) -> list[dict]:
     path = "/teams/pending-chats"
     context = {"manager_telegram_id": manager_telegram_id}
     try:
-        resp = await http_client.get(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(manager_telegram_id),
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(manager_telegram_id),
+            )
+    except httpx.RequestError as e:
         log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
-        raise BackendApiError.unavailable() from e
+        return []
 
     if resp.status_code != 200:
         log_http_response_error(
@@ -177,7 +153,7 @@ async def get_pending_team_chats(manager_telegram_id: int) -> list[dict]:
             expected="200",
             context=context,
         )
-        raise BackendApiError.from_response(resp)
+        return []
 
     return resp.json()
 
@@ -201,12 +177,13 @@ async def link_chat_to_team(
         "chat_title": chat_title,
     }
     try:
-        resp = await http_client.patch(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.patch(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="PATCH",
@@ -215,7 +192,7 @@ async def link_chat_to_team(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return False
 
     if resp.status_code not in (200, 204):
         log_http_response_error(
@@ -227,7 +204,7 @@ async def link_chat_to_team(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return False
 
     return True
 
@@ -249,12 +226,13 @@ async def update_team_kanban(
         "operation": "kanban_update",
     }
     try:
-        resp = await http_client.patch(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.patch(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="PATCH",
@@ -263,7 +241,7 @@ async def update_team_kanban(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return False
 
     if resp.status_code not in (200, 204):
         log_http_response_error(
@@ -275,7 +253,7 @@ async def update_team_kanban(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return False
 
     return True
 
@@ -316,12 +294,13 @@ async def update_team(
         return None
 
     try:
-        resp = await http_client.patch(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.patch(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="PATCH",
@@ -330,7 +309,7 @@ async def update_team(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return None
 
     if resp.status_code != 200:
         log_http_response_error(
@@ -342,7 +321,7 @@ async def update_team(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return None
 
     return resp.json()
 
@@ -352,13 +331,14 @@ async def get_team_members(team_id: str, telegram_id: int) -> list[dict]:
     path = f"/teams/{team_id}/members"
     context = {"team_id": team_id, "telegram_id": telegram_id}
     try:
-        resp = await http_client.get(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+            )
+    except httpx.RequestError as e:
         log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
-        raise BackendApiError.unavailable() from e
+        return []
 
     if resp.status_code != 200:
         log_http_response_error(
@@ -369,7 +349,7 @@ async def get_team_members(team_id: str, telegram_id: int) -> list[dict]:
             expected="200",
             context=context,
         )
-        raise BackendApiError.from_response(resp)
+        return []
 
     return resp.json()
 
@@ -379,13 +359,14 @@ async def remove_team_member(team_id: str, team_user_id: str, telegram_id: int) 
     path = f"/teams/{team_id}/members/{team_user_id}"
     context = {"team_id": team_id, "team_user_id": team_user_id, "telegram_id": telegram_id}
     try:
-        resp = await http_client.delete(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.delete(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+            )
+    except httpx.RequestError as e:
         log_http_request_error(service="Backend", method="DELETE", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
-        raise BackendApiError.unavailable() from e
+        return False
 
     if resp.status_code not in (200, 204):
         log_http_response_error(
@@ -396,7 +377,7 @@ async def remove_team_member(team_id: str, team_user_id: str, telegram_id: int) 
             expected="200 or 204",
             context=context,
         )
-        raise BackendApiError.from_response(resp)
+        return False
 
     return True
 
@@ -415,12 +396,13 @@ async def yougile_auth(
     path = "/auth/yougile/auth"
     context = {"chat_id": chat_id, "has_company_id": company_id is not None, "telegram_id": telegram_id}
     try:
-        resp = await http_client.post(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="POST",
@@ -429,7 +411,7 @@ async def yougile_auth(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return None
     if resp.status_code != 200:
         log_http_response_error(
             resp,
@@ -440,7 +422,7 @@ async def yougile_auth(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return None
     return resp.json()
 
 
@@ -454,12 +436,13 @@ async def yougile_select_board(
     body = {"chatId": chat_id, "boardId": board_id}
     context = {"chat_id": chat_id, "board_id": board_id, "telegram_id": telegram_id}
     try:
-        resp = await http_client.post(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="POST",
@@ -468,7 +451,7 @@ async def yougile_select_board(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return False
     if resp.status_code != 200:
         log_http_response_error(
             resp,
@@ -479,7 +462,7 @@ async def yougile_select_board(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return False
     return True
 
 
@@ -488,13 +471,14 @@ async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None)
     path = f"/teams/{telegram_chat_id}"
     context = {"telegram_chat_id": telegram_chat_id, "telegram_id": telegram_id}
     try:
-        resp = await http_client.delete(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.delete(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+            )
+    except httpx.RequestError as e:
         log_http_request_error(service="Backend", method="DELETE", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
-        raise BackendApiError.unavailable() from e
+        return False
 
     if resp.status_code not in (200, 204):
         log_http_response_error(
@@ -505,6 +489,6 @@ async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None)
             expected="200 or 204",
             context=context,
         )
-        raise BackendApiError.from_response(resp)
+        return False
 
     return True

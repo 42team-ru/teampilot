@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import httpx
 from loguru import logger
 
-from services.http_client import HttpRequestError, http_client
 from services.http_logging import log_http_request_error, log_http_response_error
 
 
@@ -18,11 +18,12 @@ class YouGileClient:
         path = "/projects"
         context = {"operation": "validate_token"}
         try:
-            resp = await http_client.get(
-                f"{self.BASE_URL}{path}",
-                headers=self._headers,
-            )
-        except HttpRequestError as e:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{self.BASE_URL}{path}",
+                    headers=self._headers,
+                )
+        except httpx.RequestError as e:
             log_http_request_error(service="YouGile", method="GET", path=path, error=e, context=context)
             return False
 
@@ -44,11 +45,12 @@ class YouGileClient:
         path = "/projects"
         context = {"operation": "get_projects"}
         try:
-            resp = await http_client.get(
-                f"{self.BASE_URL}{path}",
-                headers=self._headers,
-            )
-        except HttpRequestError as e:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{self.BASE_URL}{path}",
+                    headers=self._headers,
+                )
+        except httpx.RequestError as e:
             log_http_request_error(service="YouGile", method="GET", path=path, error=e, context=context)
             return []
 

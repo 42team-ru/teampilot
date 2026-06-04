@@ -24,8 +24,9 @@ class EventConsumer:
 
         try:
             while True:
-                msg = await asyncio.to_thread(consumer.poll, 0.1)
+                msg = consumer.poll(timeout=0.1)
                 if msg is None:
+                    await asyncio.sleep(0)
                     continue
                 if msg.error():
                     logger.error(f"Kafka consumer error: {msg.error()}")

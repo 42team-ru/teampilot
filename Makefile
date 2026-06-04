@@ -215,13 +215,13 @@ PROTO_PY_OUT := llm-worker/proto_generated
 
 proto-gen:
 	@echo "Генерация Python proto классов из $(PROTO_SRC)..."
-	@cd llm-worker && uv run python -c "from pathlib import Path; Path('proto_generated').mkdir(parents=True, exist_ok=True)"
+	@mkdir -p $(PROTO_PY_OUT)
 	cd llm-worker && uv run python -m grpc_tools.protoc \
 		-I../$(PROTO_SRC) \
 		--python_out=proto_generated \
 		--pyi_out=proto_generated \
 		ru/team42/events/message_batch.proto
-	@cd llm-worker && uv run python -c "from pathlib import Path; root = Path('proto_generated'); root.joinpath('__init__.py').touch(); [p.joinpath('__init__.py').touch() for p in root.rglob('*') if p.is_dir()]"
+	@find $(PROTO_PY_OUT) -type d -exec touch {}/__init__.py \;
 	@echo "Done → $(PROTO_PY_OUT)/ru/team42/events/message_batch_pb2.py"
 
 # ============================================================

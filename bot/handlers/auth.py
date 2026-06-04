@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -8,14 +9,10 @@ from loguru import logger
 
 from config import settings
 from handlers.member import show_member_panel
-from keyboards.member import home_keyboard
 from services.admin_service import get_user_by_telegram_id
-from services.backend_error import BackendApiError
-from services.http_client import HttpRequestError, http_client
 from services.http_logging import log_http_request_error, log_http_response_error
 from services.team_service import get_my_teams, link_chat_to_team, get_team_id
 from keyboards.team import build_teams_keyboard
-from states.auth import RegistrationStates
 from states.setup import LinkTeamStates
 from storage import register_user
 
@@ -41,12 +38,13 @@ async def _handle_join(message: Message, team_id: str) -> None:
         "telegram_login": u.username,
     }
     try:
-        resp = await http_client.post(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_BOT_HEADERS,
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_BOT_HEADERS,
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="POST",
@@ -55,8 +53,21 @@ async def _handle_join(message: Message, team_id: str) -> None:
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        await message.answer("❌ Бэкенд недоступен, попробуй позже.")
+        return
 
+    if resp.status_code == 400:
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="POST",
+            path=path,
+            expected="200",
+            context=context,
+            request_json=body,
+        )
+        await message.answer("❌ Неверный запрос.")
+        return
     if resp.status_code != 200:
         log_http_response_error(
             resp,
@@ -67,16 +78,15 @@ async def _handle_join(message: Message, team_id: str) -> None:
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        await message.answer("❌ Не удалось вступить в команду. Попробуй позже.")
+        return
 
     data = resp.json()
     register_user(u.id, u.username, u.full_name)
     logger.info(f"User {u.id} ({u.full_name}) joined team {team_id}")
     await message.answer(
-        f"👋 Добро пожаловать, <b>{u.first_name}</b>! 🎉\n\n"
-        "Ты добавлен в команду. Теперь ты будешь получать уведомления о задачах.\n\n"
-        "Нажми кнопку, чтобы открыть главное меню:",
-        reply_markup=home_keyboard(),
+        f"👋 Добро пожаловать, {u.first_name}! 🎉\n\n"
+        "Ты добавлен в команду. Теперь ты будешь получать уведомления о задачах."
     )
 
 
@@ -142,11 +152,7 @@ async def process_link_team_select(callback, state: FSMContext, bot) -> None:
         except Exception as e:
             logger.warning(f"Cannot send join link to group {chat_id}: {e}")
 
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="member:back")],
-    ])
-    await callback.message.edit_text("✅ Чат успешно привязан к команде!", reply_markup=kb)
+    await callback.message.edit_text("✅ Чат успешно привязан к команде!")
     await callback.answer()
 
 
@@ -174,12 +180,9 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     # No token — show member/manager panel
     user = await get_user_by_telegram_id(message.from_user.id)
     if user is None:
-        await state.update_data(registration_pending_command=message.text)
-        await state.set_state(RegistrationStates.waiting_for_full_name)
         await message.answer(
-            "Сначала нужно зарегистрироваться.\n"
-            "Введите фамилию и имя одним сообщением. Например: <b>Петров Иван</b>",
-            parse_mode="HTML",
+            "У вас нет доступа.\n"
+            "Попросите менеджера команды прислать ссылку для вступления."
         )
         return
 

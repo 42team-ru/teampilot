@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import httpx
+
 from config import settings
 from services.admin_service import clear_user_cache
-from services.backend_error import BackendApiError
-from services.http_client import HttpRequestError, http_client
 from services.http_logging import log_http_request_error, log_http_response_error
 
 _BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
@@ -23,8 +23,8 @@ async def register_user(
     first_name: str,
     last_name: str,
 ) -> dict | None:
-    """POST /auth/registration - create or refresh a Telegram-linked user."""
-    path = "/auth/registration"
+    """POST /auth/register - create or refresh a Telegram-linked user."""
+    path = "/auth/register"
     body = {
         "telegramId": telegram_id,
         "telegramLogin": telegram_login,
@@ -34,12 +34,13 @@ async def register_user(
     context = {"telegram_id": telegram_id, "telegram_login": telegram_login}
 
     try:
-        resp = await http_client.post(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="POST",
@@ -48,7 +49,7 @@ async def register_user(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return None
 
     if resp.status_code not in (200, 201):
         log_http_response_error(
@@ -60,7 +61,7 @@ async def register_user(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return None
 
     clear_user_cache(telegram_id)
     return resp.json()
@@ -82,12 +83,13 @@ async def update_user(
     context = {"user_id": user_id, "telegram_id": telegram_id}
 
     try:
-        resp = await http_client.patch(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.patch(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="PATCH",
@@ -96,7 +98,7 @@ async def update_user(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return None
 
     if resp.status_code != 200:
         log_http_response_error(
@@ -108,7 +110,7 @@ async def update_user(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
+        return None
 
     clear_user_cache(telegram_id)
     return resp.json()
@@ -126,12 +128,13 @@ async def patch_telegram_login(
     context = {"user_id": user_id, "telegram_id": telegram_id}
 
     try:
-        resp = await http_client.patch(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-            json=body,
-        )
-    except HttpRequestError as e:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.patch(
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(telegram_id),
+                json=body,
+            )
+    except httpx.RequestError as e:
         log_http_request_error(
             service="Backend",
             method="PATCH",
@@ -140,7 +143,7 @@ async def patch_telegram_login(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.unavailable() from e
+        return
 
     if resp.status_code != 200:
         log_http_response_error(
@@ -152,6 +155,3 @@ async def patch_telegram_login(
             context=context,
             request_json=body,
         )
-        raise BackendApiError.from_response(resp)
-
-    clear_user_cache(telegram_id)

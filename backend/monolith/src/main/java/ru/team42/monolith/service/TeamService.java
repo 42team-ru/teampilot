@@ -46,7 +46,6 @@ public class TeamService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
     public List<TeamResponse> getUserTeams(Long telegramId) {
         return teamUserRepository.findAllByUserTelegramId(telegramId)
                 .stream()

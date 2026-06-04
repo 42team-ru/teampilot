@@ -3,13 +3,13 @@ package ru.team42.monolith.security;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
@@ -22,16 +22,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 @Component
+@RequiredArgsConstructor
 public class RestSecurityErrorHandler implements AuthenticationEntryPoint, AccessDeniedHandler {
 
     public static final String AUTH_FAILURE_DETAIL_ATTRIBUTE =
             RestSecurityErrorHandler.class.getName() + ".authFailureDetail";
 
     private final ObjectMapper objectMapper;
-
-    public RestSecurityErrorHandler(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     @Override
     public void commence(
@@ -52,7 +49,8 @@ public class RestSecurityErrorHandler implements AuthenticationEntryPoint, Acces
             HttpServletResponse response,
             AccessDeniedException exception
     ) throws IOException, ServletException {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Authentication authentication =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
 
         String detail = "Access denied: authenticated principal does not have permission for this operation";
         if (authentication != null && authentication.getPrincipal() instanceof User user) {

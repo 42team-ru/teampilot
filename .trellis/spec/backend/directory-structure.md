@@ -47,14 +47,6 @@ src/
 
 ---
 
-## API Routing
-
-- Spring MVC controllers and generated Swagger expose routes without an `/api` prefix, for example `/tasks` and `/teams`.
-- Public traffic uses Caddy's `/api/*` route; Caddy strips `/api` before proxying the request to the backend.
-- Internal clients that connect directly to Spring, including the bot's local `BACKEND_URL`, must use the unprefixed Swagger route.
-
----
-
 ## Examples
 
 <!-- Link to well-organized modules as examples -->
