@@ -116,6 +116,7 @@ class TaskExtraction(BaseModel):
     assignee: str | None = None
     deadline: str | None = None
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
+    column_id: str | None = None
 
 
 class StatusExtraction(BaseModel):

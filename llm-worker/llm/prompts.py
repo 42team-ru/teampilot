@@ -105,14 +105,13 @@ USE THIS LIST TO RESOLVE NAMES AND ROLES:
 - Return their @username from the TEAM LIST when they are identified as the assignee.
 - If not found in team list AND no username in chat log → use exact name from text.
 
-=== KANBAN COLUMNS ===
-{columns_context}
-
-COLUMN SELECTION RULE:
-- Pick the column where a new task should LAND when created (usually "To Do", "Backlog", "Новые", "Открытые" or equivalent).
-- If the chat says "сразу в работу", "срочно", HIGH priority → pick In Progress column if it exists.
-- Use the exact id string from the list above as column_id.
-- If no columns provided or no clear match → column_id = null (backend will decide).
+=== COLUMN SELECTION RULE ===
+The human message may contain a KANBAN COLUMNS list.
+- If KANBAN COLUMNS are present: you MUST set column_id to one of the listed ids. NEVER null when columns are available.
+- New task default → pick the first "To Do" / "Backlog" / "Новые" / "Открытые" style column.
+- Person confirmed right now ("беру, смотрю", "уже делаю") → pick "In Progress" / "В работе" if it exists.
+- NEVER pick "Done" / "Готово" / "Завершено" for a new task.
+- If no KANBAN COLUMNS in the input → column_id = null.
 
 === ROLE AMBIGUITY RULE ===
 If the assignee is specified by ROLE (not name), e.g. "пусть фронт займётся":  
@@ -143,15 +142,31 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 === FEW-SHOT EXAMPLES ===
 
 [INPUT]
-[10:00] ivan_pm: @kirill_dev Кирилл, нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3.
+KANBAN COLUMNS (use id value as column_id for the new task):
+  - id: "col-001"  |  title: "To Do"
+  - id: "col-002"  |  title: "In Progress"
+  - id: "col-003"  |  title: "Done"
 
-// KANBAN COLUMNS:
-//   - id: "col-001"  |  title: "To Do"
-//   - id: "col-002"  |  title: "In Progress"
-//   - id: "col-003"  |  title: "Done"
+[10:00] ivan_pm: @kirill_dev Кирилл, нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3.
 
 [OUTPUT]
 [{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee": "@kirill_dev", "deadline": "2026-06-04T23:59:00", "priority": "HIGH", "column_id": "col-001"}}]
+
+---
+
+[INPUT]
+KANBAN COLUMNS (use id value as column_id for the new task):
+  - id: "col-a"  |  title: "Backlog"
+  - id: "col-b"  |  title: "В работе"
+  - id: "col-c"  |  title: "Готово"
+
+[09:00] pm: Прод упал! Нужно срочно патч!
+[09:01] kirill: Беру, смотрю уже.
+
+[OUTPUT]
+[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю уже»", "assignee": "kirill", "deadline": null, "priority": "HIGH", "column_id": "col-b"}}]
+
+// REASONING: kirill confirmed he's working on it RIGHT NOW → "В работе" column.
 
 ---
 
@@ -162,6 +177,8 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 
 [OUTPUT]
 [{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee": "vova_ml", "deadline": "2026-06-03T23:59:00", "priority": "HIGH", "column_id": null}}]
+
+// REASONING: no KANBAN COLUMNS in input → column_id = null.
 
 ---
 
@@ -258,7 +275,7 @@ If the assignee is specified by ROLE (not name), e.g. "пусть фронт з�
 
 task_prompt = ChatPromptTemplate.from_messages([
     ("system", TASK_SYSTEM),
-    ("human", "REMINDER: If task is addressed to a ROLE (\"девопс\", \"фронт\", \"бэк\"), find matching person in TEAM LIST above and use their @username.\n\n{messages}"),
+    ("human", "{columns_context}\n\nREMINDER: Role (\"девопс\", \"фронт\", \"бэк\") → find @username in TEAM LIST. Columns listed above → MUST set column_id.\n\n{messages}"),
 ])
 
 # ==========================================
