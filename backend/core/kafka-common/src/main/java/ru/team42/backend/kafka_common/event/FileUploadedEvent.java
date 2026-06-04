@@ -4,13 +4,10 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
 
 @Getter
-@Builder
-@Jacksonized
 public class FileUploadedEvent extends BaseEvent {
 
     private final Long userId;

@@ -15,11 +15,13 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
+import ru.team42.monolith.dto.request.TelegramOAuthRequest;
 import ru.team42.monolith.dto.request.YouGileAuthRequest;
 import ru.team42.monolith.dto.request.YouGileBoardSelectRequest;
 import ru.team42.monolith.dto.response.AuthResponse;
 import ru.team42.monolith.dto.response.InviteResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
+import ru.team42.monolith.dto.response.TelegramAuthResponse;
 import ru.team42.monolith.dto.response.YouGileAuthResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.service.AuthService;
@@ -35,12 +37,25 @@ public class AuthController {
     private final AuthService authService;
 
     @Operation(
+            summary = "Войти через Telegram OAuth (расширение)",
+            description = """
+                    Принимает данные от Telegram Login Widget (id, first_name, auth_date, hash и др.).
+                    Верифицирует подпись бота, создаёт или обновляет пользователя, возвращает JWT-токен.
+                    Токен передавать в последующих запросах как: Authorization: Bearer <token>
+                    """
+    )
+    @PostMapping("/telegram")
+    public ResponseEntity<TelegramAuthResponse> telegramOAuth(@Valid @RequestBody TelegramOAuthRequest request) {
+        return ResponseEntity.ok(authService.telegramOAuth(request));
+    }
+
+    @Operation(
             summary = "Создать пользователя",
             description = "Создаёт обычного пользователя по имени и фамилии."
     )
-    @PostMapping({"/register", "/registration"})
+    @PostMapping("/register")
     public ResponseEntity<AuthResponse> registerUser(@Valid @RequestBody CreateUserRequest request) {
-        return ResponseUtils.created("/auth/registration", authService.registerUser(request));
+        return ResponseUtils.created("/auth/register", authService.registerUser(request));
     }
 
     @Operation(

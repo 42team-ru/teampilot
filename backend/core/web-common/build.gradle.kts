@@ -12,7 +12,6 @@ dependencies {
     compileOnly(libs.spring.boot.starter.web)
     compileOnly(libs.spring.boot.starter.validation)
     compileOnly(libs.spring.data.commons)
-    compileOnly(libs.spring.security.web)
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)

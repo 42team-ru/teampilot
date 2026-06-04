@@ -8,7 +8,6 @@ from loguru import logger
 
 from config import settings
 from handlers.member import show_member_panel
-from keyboards.member import home_keyboard
 from services.admin_service import get_user_by_telegram_id
 from services.backend_error import BackendApiError
 from services.http_client import HttpRequestError, http_client
@@ -73,10 +72,8 @@ async def _handle_join(message: Message, team_id: str) -> None:
     register_user(u.id, u.username, u.full_name)
     logger.info(f"User {u.id} ({u.full_name}) joined team {team_id}")
     await message.answer(
-        f"👋 Добро пожаловать, <b>{u.first_name}</b>! 🎉\n\n"
-        "Ты добавлен в команду. Теперь ты будешь получать уведомления о задачах.\n\n"
-        "Нажми кнопку, чтобы открыть главное меню:",
-        reply_markup=home_keyboard(),
+        f"👋 Добро пожаловать, {u.first_name}! 🎉\n\n"
+        "Ты добавлен в команду. Теперь ты будешь получать уведомления о задачах."
     )
 
 
@@ -142,11 +139,7 @@ async def process_link_team_select(callback, state: FSMContext, bot) -> None:
         except Exception as e:
             logger.warning(f"Cannot send join link to group {chat_id}: {e}")
 
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="member:back")],
-    ])
-    await callback.message.edit_text("✅ Чат успешно привязан к команде!", reply_markup=kb)
+    await callback.message.edit_text("✅ Чат успешно привязан к команде!")
     await callback.answer()
 
 

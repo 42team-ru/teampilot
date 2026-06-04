@@ -13,15 +13,17 @@ import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
+import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
+import ru.team42.monolith.event.LlmUpdateTaskEvent;
 import ru.team42.monolith.kanban.YouGileService;
+import ru.team42.monolith.mapper.LlmTaskUpdateMapper;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,12 +34,6 @@ public class TaskService {
 
     private static final int YOUGILE_MAX_RETRIES = 3;
     private static final long RETRY_BASE_MS = 1_000;
-    private static final List<TaskStatus> ACTIVE_STATUSES = List.of(
-            TaskStatus.OPEN,
-            TaskStatus.IN_PROGRESS,
-            TaskStatus.REVIEW,
-            TaskStatus.BLOCKED
-    );
 
     private final TaskRepository taskRepository;
     private final TaskStatusHistoryRepository historyRepository;
@@ -45,6 +41,7 @@ public class TaskService {
     private final TeamUserRepository teamUserRepository;
     private final YouGileService youGileService;
     private final TaskEventPublisher taskEventPublisher;
+    private final LlmTaskUpdateMapper llmTaskUpdateMapper;
 
     @Transactional
     public Task createFromLlmEvent(LlmTaskCreateEvent event) {
@@ -76,6 +73,36 @@ public class TaskService {
         youGileService.createTask(team, task);
 
         return task;
+    }
+
+    @Transactional
+    public void updateFromLlmEvent(LlmUpdateTaskEvent event) {
+        if (event.getTaskId() == null) throw AppException.badRequest("taskId is required");
+
+        Task task = taskRepository.findById(event.getTaskId())
+                .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(event.getTaskId())));
+
+        llmTaskUpdateMapper.updateTaskFromEvent(event, task);
+
+        if (Boolean.TRUE.equals(event.getDeleted())) {
+            task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
+        }
+
+        if (Boolean.TRUE.equals(event.getCompleted())) {
+            TaskStatus prev = task.getStatus();
+            task.setStatus(TaskStatus.DONE);
+            if (prev != TaskStatus.DONE) {
+                recordHistory(task, prev, TaskStatus.DONE, null);
+            }
+        }
+
+        if (event.getAssigneeTelegramId() != null) {
+            resolveTeamUser(task.getTeam(), event.getAssigneeTelegramId())
+                    .ifPresent(task::setAssignee);
+        }
+
+        task = taskRepository.save(task);
+        youGileService.updateTask(task.getTeam(), task);
     }
 
     @Transactional(readOnly = true)
@@ -146,46 +173,6 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Task> list(Long chatId, Long assigneeTelegramId, String rawStatus, Pageable pageable) {
-        List<TaskStatus> statuses = resolveStatusFilter(rawStatus);
-        UUID teamId = null;
-        if (chatId != null) {
-            Team team = teamRepository.findByTelegramChatId(chatId)
-                    .orElseThrow(() -> AppException.notFound(
-                            "Team not found for chatId %d".formatted(chatId)));
-            teamId = team.getId();
-        }
-
-        if (teamId == null && assigneeTelegramId == null) {
-            throw AppException.badRequest("chatId or assignee is required");
-        }
-
-        if (teamId != null && assigneeTelegramId != null) {
-            if (statuses != null) {
-                return taskRepository.findByTeamIdAndAssigneeUserTelegramIdAndStatusIn(
-                        teamId,
-                        assigneeTelegramId,
-                        statuses,
-                        pageable
-                );
-            }
-            return taskRepository.findByTeamIdAndAssigneeUserTelegramId(teamId, assigneeTelegramId, pageable);
-        }
-
-        if (teamId != null) {
-            if (statuses != null) {
-                return taskRepository.findByTeamIdAndStatusIn(teamId, statuses, pageable);
-            }
-            return taskRepository.findByTeamId(teamId, pageable);
-        }
-
-        if (statuses != null) {
-            return taskRepository.findByAssigneeUserTelegramIdAndStatusIn(assigneeTelegramId, statuses, pageable);
-        }
-        return taskRepository.findByAssigneeUserTelegramId(assigneeTelegramId, pageable);
-    }
-
-    @Transactional(readOnly = true)
     public List<YouGileService.YouGileTaskResponse> listFromYouGile(Long chatId) {
         Team team = teamRepository.findByTelegramChatId(chatId)
                 .orElseThrow(() -> AppException.notFound(
@@ -234,23 +221,6 @@ public class TaskService {
 
     private Optional<TeamUser> resolveTeamUser(Team team, Long telegramId) {
         return teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), telegramId);
-    }
-
-    private List<TaskStatus> resolveStatusFilter(String rawStatus) {
-        if (rawStatus == null || rawStatus.isBlank()) {
-            return null;
-        }
-
-        String normalized = rawStatus.trim().toUpperCase(Locale.ROOT);
-        if ("ACTIVE".equals(normalized)) {
-            return ACTIVE_STATUSES;
-        }
-
-        try {
-            return List.of(TaskStatus.valueOf(normalized));
-        } catch (IllegalArgumentException e) {
-            throw AppException.badRequest("Unknown task status: " + rawStatus);
-        }
     }
 
     private void recordHistory(Task task, TaskStatus from, TaskStatus to, Long telegramId) {

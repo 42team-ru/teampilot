@@ -16,27 +16,21 @@ def _headers(telegram_id: int | None = None) -> dict:
 
 
 async def get_tasks(
-    chat_id: int | None = None,
+    chat_id: int,
     telegram_id: int | None = None,
-    assignee: int | None = None,
     status: str | None = None,
     page: int = 0,
     size: int = 10,
 ) -> list[dict]:
-    """GET /tasks?chatId=...&assignee=...&status=...&page=...&size=..."""
-    path = "/tasks"
-    params: dict = {"page": page, "size": size}
-    if chat_id is not None:
-        params["chatId"] = chat_id
-    if assignee is not None:
-        params["assignee"] = assignee
+    """GET /api/tasks?chatId=...&status=...&page=...&size=..."""
+    path = "/api/tasks"
+    params: dict = {"chatId": chat_id, "page": page, "size": size}
     if status:
         params["status"] = status.upper()
 
     context = {
         "chat_id": chat_id,
         "telegram_id": telegram_id,
-        "assignee": assignee,
         "status": status,
         "page": page,
         "size": size,
@@ -74,8 +68,8 @@ async def get_tasks(
 
 
 async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict | None:
-    """GET /tasks/{id} - None if 404."""
-    path = f"/tasks/{task_id}"
+    """GET /api/tasks/{id} - None if 404."""
+    path = f"/api/tasks/{task_id}"
     context = {"task_id": task_id, "telegram_id": telegram_id}
     try:
         resp = await http_client.get(
