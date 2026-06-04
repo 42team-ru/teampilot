@@ -8,6 +8,7 @@ import ru.team42.monolith.dto.request.AdminCreateTeamRequest;
 import ru.team42.monolith.dto.request.CreatePendingTeamChatRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.response.PendingTeamChatResponse;
+import ru.team42.monolith.dto.response.TeamMemberResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
 import ru.team42.monolith.entity.PendingTeamChat;
 import ru.team42.monolith.entity.Team;
@@ -160,6 +161,26 @@ public class TeamService {
             chat.setLastSeenAt(Instant.now());
             pendingTeamChatRepository.save(chat);
         });
+    }
+
+    @Transactional(readOnly = true)
+    public List<TeamMemberResponse> getTeamMembers(UUID teamId, Long managerTelegramId) {
+        requireManager(teamId, managerTelegramId);
+        return teamUserRepository.findByTeamId(teamId).stream()
+                .map(teamMapper::toMemberResponse)
+                .toList();
+    }
+
+    @Transactional
+    public void removeMember(UUID teamId, UUID teamUserId, Long managerTelegramId) {
+        requireManager(teamId, managerTelegramId);
+        TeamUser member = teamUserRepository.findById(teamUserId)
+                .filter(tu -> tu.getTeam().getId().equals(teamId))
+                .orElseThrow(() -> AppException.notFound("TeamUser %s not found in team %s".formatted(teamUserId, teamId)));
+        if (member.getUser().getTelegramId().equals(managerTelegramId)) {
+            throw AppException.badRequest("Manager cannot remove themselves from the team");
+        }
+        teamUserRepository.delete(member);
     }
 
     private void requireManager(UUID teamId, Long telegramId) {
