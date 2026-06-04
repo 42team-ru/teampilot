@@ -6,17 +6,16 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.response.TaskResponse;
-import ru.team42.monolith.entity.User;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.service.TaskService;
 
 import java.util.List;
+
 import java.util.UUID;
 
 @RestController
@@ -39,22 +38,14 @@ public class TaskController {
     }
 
     @PreAuthorize("isAuthenticated()")
-    @PostMapping("/{id}/approve")
-    public ResponseEntity<TaskResponse> approve(
-            @PathVariable UUID id,
-            @AuthenticationPrincipal User currentUser) {
-        return ResponseUtils.ok(TaskResponse.from(taskService.approve(id, currentUser.getTelegramId())));
-    }
-
-    @PreAuthorize("isAuthenticated()")
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(
             @RequestParam(required = false) Long chatId,
             @RequestParam(required = false) Long assignee,
-            @RequestParam(required = false) String localStatus,
+            @RequestParam(required = false) String status,
             @PageableDefault(size = 20) Pageable pageable) {
 
-        Page<TaskResponse> page = taskService.list(chatId, assignee, localStatus, pageable)
+        Page<TaskResponse> page = taskService.list(chatId, assignee, status, pageable)
                 .map(TaskResponse::from);
         return ResponseUtils.page(PageResponse.fromPage(page));
     }

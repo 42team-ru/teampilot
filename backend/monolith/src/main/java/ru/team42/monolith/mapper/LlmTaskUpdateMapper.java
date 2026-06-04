@@ -11,6 +11,7 @@ public interface LlmTaskUpdateMapper {
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(source = "titleTask", target = "title")
+    @Mapping(source = "columnId", target = "externalColumnId")
     @Mapping(target = "deadline", expression = "java(mapDeadline(event))")
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
@@ -18,10 +19,11 @@ public interface LlmTaskUpdateMapper {
     @Mapping(target = "team", ignore = true)
     @Mapping(target = "assignee", ignore = true)
     @Mapping(target = "author", ignore = true)
+    @Mapping(target = "status", ignore = true)
     @Mapping(target = "syncStatus", ignore = true)
     @Mapping(target = "externalId", ignore = true)
-    @Mapping(target = "column", ignore = true)
     @Mapping(target = "source", ignore = true)
+    @Mapping(target = "yougileStatus", ignore = true)
     @Mapping(target = "localStatus", ignore = true)
     void updateTaskFromEvent(LlmUpdateTaskEvent event, @MappingTarget Task task);
 

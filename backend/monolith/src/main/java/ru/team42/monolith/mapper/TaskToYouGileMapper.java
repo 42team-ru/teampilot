@@ -6,14 +6,15 @@ import ru.team42.monolith.client.yougile.model.UpdateDeadline;
 import ru.team42.monolith.client.yougile.model.UpdateTaskDto;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
+import ru.team42.monolith.entity.enums.TaskStatus;
 
 import java.math.BigDecimal;
 
 @Mapper(componentModel = "spring")
 public interface TaskToYouGileMapper {
 
-    @Mapping(target = "columnId", source = "column.youGileColumnId")
-    @Mapping(target = "completed", constant = "false")
+    @Mapping(target = "columnId", source = "externalColumnId")
+    @Mapping(target = "completed", expression = "java(task.getStatus() == ru.team42.monolith.entity.enums.TaskStatus.DONE)")
     @Mapping(target = "deleted", expression = "java(task.getLocalStatus() == ru.team42.monolith.entity.enums.TaskLocalStatus.DELETED_FROM_YOUGILE)")
     @Mapping(target = "deadline", expression = "java(mapDeadline(task))")
     @Mapping(target = "archived", ignore = true)
