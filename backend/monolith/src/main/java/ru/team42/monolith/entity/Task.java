@@ -71,4 +71,7 @@ public class Task extends AbstractEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "local_status", nullable = false, length = 30)
     private TaskLocalStatus localStatus = TaskLocalStatus.PENDING_APPROVAL;
+
+    @Column(name = "deadline_notified_at")
+    private Instant deadlineNotifiedAt;
 }

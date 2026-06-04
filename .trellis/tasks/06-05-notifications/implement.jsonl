@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions overview"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException usage rules"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "JPA entity / repository conventions"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Test and code quality bar"}
+{"file": ".trellis/tasks/06-05-notifications/prd.md", "reason": "Full requirements and technical design for this task"}

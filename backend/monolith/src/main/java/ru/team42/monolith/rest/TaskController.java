@@ -43,7 +43,7 @@ public class TaskController {
     public ResponseEntity<TaskResponse> approve(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser) {
-        return ResponseUtils.ok(TaskResponse.from(taskService.approve(id, currentUser.getTelegramId())));
+        return ResponseUtils.ok(TaskResponse.from(taskService.approve(id, currentUser)));
     }
 
     @PreAuthorize("isAuthenticated()")
