@@ -4,6 +4,8 @@ app:
         expiration-days: 7
     bot:
         secret: ${BOT_SECRET:changeme}
+    telegram:
+        bot-token: ${TELEGRAM_BOT_TOKEN:8976661282:AAHos6j12XE5MgwRWdkh8K53a636mYpIMpg}
     invite:
         expiration-days: 7
         bot-url: ${BOT_URL:t.me/prorab_bot}

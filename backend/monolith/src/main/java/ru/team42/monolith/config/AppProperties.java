@@ -10,9 +10,22 @@ import org.springframework.stereotype.Component;
 public class AppProperties {
 
     private Bot bot = new Bot();
+    private Jwt jwt = new Jwt();
+    private Telegram telegram = new Telegram();
 
     @Data
     public static class Bot {
         private String secret = "changeme";
+    }
+
+    @Data
+    public static class Jwt {
+        private String secret;
+        private int expirationDays;
+    }
+
+    @Data
+    public static class Telegram {
+        private String botToken;
     }
 }
