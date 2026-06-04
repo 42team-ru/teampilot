@@ -34,8 +34,41 @@ class TelegramFilePayload:
 
 @router.message(Command("upload"))
 async def cmd_upload(message: Message, state: FSMContext) -> None:
-    await state.set_state(FileUploadStates.waiting_for_file)
-    await message.answer(UPLOAD_PROMPT_TEXT)
+    from services.team_service import get_member_teams, get_my_teams
+    import asyncio
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(message.from_user.id),
+        get_member_teams(message.from_user.id),
+    )
+    all_teams = [t for t in (manager_teams + member_teams) if t.get("telegramChatId")]
+
+    if not all_teams:
+        await message.answer(
+            "⚠️ Нет команд с привязанным чатом.\n"
+            "Менеджер должен сначала привязать Telegram-чат к команде.\n\n"
+            "Используйте кнопку 📤 в контексте нужной команды через меню 🏢 Мои команды."
+        )
+        return
+
+    if len(all_teams) == 1:
+        team = all_teams[0]
+        chat_id = int(team["telegramChatId"])
+        await state.update_data(upload_team_chat_id=chat_id)
+        await state.set_state(FileUploadStates.waiting_for_file)
+        team_title = team.get("chatTitle") or str(team.get("id"))
+        from html import escape
+        await message.answer(
+            f"📤 Загрузка файла для команды <b>{escape(team_title)}</b>\n\n"
+            + UPLOAD_PROMPT_TEXT
+        )
+        return
+
+    # Multiple teams — ask user to use the button in team context
+    await message.answer(
+        "Вы состоите в нескольких командах.\n"
+        "Используйте кнопку 📤 Загрузить файл в контексте нужной команды:\n\n"
+        "🏢 Мои команды → выберите команду → 📤 Загрузить файл"
+    )
 
 
 @router.message(FileUploadStates.waiting_for_file, Command("cancel"))
@@ -63,11 +96,21 @@ async def handle_upload_file(
         await message.answer("Не удалось загрузить файл: отсутствуют данные пользователя Telegram.")
         return
 
+    data = await state.get_data()
+    team_chat_id: int | None = data.get("upload_team_chat_id")
+    if team_chat_id is None:
+        await message.answer(
+            "⚠️ Не выбрана команда для загрузки.\n"
+            "Используйте кнопку 📤 в контексте команды через меню 🏢 Мои команды."
+        )
+        await state.clear()
+        return
+
     progress_message = await message.answer("Загружаю файл...")
     try:
         file_bytes = await _download_file(bot, payload.file_id)
         uploaded = await minio_client.upload_file(
-            chat_id=message.chat.id,
+            chat_id=team_chat_id,
             data=file_bytes,
             filename=payload.original_filename,
             content_type=payload.content_type,
@@ -75,7 +118,7 @@ async def handle_upload_file(
 
         event = FileUploadedEvent(
             user_id=message.from_user.id,
-            chat_id=message.chat.id,
+            chat_id=team_chat_id,
             username=message.from_user.username,
             first_name=message.from_user.first_name,
             original_filename=payload.original_filename,
@@ -92,7 +135,11 @@ async def handle_upload_file(
         return
 
     await state.clear()
-    await progress_message.edit_text("Файл успешно загружен.")
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="member:back")],
+    ])
+    await progress_message.edit_text("✅ Файл успешно загружен.", reply_markup=kb)
 
 
 @router.message(
