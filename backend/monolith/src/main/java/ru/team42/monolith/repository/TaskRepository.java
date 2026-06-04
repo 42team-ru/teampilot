@@ -4,7 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import ru.team42.monolith.entity.Task;
-import ru.team42.monolith.entity.enums.TaskStatus;
+import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 
 import java.util.Collection;
@@ -16,24 +16,24 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     Page<Task> findByTeamId(UUID teamId, Pageable pageable);
 
-    Page<Task> findByTeamIdAndStatus(UUID teamId, TaskStatus status, Pageable pageable);
+    Page<Task> findByTeamIdAndLocalStatus(UUID teamId, TaskLocalStatus localStatus, Pageable pageable);
 
-    Page<Task> findByTeamIdAndStatusIn(UUID teamId, Collection<TaskStatus> statuses, Pageable pageable);
+    Page<Task> findByTeamIdAndLocalStatusIn(UUID teamId, Collection<TaskLocalStatus> statuses, Pageable pageable);
 
     Page<Task> findByAssigneeUserTelegramId(Long telegramId, Pageable pageable);
 
-    Page<Task> findByAssigneeUserTelegramIdAndStatusIn(
+    Page<Task> findByAssigneeUserTelegramIdAndLocalStatusIn(
             Long telegramId,
-            Collection<TaskStatus> statuses,
+            Collection<TaskLocalStatus> statuses,
             Pageable pageable
     );
 
     Page<Task> findByTeamIdAndAssigneeUserTelegramId(UUID teamId, Long telegramId, Pageable pageable);
 
-    Page<Task> findByTeamIdAndAssigneeUserTelegramIdAndStatusIn(
+    Page<Task> findByTeamIdAndAssigneeUserTelegramIdAndLocalStatusIn(
             UUID teamId,
             Long telegramId,
-            Collection<TaskStatus> statuses,
+            Collection<TaskLocalStatus> statuses,
             Pageable pageable
     );
 

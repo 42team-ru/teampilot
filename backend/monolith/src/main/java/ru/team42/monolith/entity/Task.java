@@ -14,7 +14,6 @@ import lombok.Setter;
 import ru.team42.backend.common_data.entity.AbstractEntity;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSource;
-import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 
 import java.time.Instant;
@@ -43,19 +42,17 @@ public class Task extends AbstractEntity {
     private boolean deleted = false;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 30)
-    private TaskStatus status = TaskStatus.OPEN;
-
-    @Enumerated(EnumType.STRING)
     @Column(name = "sync_status", nullable = false, length = 30)
     private TaskSyncStatus syncStatus = TaskSyncStatus.PENDING_SYNC;
 
     /** YouGile task card ID — null until successfully synced */
     @Column(name = "external_id")
-    private String externalId; // ID задачи в YouGile
+    private String externalId;
 
-    @Column(name = "external_column_id")
-    private String externalColumnId; // ID колонки в которой находиться задача в YouGile
+    /** Колонка канбана, к которой относится задача */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "column_id")
+    private TaskColumn column;
 
     /** TeamUser who was assigned the task (resolved from LLM event) */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -71,11 +68,7 @@ public class Task extends AbstractEntity {
     @Column(name = "source", nullable = false, length = 20)
     private TaskSource source = TaskSource.LLM;
 
-    /** Raw YouGile column name — e.g. "В работе", "Готово". Null for LLM-created tasks until first sync. */
-    @Column(name = "yougile_status")
-    private String yougileStatus;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "local_status", nullable = false, length = 30)
-    private TaskLocalStatus localStatus = TaskLocalStatus.ACTIVE;
+    private TaskLocalStatus localStatus = TaskLocalStatus.PENDING_APPROVAL;
 }
