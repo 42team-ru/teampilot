@@ -9,8 +9,8 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from services.task_service import get_task_by_id, get_tasks
-from services.team_service import get_my_teams, get_team_members
+from services.task_service import get_task_by_id, get_tasks, get_tasks_page
+from services.team_service import get_member_teams, get_my_teams, get_team_members
 
 router = Router()
 
@@ -18,6 +18,23 @@ _DISPLAY_TZ = timezone(timedelta(hours=3))
 _VALID_STATUSES = {"OPEN", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE", "CANCELLED"}
 _ACTIVE_STATUSES = {"OPEN", "IN_PROGRESS", "REVIEW", "BLOCKED"}
 _BOARD_WORK_STATUSES = {"OPEN", "IN_PROGRESS", "BLOCKED"}
+_TASKS_PAGE_SIZE = 5
+
+_STATUS_FILTER_LABELS = {
+    "active": "Активные",
+    "all": "Все",
+    "OPEN": "Новые",
+    "IN_PROGRESS": "В работе",
+    "REVIEW": "Проверка",
+    "BLOCKED": "Блок",
+    "DONE": "Готово",
+    "CANCELLED": "Отменены",
+}
+_STATUS_FILTER_BUTTON_ROWS = (
+    (("active", "🟢 Активные"), ("all", "Все")),
+    (("OPEN", "🆕 Новые"), ("IN_PROGRESS", "🔄 В работе"), ("REVIEW", "👀 Проверка")),
+    (("BLOCKED", "⏸ Блок"), ("DONE", "✅ Готово"), ("CANCELLED", "🗑 Отменены")),
+)
 
 _STATUS_EMOJI = {
     "OPEN": "🆕",
@@ -164,58 +181,228 @@ def _format_task_card(task: dict) -> str:
     return "\n".join(lines)
 
 
-def _tasks_keyboard(tasks: list[dict], refresh_data: str) -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = []
-    for index, task in enumerate(tasks, start=1):
-        task_id = task.get("id")
-        if not task_id:
-            continue
+def _status_to_backend(status_key: str) -> str | None:
+    return None if status_key == "all" else status_key
 
-        second_button = InlineKeyboardButton(
-            text=f"{index}. 🗑 Отменить" if _is_overdue(task) else f"{index}. ⏸ Блок",
-            callback_data=f"status:{task_id}:cancelled" if _is_overdue(task) else f"status:{task_id}:blocked",
-        )
+
+def _normalize_status_key(status_key: str | None) -> str:
+    if not status_key:
+        return "active"
+    normalized = status_key.upper()
+    if normalized == "ALL":
+        return "all"
+    if normalized == "ACTIVE":
+        return "active"
+    return normalized if normalized in _VALID_STATUSES else "active"
+
+
+def _safe_page(raw_page: str | int | None) -> int:
+    try:
+        return max(int(raw_page), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _tasks_callback(
+    scope: str,
+    status_key: str,
+    page: int,
+    target_id: str | int | None = None,
+) -> str:
+    if scope in {"team", "team_my", "user"}:
+        return f"tasks:{scope}:{target_id}:{status_key}:{page}"
+    return f"tasks:{scope}:{status_key}:{page}"
+
+
+def _local_page(tasks: list[dict], page: int, size: int = _TASKS_PAGE_SIZE) -> dict:
+    total = len(tasks)
+    total_pages = (total + size - 1) // size if total else 0
+    page = min(max(page, 0), max(total_pages - 1, 0))
+    start = page * size
+    content = tasks[start:start + size]
+    return {
+        "content": content,
+        "page": page,
+        "size": size,
+        "totalElements": total,
+        "totalPages": total_pages,
+        "first": page == 0,
+        "last": total_pages == 0 or page >= total_pages - 1,
+        "empty": not content,
+    }
+
+
+def _page_number(page_data: dict) -> int:
+    return int(page_data.get("page") or 0)
+
+
+def _total_pages(page_data: dict) -> int:
+    return int(page_data.get("totalPages") or 0)
+
+
+def _total_elements(page_data: dict) -> int:
+    return int(page_data.get("totalElements") or len(page_data.get("content", [])))
+
+
+async def _fetch_tasks_page(**kwargs) -> dict:
+    requested_page = _safe_page(kwargs.get("page"))
+    kwargs["page"] = requested_page
+    page_data = await get_tasks_page(**kwargs)
+
+    total_pages = _total_pages(page_data)
+    if requested_page > 0 and total_pages and not page_data.get("content") and requested_page >= total_pages:
+        kwargs["page"] = total_pages - 1
+        page_data = await get_tasks_page(**kwargs)
+
+    return page_data
+
+
+def _task_action_rows(task: dict, index: int) -> list[list[InlineKeyboardButton]]:
+    task_id = task.get("id")
+    if not task_id:
+        return []
+
+    transitions = {
+        "OPEN": [("🔄 В работу", "in_progress"), ("✅ Готово", "done"), ("⏸ Блок", "blocked")],
+        "IN_PROGRESS": [("✅ Готово", "done"), ("⏸ Блок", "blocked")],
+        "REVIEW": [("✅ Принять", "done"), ("🔄 В работу", "in_progress")],
+        "BLOCKED": [("🔄 Снять блок", "in_progress"), ("🗑 Отменить", "cancelled")],
+    }
+    first_row = [
+        InlineKeyboardButton(text=f"{index}. 👁 Детали", callback_data=f"task_show:{task_id}")
+    ]
+    action_specs = list(transitions.get(task.get("status", ""), []))
+    if (
+        _is_overdue(task)
+        and task.get("status") in _ACTIVE_STATUSES
+        and all(status != "cancelled" for _, status in action_specs)
+    ):
+        action_specs.append(("🗑 Отменить", "cancelled"))
+
+    actions = [
+        InlineKeyboardButton(text=f"{index}. {label}", callback_data=f"status:{task_id}:{status}")
+        for label, status in action_specs
+    ]
+
+    rows = [first_row + actions[:2]]
+    if len(actions) > 2:
+        rows.append(actions[2:])
+    return rows
+
+
+def _tasks_keyboard(
+    page_data: dict,
+    *,
+    scope: str,
+    status_key: str,
+    target_id: str | int | None = None,
+    back_data: str | None = None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    page = _page_number(page_data)
+    total_pages = _total_pages(page_data)
+    tasks = page_data.get("content", [])
+    start_index = page * int(page_data.get("size") or _TASKS_PAGE_SIZE) + 1
+
+    for filter_row in _STATUS_FILTER_BUTTON_ROWS:
         rows.append([
-            InlineKeyboardButton(text=f"{index}. ✅ Готово", callback_data=f"status:{task_id}:done"),
-            second_button,
+            InlineKeyboardButton(
+                text=("✓ " if key == status_key else "") + label,
+                callback_data=_tasks_callback(scope, key, 0, target_id),
+            )
+            for key, label in filter_row
         ])
 
-    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=refresh_data)])
+    for offset, task in enumerate(tasks):
+        rows.extend(_task_action_rows(task, start_index + offset))
+
+    if total_pages > 1:
+        prev_page = max(page - 1, 0)
+        next_page = min(page + 1, total_pages - 1)
+        rows.append([
+            InlineKeyboardButton(text="◀️", callback_data=_tasks_callback(scope, status_key, prev_page, target_id)),
+            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data=_tasks_callback(scope, status_key, page, target_id)),
+            InlineKeyboardButton(text="▶️", callback_data=_tasks_callback(scope, status_key, next_page, target_id)),
+        ])
+
+    rows.append([InlineKeyboardButton(
+        text="🔄 Обновить",
+        callback_data=_tasks_callback(scope, status_key, page, target_id),
+    )])
+    if back_data:
+        rows.append([InlineKeyboardButton(text="← Назад", callback_data=back_data)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _refresh_keyboard(refresh_data: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔄 Обновить", callback_data=refresh_data),
-    ]])
+def _refresh_keyboard(refresh_data: str, back_data: str | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="🔄 Обновить", callback_data=refresh_data)]]
+    if back_data:
+        rows.append([InlineKeyboardButton(text="← Назад", callback_data=back_data)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _format_task_list(
-    tasks: list[dict],
+def _format_task_page(
+    page_data: dict,
     header: str,
-    refresh_data: str,
     *,
-    active_total: bool = True,
+    scope: str,
+    status_key: str,
+    target_id: str | int | None = None,
+    back_data: str | None = None,
 ) -> tuple[str, InlineKeyboardMarkup]:
+    tasks = page_data.get("content", [])
+    total = _total_elements(page_data)
+    total_pages = _total_pages(page_data)
+    page = _page_number(page_data)
+    status_label = _STATUS_FILTER_LABELS.get(status_key, status_key)
+
+    lines = [
+        header,
+        f"Фильтр: <b>{escape(status_label)}</b> · Всего: <b>{total}</b>",
+    ]
+    if total_pages:
+        lines.append(f"Страница: <b>{page + 1}/{total_pages}</b>")
+
     if not tasks:
-        empty_text = "Активных задач нет." if active_total else "Задач нет."
-        return f"{header}\n\n{empty_text}", _refresh_keyboard(refresh_data)
+        lines.append("")
+        lines.append("Задач по этому фильтру нет.")
+    else:
+        start_index = page * int(page_data.get("size") or _TASKS_PAGE_SIZE) + 1
+        lines.append("")
+        lines.extend(
+            _format_task_row(task, start_index + offset)
+            for offset, task in enumerate(tasks)
+        )
 
-    lines = [header]
-    lines.extend(_format_task_row(task, index) for index, task in enumerate(tasks, start=1))
-    total = f"Всего: {len(tasks)} активных" if active_total else f"Всего: {len(tasks)}"
-    lines.append(total)
-    return "\n\n".join(lines), _tasks_keyboard(tasks, refresh_data)
+    return "\n\n".join(lines), _tasks_keyboard(
+        page_data,
+        scope=scope,
+        status_key=status_key,
+        target_id=target_id,
+        back_data=back_data,
+    )
 
 
-async def _render_my_tasks(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
-    tasks = await get_tasks(
+async def _render_my_tasks(
+    telegram_id: int,
+    *,
+    status_key: str = "active",
+    page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup]:
+    page_data = await _fetch_tasks_page(
         telegram_id=telegram_id,
         assignee=telegram_id,
-        status="active",
-        size=100,
+        status=_status_to_backend(status_key),
+        page=page,
+        size=_TASKS_PAGE_SIZE,
     )
-    return _format_task_list(tasks, "📋 <b>Твои активные задачи:</b>", "tasks_refresh:my")
+    return _format_task_page(
+        page_data,
+        "📋 <b>Твои задачи</b>",
+        scope="my",
+        status_key=status_key,
+        back_data="member:back",
+    )
 
 
 def _team_chat_id(team: dict) -> int | None:
@@ -246,6 +433,104 @@ async def _fetch_board_tasks(telegram_id: int, teams: list[dict]) -> list[dict]:
 
     result_sets = await asyncio.gather(*calls)
     return [task for result in result_sets for task in result]
+
+
+async def _render_chat_tasks(
+    chat_id: int,
+    telegram_id: int,
+    *,
+    status_key: str = "active",
+    page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup]:
+    page_data = await _fetch_tasks_page(
+        chat_id=chat_id,
+        telegram_id=telegram_id,
+        status=_status_to_backend(status_key),
+        page=page,
+        size=_TASKS_PAGE_SIZE,
+    )
+    return _format_task_page(
+        page_data,
+        "📋 <b>Задачи команды</b>",
+        scope="chat",
+        status_key=status_key,
+    )
+
+
+async def _render_team_tasks(
+    manager_id: int,
+    team_id: str,
+    *,
+    status_key: str = "active",
+    page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup] | None:
+    teams = await get_my_teams(manager_id)
+    team = next((t for t in teams if str(t.get("id")) == team_id), None)
+    if team is None:
+        return None
+
+    chat_id = _team_chat_id(team)
+    if chat_id is None:
+        return None
+
+    page_data = await _fetch_tasks_page(
+        chat_id=chat_id,
+        telegram_id=manager_id,
+        status=_status_to_backend(status_key),
+        page=page,
+        size=_TASKS_PAGE_SIZE,
+    )
+    title = escape(team.get("chatTitle") or team_id)
+    return _format_task_page(
+        page_data,
+        f"📋 <b>Задачи команды: {title}</b>",
+        scope="team",
+        status_key=status_key,
+        target_id=team_id,
+        back_data=f"team_ctx:manager:{team_id}",
+    )
+
+
+async def _render_team_my_tasks(
+    telegram_id: int,
+    team_id: str,
+    *,
+    status_key: str = "active",
+    page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup] | None:
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(telegram_id),
+        get_member_teams(telegram_id),
+    )
+    team = next((t for t in manager_teams if str(t.get("id")) == team_id), None)
+    back_scope = "manager"
+    if team is None:
+        team = next((t for t in member_teams if str(t.get("id")) == team_id), None)
+        back_scope = "member"
+    if team is None:
+        return None
+
+    chat_id = _team_chat_id(team)
+    if chat_id is None:
+        return None
+
+    page_data = await _fetch_tasks_page(
+        chat_id=chat_id,
+        telegram_id=telegram_id,
+        assignee=telegram_id,
+        status=_status_to_backend(status_key),
+        page=page,
+        size=_TASKS_PAGE_SIZE,
+    )
+    title = escape(team.get("chatTitle") or team_id)
+    return _format_task_page(
+        page_data,
+        f"📋 <b>Мои задачи: {title}</b>",
+        scope="team_my",
+        status_key=status_key,
+        target_id=team_id,
+        back_data=f"team_ctx:{back_scope}:{team_id}",
+    )
 
 
 def _board_task_line(task: dict, *, overdue: bool = False) -> str:
@@ -345,6 +630,9 @@ async def _render_member_tasks(
     manager_id: int,
     message: Message,
     member: dict,
+    *,
+    status_key: str = "active",
+    page: int = 0,
 ) -> tuple[str, InlineKeyboardMarkup] | None:
     teams = await _manager_teams_for_context(manager_id, message)
     if not teams:
@@ -352,14 +640,20 @@ async def _render_member_tasks(
 
     telegram_id = member.get("telegramId")
     if telegram_id is None:
-        return _format_task_list([], f"📋 <b>Активные задачи {_member_name(member)}:</b>", "tasks_refresh:my")
+        return (
+            f"📋 <b>Задачи {_member_name(member)}</b>\n\n"
+            "У участника не указан Telegram ID, задачи открыть не удалось.",
+            InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="← Мои команды", callback_data="member:teams_overview"),
+            ]]),
+        )
 
     calls = [
         get_tasks(
             chat_id=chat_id,
             telegram_id=manager_id,
             assignee=int(telegram_id),
-            status="active",
+            status=_status_to_backend(status_key),
             size=100,
         )
         for team in teams
@@ -367,10 +661,12 @@ async def _render_member_tasks(
     ]
     result_sets = await asyncio.gather(*calls) if calls else []
     tasks = [task for result in result_sets for task in result]
-    return _format_task_list(
-        tasks,
-        f"📋 <b>Активные задачи {_member_name(member)}:</b>",
-        f"tasks_refresh:user:{telegram_id}",
+    return _format_task_page(
+        _local_page(tasks, page),
+        f"📋 <b>Задачи {_member_name(member)}</b>",
+        scope="user",
+        status_key=status_key,
+        target_id=telegram_id,
     )
 
 
@@ -405,36 +701,25 @@ async def cmd_tasks(message: Message) -> None:
         await message.answer("⚠️ Для личных задач используйте /mytasks. Для задач участника: /tasks @username.")
         return
 
-    raw_status = raw_arg.upper() if raw_arg else None
-    if raw_status and raw_status not in _VALID_STATUSES:
+    raw_status = raw_arg.upper() if raw_arg else "ACTIVE"
+    if raw_status == "ALL":
+        status_key = "all"
+    elif raw_status == "ACTIVE":
+        status_key = "active"
+    elif raw_status in _VALID_STATUSES:
+        status_key = raw_status
+    else:
         valid = ", ".join(sorted(_VALID_STATUSES))
         await message.answer(
             f"❌ Неверный статус <b>{escape(raw_status)}</b>.\n"
-            f"Допустимые значения: {valid}"
+            f"Допустимые значения: ACTIVE, ALL, {valid}"
         )
         return
 
-    tasks = await get_tasks(
+    text, keyboard = await _render_chat_tasks(
         chat_id=message.chat.id,
         telegram_id=message.from_user.id,
-        status=raw_status,
-    )
-
-    if not tasks:
-        status_label = f" со статусом <b>{escape(raw_status)}</b>" if raw_status else ""
-        await message.answer(f"📭 Задач{status_label} не найдено.")
-        return
-
-    header = "📋 <b>Задачи</b>"
-    if raw_status:
-        header += f" [{escape(raw_status)}]"
-    header += f" ({len(tasks)})"
-    refresh_status = raw_status or "all"
-    text, keyboard = _format_task_list(
-        tasks,
-        header,
-        f"tasks_refresh:chat:{refresh_status}",
-        active_total=False,
+        status_key=status_key,
     )
     await message.answer(text, reply_markup=keyboard)
 
@@ -463,7 +748,7 @@ async def _send_member_tasks_command(message: Message, raw_arg: str) -> None:
 def _task_detail_keyboard(task: dict) -> InlineKeyboardMarkup | None:
     task_id = task.get("id")
     status = task.get("status", "")
-    if not task_id or status not in _ACTIVE_STATUSES:
+    if not task_id:
         return None
 
     transitions = {
@@ -473,13 +758,13 @@ def _task_detail_keyboard(task: dict) -> InlineKeyboardMarkup | None:
         "BLOCKED":     [("🔄 Разблокировать", "in_progress"), ("🗑 Отменить", "cancelled")],
     }
     actions = transitions.get(status, [])
-    if not actions:
-        return None
-
-    rows = [[
-        InlineKeyboardButton(text=label, callback_data=f"status:{task_id}:{cb}")
-        for label, cb in actions
-    ]]
+    rows = []
+    if actions:
+        rows.append([
+            InlineKeyboardButton(text=label, callback_data=f"status:{task_id}:{cb}")
+            for label, cb in actions
+        ])
+    rows.append([InlineKeyboardButton(text="🔄 Обновить карточку", callback_data=f"task_show:{task_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -500,6 +785,107 @@ async def cmd_task(message: Message) -> None:
     await message.answer(_format_task_card(task), reply_markup=_task_detail_keyboard(task))
 
 
+@router.callback_query(F.data.startswith("task_show:"))
+async def show_task_details(callback: CallbackQuery) -> None:
+    task_id = (callback.data or "").split(":", 1)[1]
+    task = await get_task_by_id(task_id, telegram_id=callback.from_user.id)
+    if task is None:
+        await callback.answer("Задача не найдена", show_alert=True)
+        return
+
+    try:
+        await callback.message.edit_text(_format_task_card(task), reply_markup=_task_detail_keyboard(task))
+    except TelegramBadRequest as error:
+        if "message is not modified" not in str(error):
+            raise
+    await callback.answer("Карточка открыта")
+
+
+@router.callback_query(F.data.startswith("tasks:"))
+async def navigate_tasks(callback: CallbackQuery) -> None:
+    if callback.message is None:
+        await callback.answer()
+        return
+
+    parts = (callback.data or "").split(":")
+    scope = parts[1] if len(parts) > 1 else ""
+
+    if scope in {"my", "chat"} and len(parts) == 4:
+        status_key = _normalize_status_key(parts[2])
+        page = _safe_page(parts[3])
+        if scope == "my":
+            text, keyboard = await _render_my_tasks(
+                callback.from_user.id,
+                status_key=status_key,
+                page=page,
+            )
+        else:
+            text, keyboard = await _render_chat_tasks(
+                callback.message.chat.id,
+                callback.from_user.id,
+                status_key=status_key,
+                page=page,
+            )
+    elif scope in {"team", "team_my"} and len(parts) == 5:
+        team_id = parts[2]
+        status_key = _normalize_status_key(parts[3])
+        page = _safe_page(parts[4])
+        if scope == "team":
+            rendered = await _render_team_tasks(
+                callback.from_user.id,
+                team_id,
+                status_key=status_key,
+                page=page,
+            )
+        else:
+            rendered = await _render_team_my_tasks(
+                callback.from_user.id,
+                team_id,
+                status_key=status_key,
+                page=page,
+            )
+        if rendered is None:
+            await callback.answer("Команда недоступна или чат не привязан", show_alert=True)
+            return
+        text, keyboard = rendered
+    elif scope == "user" and len(parts) == 5:
+        try:
+            target_id = int(parts[2])
+        except ValueError:
+            await callback.answer("Участник недоступен", show_alert=True)
+            return
+
+        status_key = _normalize_status_key(parts[3])
+        page = _safe_page(parts[4])
+        teams = await _manager_teams_for_context(callback.from_user.id, callback.message)
+        member = await _team_member_by_telegram_id(teams, callback.from_user.id, target_id)
+        if member is None:
+            await callback.answer("Участник недоступен", show_alert=True)
+            return
+
+        rendered = await _render_member_tasks(
+            callback.from_user.id,
+            callback.message,
+            member,
+            status_key=status_key,
+            page=page,
+        )
+        if rendered is None:
+            await callback.answer("Только для менеджера", show_alert=True)
+            return
+        text, keyboard = rendered
+    else:
+        await callback.answer("Не удалось открыть задачи", show_alert=True)
+        return
+
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest as error:
+        if "message is not modified" not in str(error):
+            raise
+    await callback.answer("Готово")
+
+
 @router.callback_query(F.data.startswith("tasks_refresh:"))
 async def refresh_tasks(callback: CallbackQuery) -> None:
     if callback.message is None:
@@ -518,21 +904,11 @@ async def refresh_tasks(callback: CallbackQuery) -> None:
             return
         text, keyboard = rendered
     elif kind == "chat" and len(parts) == 3:
-        raw_status = None if parts[2] == "all" else parts[2]
-        tasks = await get_tasks(
+        status_key = _normalize_status_key(parts[2])
+        text, keyboard = await _render_chat_tasks(
             chat_id=callback.message.chat.id,
             telegram_id=callback.from_user.id,
-            status=raw_status,
-        )
-        header = "📋 <b>Задачи</b>"
-        if raw_status:
-            header += f" [{escape(raw_status)}]"
-        header += f" ({len(tasks)})"
-        text, keyboard = _format_task_list(
-            tasks,
-            header,
-            f"tasks_refresh:chat:{parts[2]}",
-            active_total=False,
+            status_key=status_key,
         )
     elif kind == "user" and len(parts) == 3:
         try:
