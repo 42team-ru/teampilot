@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import httpx
-from loguru import logger
 
 from config import settings
+from services.http_logging import log_http_request_error, log_http_response_error
 
 _BASE_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
 
@@ -16,42 +16,69 @@ def _headers(telegram_id: int | None = None) -> dict:
 
 
 async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
-    """GET /users/{telegramId} — None if 404."""
+    """GET /users/{telegramId} - None if 404."""
+    path = f"/users/{telegram_id}"
+    context = {"telegram_id": telegram_id}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
-                f"{settings.BACKEND_URL}/users/{telegram_id}",
+                f"{settings.BACKEND_URL}{path}",
                 headers=_headers(telegram_id),
             )
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on GET /users/{telegram_id}: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(service="Backend", method="GET", path=path, error=e, context=context)
         return None
 
     if resp.status_code == 404:
         return None
 
     if resp.status_code != 200:
-        logger.warning(f"Unexpected status {resp.status_code} on GET /users/{telegram_id}")
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="GET",
+            path=path,
+            expected="200 or 404",
+            context=context,
+        )
         return None
 
     return resp.json()
 
 
 async def get_team_members(telegram_id: int | None = None) -> list[dict]:
-    """GET /users?role=USER"""
+    """GET /users?role=USER."""
+    path = "/users"
+    params = {"role": "USER"}
+    context = {"telegram_id": telegram_id}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
-                f"{settings.BACKEND_URL}/users",
-                params={"role": "USER"},
+                f"{settings.BACKEND_URL}{path}",
+                params=params,
                 headers=_headers(telegram_id),
             )
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on GET /users?role=USER: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(
+            service="Backend",
+            method="GET",
+            path=path,
+            error=e,
+            context=context,
+            params=params,
+        )
         return []
 
     if resp.status_code != 200:
-        logger.warning(f"Unexpected status {resp.status_code} on GET /users?role=USER")
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="GET",
+            path=path,
+            expected="200",
+            context=context,
+            params=params,
+        )
         return []
 
     return resp.json()
@@ -61,10 +88,11 @@ async def create_team(
     chat_title: str,
     admin_telegram_id: int,
     admin_username: str | None,
+    requester_telegram_id: int,
     kanban_id: str | None = None,
     kanban_api_key: str | None = None,
 ) -> dict | None:
-    """POST /admin/teams — create a team with first manager. Returns TeamResponse or None on error."""
+    """POST /admin/teams - create a team with first manager."""
     body: dict = {
         "chatTitle": chat_title,
         "adminTelegramId": admin_telegram_id,
@@ -75,19 +103,42 @@ async def create_team(
     if kanban_api_key:
         body["kanbanApiKey"] = kanban_api_key
 
+    path = "/admin/teams"
+    context = {
+        "requester_telegram_id": requester_telegram_id,
+        "admin_telegram_id": admin_telegram_id,
+        "chat_title": chat_title,
+        "has_kanban_id": kanban_id is not None,
+        "has_kanban_api_key": kanban_api_key is not None,
+    }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"{settings.BACKEND_URL}/admin/teams",
-                headers=_headers(admin_telegram_id),
+                f"{settings.BACKEND_URL}{path}",
+                headers=_headers(requester_telegram_id),
                 json=body,
             )
-    except (httpx.TimeoutException, httpx.ConnectError) as e:
-        logger.warning(f"Backend unavailable on POST /admin/teams: {e}")
+    except httpx.RequestError as e:
+        log_http_request_error(
+            service="Backend",
+            method="POST",
+            path=path,
+            error=e,
+            context=context,
+            request_json=body,
+        )
         return None
 
     if resp.status_code not in (200, 201):
-        logger.warning(f"Unexpected status {resp.status_code} on POST /admin/teams: {resp.text}")
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="POST",
+            path=path,
+            expected="200 or 201",
+            context=context,
+            request_json=body,
+        )
         return None
 
     return resp.json()
