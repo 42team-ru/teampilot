@@ -3,20 +3,24 @@ package ru.team42.monolith.rest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
+import ru.team42.monolith.dto.request.UpdateUserRequest;
 import ru.team42.monolith.dto.response.UserResponse;
-import ru.team42.monolith.entity.User;
 import ru.team42.monolith.entity.enums.SystemRole;
 import ru.team42.monolith.service.UserService;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/users")
@@ -33,6 +37,15 @@ public class UserController {
                 userService.findByTelegramId(telegramId)
                         .orElseThrow(() -> AppException.notFound("User with telegramId %d not found".formatted(telegramId)))
         );
+    }
+
+    @Operation(summary = "Обновить имя и фамилию пользователя")
+    @PatchMapping("/{id}")
+    public ResponseEntity<UserResponse> update(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateUserRequest request
+    ) {
+        return ResponseUtils.ok(userService.update(id, request));
     }
 
     @Operation(summary = "Список пользователей по роли")

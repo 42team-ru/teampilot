@@ -31,11 +31,6 @@ public class TaskController {
         return ResponseUtils.ok(TaskResponse.from(taskService.getById(id)));
     }
 
-    @PostMapping
-    public ResponseEntity<TaskResponse> createTest(@RequestBody LlmTaskCreateEvent event) {
-        return ResponseUtils.ok(TaskResponse.from(taskService.createFromLlmEvent(event)));
-    }
-
     /**
      * Идёт в YouGile по externalId, применяет diff (статус, название, исполнитель),
      * записывает историю статусов, возвращает актуальное состояние задачи.
@@ -43,12 +38,6 @@ public class TaskController {
     @PostMapping("/{id}/sync")
     public ResponseEntity<TaskResponse> syncFromYouGile(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.syncFromYouGile(id)));
-    }
-
-    @GetMapping("/yougile")
-    public ResponseEntity<List<YouGileService.YouGileTaskResponse>> listFromYouGile(
-            @RequestParam Long chatId) {
-        return ResponseUtils.ok(taskService.listFromYouGile(chatId));
     }
 
     @GetMapping
@@ -60,5 +49,17 @@ public class TaskController {
         Page<TaskResponse> page = taskService.listByTeam(chatId, status, pageable)
                 .map(TaskResponse::from);
         return ResponseUtils.page(PageResponse.fromPage(page));
+    }
+
+// ============================================== ПАРАША ДЛЯ ТЕСТОВ ПОТОМ УДАЛИТЬ ==================================================
+
+    @GetMapping("/yougile")
+    public ResponseEntity<List<YouGileService.YouGileTaskResponse>> listFromYouGile(
+            @RequestParam Long chatId) {
+        return ResponseUtils.ok(taskService.listFromYouGile(chatId));
+    }
+    @PostMapping
+    public ResponseEntity<TaskResponse> createTest(@RequestBody LlmTaskCreateEvent event) {
+        return ResponseUtils.ok(TaskResponse.from(taskService.createFromLlmEvent(event)));
     }
 }
