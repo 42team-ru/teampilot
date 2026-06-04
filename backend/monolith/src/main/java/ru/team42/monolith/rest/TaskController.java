@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.response.TaskResponse;
-import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.service.TaskService;
@@ -42,11 +41,12 @@ public class TaskController {
 
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(
-            @RequestParam Long chatId,
-            @RequestParam(required = false) TaskStatus status,
+            @RequestParam(required = false) Long chatId,
+            @RequestParam(required = false) Long assignee,
+            @RequestParam(required = false) String status,
             @PageableDefault(size = 20) Pageable pageable) {
 
-        Page<TaskResponse> page = taskService.listByTeam(chatId, status, pageable)
+        Page<TaskResponse> page = taskService.list(chatId, assignee, status, pageable)
                 .map(TaskResponse::from);
         return ResponseUtils.page(PageResponse.fromPage(page));
     }
