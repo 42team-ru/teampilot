@@ -11,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -47,6 +49,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .toList();
         log.debug("Constraint violations on {}: {}", req.getRequestURI(), violations);
         return validationError("Constraint violations", req.getRequestURI(), violations);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    ResponseEntity<ErrorResponse> onAuthentication(AuthenticationException ex, HttpServletRequest req) {
+        return error(
+                HttpStatus.UNAUTHORIZED,
+                "Authentication failed: provide valid credentials",
+                req.getRequestURI()
+        );
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ErrorResponse> onAccessDenied(AccessDeniedException ex, HttpServletRequest req) {
+        String detail = ex.getMessage() != null && !"Access Denied".equals(ex.getMessage())
+                ? ex.getMessage()
+                : "Access denied: authenticated principal does not have permission for this operation";
+        return error(HttpStatus.FORBIDDEN, detail, req.getRequestURI());
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

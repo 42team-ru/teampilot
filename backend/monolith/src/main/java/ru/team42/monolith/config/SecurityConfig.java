@@ -13,6 +13,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import ru.team42.monolith.security.TelegramAuthFilter;
+import ru.team42.monolith.security.RestSecurityErrorHandler;
 import tools.jackson.databind.json.JsonMapper;
 
 import static tools.jackson.databind.PropertyNamingStrategies.SNAKE_CASE;
@@ -24,6 +25,7 @@ import static tools.jackson.databind.PropertyNamingStrategies.SNAKE_CASE;
 public class SecurityConfig {
 
     private final TelegramAuthFilter telegramAuthFilter;
+    private final RestSecurityErrorHandler restSecurityErrorHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -31,11 +33,12 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(telegramAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(restSecurityErrorHandler)
+                        .accessDeniedHandler(restSecurityErrorHandler)
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/api/users/**").permitAll()
-                        .requestMatchers("/api/teams/**").permitAll()
-                        .requestMatchers("/api/groups/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .anyRequest().authenticated()
