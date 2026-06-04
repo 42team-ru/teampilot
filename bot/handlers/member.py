@@ -201,8 +201,7 @@ async def member_mytasks(callback: CallbackQuery) -> None:
     for i, task in enumerate(tasks, start=1):
         status = task.get("status", "")
         emoji = _STATUS_EMOJI.get(status, "📌")
-        from html import escape as _escape
-        title = _escape(task.get("title") or "Без названия")
+        title = escape(task.get("title") or "Без названия")
         lines.append(f"{i}. {emoji} <b>{title}</b>")
         task_id = task.get("id")
         if task_id:
@@ -253,7 +252,6 @@ async def team_ctx_upload(callback: CallbackQuery, state: FSMContext) -> None:
 
     team_title = team.get("chatTitle") or team_id
     await state.update_data(upload_team_chat_id=int(chat_id))
-    from states.upload import FileUploadStates
     await state.set_state(FileUploadStates.waiting_for_file)
     await callback.message.answer(
         f"📤 Загрузка файла для команды <b>{escape(team_title)}</b>\n\n"
