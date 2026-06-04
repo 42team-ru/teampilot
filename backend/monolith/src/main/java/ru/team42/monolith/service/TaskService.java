@@ -13,8 +13,11 @@ import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
+import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
+import ru.team42.monolith.event.LlmUpdateTaskEvent;
 import ru.team42.monolith.kanban.YouGileService;
+import ru.team42.monolith.mapper.LlmTaskUpdateMapper;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamRepository;
@@ -38,6 +41,7 @@ public class TaskService {
     private final TeamUserRepository teamUserRepository;
     private final YouGileService youGileService;
     private final TaskEventPublisher taskEventPublisher;
+    private final LlmTaskUpdateMapper llmTaskUpdateMapper;
 
     @Transactional
     public Task createFromLlmEvent(LlmTaskCreateEvent event) {
@@ -69,6 +73,36 @@ public class TaskService {
         youGileService.createTask(team, task);
 
         return task;
+    }
+
+    @Transactional
+    public void updateFromLlmEvent(LlmUpdateTaskEvent event) {
+        if (event.getTaskId() == null) throw AppException.badRequest("taskId is required");
+
+        Task task = taskRepository.findById(event.getTaskId())
+                .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(event.getTaskId())));
+
+        llmTaskUpdateMapper.updateTaskFromEvent(event, task);
+
+        if (Boolean.TRUE.equals(event.getDeleted())) {
+            task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
+        }
+
+        if (Boolean.TRUE.equals(event.getCompleted())) {
+            TaskStatus prev = task.getStatus();
+            task.setStatus(TaskStatus.DONE);
+            if (prev != TaskStatus.DONE) {
+                recordHistory(task, prev, TaskStatus.DONE, null);
+            }
+        }
+
+        if (event.getAssigneeTelegramId() != null) {
+            resolveTeamUser(task.getTeam(), event.getAssigneeTelegramId())
+                    .ifPresent(task::setAssignee);
+        }
+
+        task = taskRepository.save(task);
+        youGileService.updateTask(task.getTeam(), task);
     }
 
     @Transactional(readOnly = true)
