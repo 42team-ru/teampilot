@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import ru.team42.backend.s3_common.config.S3Properties;
 import ru.team42.backend.s3_common.service.S3Service;
+import ru.team42.monolith.kafka.publisher.TranscriptEventPublisher;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -20,14 +21,25 @@ public class AudioTranscriptService {
     private final S3Service s3Service;
     private final S3Properties s3Properties;
     private final WhisperService whisperService;
+    private final AudioConverter audioConverter;
+    private final TranscriptEventPublisher transcriptEventPublisher;
 
     @Async
     public void transcribeAsync(UUID fileId, byte[] audioBytes, String filename) {
         try {
-            String text = whisperService.transcribe(audioBytes, filename);
-            save(fileId, text);
+            byte[] wavBytes;
+            try {
+                wavBytes = audioConverter.toWhisperWav(audioBytes);
+                log.info("Audio converted to 16kHz WAV for fileId={}", fileId);
+            } catch (Exception e) {
+                log.warn("Audio conversion failed for fileId={}, sending original bytes: {}", fileId, e.getMessage(), e);
+                wavBytes = audioBytes;
+            }
+            String text = whisperService.transcribe(wavBytes, filename.endsWith(".wav") ? filename : filename + ".wav");
+            String key = save(fileId, text);
+            transcriptEventPublisher.publishTranscriptReady(fileId, s3Properties.getDefaultBucket(), key);
         } catch (Exception e) {
-            log.warn("Whisper transcription failed for fileId={}: {}", fileId, e.getMessage());
+            log.error("Whisper transcription failed for fileId={}", fileId, e);
         }
     }
 

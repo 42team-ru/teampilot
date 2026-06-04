@@ -3,10 +3,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 # ── Kafka: Spring → LLM Worker ─────────────────────────────────────────────
+
+class TranscriptReadyEvent(BaseModel):
+    """Incoming event from audio.transcript.ready — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_id: str = Field(alias="fileId")
+    bucket: str
+    s3_key: str = Field(alias="s3Key")
+
 
 class MessageDto(BaseModel):
     user_id: int
