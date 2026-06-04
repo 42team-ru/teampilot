@@ -5,11 +5,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.response.TaskResponse;
-import ru.team42.monolith.entity.enums.TaskStatus;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.service.TaskService;
@@ -25,39 +25,41 @@ public class TaskController {
 
     private final TaskService taskService;
 
-    /** Читает задачу из локальной БД */
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/{id}")
     public ResponseEntity<TaskResponse> getById(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.getById(id)));
     }
 
-    /**
-     * Идёт в YouGile по externalId, применяет diff (статус, название, исполнитель),
-     * записывает историю статусов, возвращает актуальное состояние задачи.
-     */
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
     @PostMapping("/{id}/sync")
     public ResponseEntity<TaskResponse> syncFromYouGile(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.syncFromYouGile(id)));
     }
 
+    @PreAuthorize("isAuthenticated()")
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(
-            @RequestParam Long chatId,
-            @RequestParam(required = false) TaskStatus status,
+            @RequestParam(required = false) Long chatId,
+            @RequestParam(required = false) Long assignee,
+            @RequestParam(required = false) String status,
             @PageableDefault(size = 20) Pageable pageable) {
 
-        Page<TaskResponse> page = taskService.listByTeam(chatId, status, pageable)
+        Page<TaskResponse> page = taskService.list(chatId, assignee, status, pageable)
                 .map(TaskResponse::from);
         return ResponseUtils.page(PageResponse.fromPage(page));
     }
 
 // ============================================== ПАРАША ДЛЯ ТЕСТОВ ПОТОМ УДАЛИТЬ ==================================================
 
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @GetMapping("/yougile")
     public ResponseEntity<List<YouGileService.YouGileTaskResponse>> listFromYouGile(
             @RequestParam Long chatId) {
         return ResponseUtils.ok(taskService.listFromYouGile(chatId));
     }
+
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
     @PostMapping
     public ResponseEntity<TaskResponse> createTest(@RequestBody LlmTaskCreateEvent event) {
         return ResponseUtils.ok(TaskResponse.from(taskService.createFromLlmEvent(event)));

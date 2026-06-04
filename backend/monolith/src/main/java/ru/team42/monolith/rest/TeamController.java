@@ -3,6 +3,7 @@ package ru.team42.monolith.rest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,8 @@ import ru.team42.monolith.service.TeamService;
 import java.util.List;
 import java.util.UUID;
 
+import static ru.team42.monolith.security.RestSecurityErrorHandler.AUTH_FAILURE_DETAIL_ATTRIBUTE;
+
 @RestController
 @RequestMapping("/teams")
 @RequiredArgsConstructor
@@ -32,55 +35,70 @@ public class TeamController {
     @Operation(summary = "Получить все команды, где текущий пользователь — менеджер")
     @GetMapping("/my")
     public ResponseEntity<List<TeamResponse>> getMyTeams(
-            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest
     ) {
-        return ResponseUtils.ok(teamService.getManagerTeams(requireTelegramId(currentUser)));
+        return ResponseUtils.ok(teamService.getManagerTeams(requireTelegramId(currentUser, servletRequest)));
+    }
+
+    @Operation(summary = "Получить все активные команды текущего пользователя")
+    @GetMapping("/member-of")
+    public ResponseEntity<List<TeamResponse>> getUserTeams(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest
+    ) {
+        return ResponseUtils.ok(teamService.getUserTeams(requireTelegramId(currentUser, servletRequest)));
     }
 
     @Operation(summary = "Сохранить чат, куда менеджер добавил бота, для последующей привязки")
     @PostMapping("/pending-chats")
     public ResponseEntity<PendingTeamChatResponse> upsertPendingChat(
             @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest,
             @Valid @RequestBody CreatePendingTeamChatRequest request
     ) {
-        return ResponseUtils.ok(teamService.upsertPendingChat(requireTelegramId(currentUser), request));
+        return ResponseUtils.ok(teamService.upsertPendingChat(requireTelegramId(currentUser, servletRequest), request));
     }
 
     @Operation(summary = "Получить чаты, куда текущий менеджер добавил бота, но ещё не привязал команду")
     @GetMapping("/pending-chats")
     public ResponseEntity<List<PendingTeamChatResponse>> getMyPendingChats(
-            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest
     ) {
-        return ResponseUtils.ok(teamService.getMyPendingChats(requireTelegramId(currentUser)));
+        return ResponseUtils.ok(teamService.getMyPendingChats(requireTelegramId(currentUser, servletRequest)));
     }
 
     @Operation(summary = "Обновить настройки команды (kanban, chatTitle, telegramChatId)")
     @PatchMapping("/{teamId}")
     public ResponseEntity<TeamResponse> update(
             @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest,
             @PathVariable UUID teamId,
             @RequestBody UpdateTeamRequest request
     ) {
-        return ResponseUtils.ok(teamService.update(teamId, request, requireTelegramId(currentUser)));
+        return ResponseUtils.ok(teamService.update(teamId, request, requireTelegramId(currentUser, servletRequest)));
     }
 
     @Operation(summary = "Получить список участников команды")
     @GetMapping("/{teamId}/members")
     public ResponseEntity<List<TeamMemberResponse>> getMembers(
             @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest,
             @PathVariable UUID teamId
     ) {
-        return ResponseUtils.ok(teamService.getTeamMembers(teamId, requireTelegramId(currentUser)));
+        return ResponseUtils.ok(teamService.getTeamMembers(teamId, requireTelegramId(currentUser, servletRequest)));
     }
 
     @Operation(summary = "Удалить участника из команды")
     @DeleteMapping("/{teamId}/members/{teamUserId}")
     public ResponseEntity<Void> removeMember(
             @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest,
             @PathVariable UUID teamId,
             @PathVariable UUID teamUserId
     ) {
-        teamService.removeMember(teamId, teamUserId, requireTelegramId(currentUser));
+        teamService.removeMember(teamId, teamUserId, requireTelegramId(currentUser, servletRequest));
         return ResponseUtils.noContent();
     }
 
@@ -91,9 +109,18 @@ public class TeamController {
         return ResponseUtils.noContent();
     }
 
-    private Long requireTelegramId(User currentUser) {
+    private Long requireTelegramId(User currentUser, HttpServletRequest servletRequest) {
         if (currentUser == null) {
-            throw AppException.unauthorized("Telegram user is required");
+            Object failureDetail = servletRequest.getAttribute(AUTH_FAILURE_DETAIL_ATTRIBUTE);
+            if (failureDetail instanceof String detail && !detail.isBlank()) {
+                if (detail.startsWith("User with Telegram ID")) {
+                    throw AppException.notFound(detail);
+                }
+                throw AppException.unauthorized(detail);
+            }
+            throw AppException.unauthorized(
+                    "Telegram user authentication required: provide a valid X-Telegram-Id header"
+            );
         }
         return currentUser.getTelegramId();
     }

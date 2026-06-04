@@ -11,6 +11,7 @@ _STATUS_LABELS = {
     "in_progress": "🔄 В работе",
     "done": "✅ Готово",
     "blocked": "🚫 Заблокировано",
+    "cancelled": "🗑 Отменено",
 }
 
 

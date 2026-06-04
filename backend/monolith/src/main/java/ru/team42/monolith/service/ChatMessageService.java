@@ -3,7 +3,7 @@ package ru.team42.monolith.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.team42.backend.kafka_common.event.ChatMessageEvent;
+import ru.team42.monolith.event.ChatMessageEvent;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.mapper.ChatMessageMapper;
 import ru.team42.monolith.repository.ChatMessageRepository;

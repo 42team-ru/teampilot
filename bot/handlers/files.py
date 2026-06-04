@@ -8,11 +8,12 @@ from loguru import logger
 from kafka.producer import EventProducer
 from kafka.topics import TOPIC_AUDIO_UPLOAD
 from models.events import AudioUploadEvent
+from services.minio_client import minio_client
 
 router = Router()
 
 
-@router.message(F.audio | F.voice | F.document)
+@router.message(F.chat.type == "private", F.audio | F.voice | F.document)
 async def handle_audio(message: Message, bot: Bot, producer: EventProducer) -> None:
     await message.answer("⏳ Запись получена, обрабатываю...")
 
@@ -25,20 +26,16 @@ async def handle_audio(message: Message, bot: Bot, producer: EventProducer) -> N
         file_info = await bot.get_file(file_id)
         file_bytes = io.BytesIO()
         await bot.download_file(file_info.file_path, file_bytes)
-        file_bytes.seek(0)
+        file_data = file_bytes.getvalue()
 
-        # TODO: upload file_bytes to MinIO
-        #   from minio import Minio
-        #   from config import settings
-        #   client = Minio(settings.MINIO_ENDPOINT,
-        #                  access_key=settings.MINIO_ACCESS_KEY,
-        #                  secret_key=settings.MINIO_SECRET_KEY,
-        #                  secure=False)
-        #   minio_key = f"audio/{message.chat.id}/{file_name}"
-        #   client.put_object(settings.MINIO_BUCKET_AUDIO, minio_key,
-        #                     file_bytes, length=file_bytes.getbuffer().nbytes)
-        minio_key = f"audio/{message.chat.id}/{file_name}"  # placeholder until MinIO upload is implemented
-        logger.warning(f"MinIO upload not implemented — placeholder key: {minio_key}")
+        content_type = getattr(file_obj, "mime_type", None) or "audio/ogg"
+        uploaded = await minio_client.upload_file(
+            chat_id=message.chat.id,
+            data=file_data,
+            filename=file_name,
+            content_type=content_type,
+        )
+        minio_key = uploaded.key
 
         event = AudioUploadEvent(
             user_id=message.from_user.id,

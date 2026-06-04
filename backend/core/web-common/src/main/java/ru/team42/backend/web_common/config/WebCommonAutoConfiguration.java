@@ -57,6 +57,7 @@ public class WebCommonAutoConfiguration {
             addIfAbsent(responses, "400", "Bad request", ErrorResponse.class);
             addIfAbsent(responses, "401", "Unauthorized", ErrorResponse.class);
             addIfAbsent(responses, "403", "Access denied", ErrorResponse.class);
+            addIfAbsent(responses, "404", "Resource not found", ErrorResponse.class);
             addIfAbsent(responses, "500", "Internal server error", ErrorResponse.class);
             return operation;
         };
