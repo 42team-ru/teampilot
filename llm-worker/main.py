@@ -15,9 +15,7 @@ from models import (
     TaskCreateEvent,
     TaskExtractionList,
     TeamMember,
-    proto_to_batch_event,
 )
-from proto_generated.ru.team42.events import message_batch_pb2
 from settings import settings
 
 # Kafka Topic Constants
@@ -228,9 +226,7 @@ def main() -> None:
                 
             try:
                 # Parse incoming batch
-                proto_event = message_batch_pb2.MessageBatchEvent()
-                proto_event.ParseFromString(msg.value())
-                batch = proto_to_batch_event(proto_event)
+                batch = MessageBatchEvent.model_validate_json(msg.value())
                 logger.info(f"Processing batch {batch.event_id} ({len(batch.messages)} msgs) from chat {batch.chat_id}")
                 
                 # Process the batch and get results

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -17,16 +17,10 @@ class MessageDto(BaseModel):
 
 
 class TeamMember(BaseModel):
-    telegram_id: int
+    user_id: int
     username: str
     full_name: str
     role: str
-    position: str | None = None
-
-
-class ColumnInfo(BaseModel):
-    id: str
-    title: str
 
 
 class MessageBatchEvent(BaseModel):
@@ -34,48 +28,9 @@ class MessageBatchEvent(BaseModel):
     occurred_at: datetime
     chat_id: int
     team: list[TeamMember] = Field(default_factory=list)
-    columns: list[ColumnInfo] = Field(default_factory=list)
     messages: list[MessageDto]
     batch_start: datetime
     batch_end: datetime
-
-
-def proto_to_batch_event(proto_event: Any) -> MessageBatchEvent:
-    """Convert proto-generated MessageBatchEvent to Pydantic model."""
-    def ts_to_dt(ts: Any) -> datetime:
-        return datetime.fromtimestamp(ts.seconds + ts.nanos / 1e9, tz=timezone.utc)
-
-    return MessageBatchEvent(
-        event_id=proto_event.event_id,
-        occurred_at=ts_to_dt(proto_event.occurred_at),
-        chat_id=proto_event.chat_id,
-        batch_start=ts_to_dt(proto_event.batch_start),
-        batch_end=ts_to_dt(proto_event.batch_end),
-        messages=[
-            MessageDto(
-                user_id=m.user_id,
-                username=m.username or None,
-                full_name=m.full_name,
-                text=m.text,
-                timestamp=ts_to_dt(m.timestamp),
-            )
-            for m in proto_event.messages
-        ],
-        team=[
-            TeamMember(
-                telegram_id=t.telegram_id,
-                username=t.username,
-                full_name=t.full_name,
-                role=t.role,
-                position=t.position or None,
-            )
-            for t in proto_event.team
-        ],
-        columns=[
-            ColumnInfo(id=c.id, title=c.title)
-            for c in proto_event.columns
-        ],
-    )
 
 
 # ── Kafka: LLM Worker → Spring ──────────────────────────────────────────────
