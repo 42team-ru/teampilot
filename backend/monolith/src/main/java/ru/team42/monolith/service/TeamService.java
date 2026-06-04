@@ -86,7 +86,7 @@ public class TeamService {
                     User u = new User();
                     u.setTelegramId(req.adminTelegramId());
                     u.setTelegramLogin(req.adminUsername());
-                    u.setSystemRole(SystemRole.SYSTEM_ADMIN);
+                    u.setSystemRole(SystemRole.USER);
                     return userRepository.save(u);
                 });
 
