@@ -23,7 +23,6 @@ import ru.team42.monolith.entity.enums.SystemRole;
 import ru.team42.monolith.service.UserService;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/users")
@@ -51,17 +50,6 @@ public class UserController {
         return ResponseUtils.ok(userService.update(currentUser.getId(), request));
     }
 
-    @Operation(summary = "Обновить имя и фамилию пользователя (только бот, системный админ или сам пользователь)")
-    @PatchMapping("/{id}")
-    public ResponseEntity<UserResponse> update(
-            @PathVariable UUID id,
-            @Parameter(hidden = true) @AuthenticationPrincipal Object principal,
-            @Valid @RequestBody UpdateUserRequest request
-    ) {
-        requireCanUpdate(id, principal);
-        return ResponseUtils.ok(userService.update(id, request));
-    }
-
     @Operation(summary = "Список пользователей по роли")
     @GetMapping
     public ResponseEntity<List<UserResponse>> listByRole(@RequestParam String role) {
@@ -72,16 +60,5 @@ public class UserController {
             throw AppException.badRequest("Unknown role: " + role);
         }
         return ResponseUtils.ok(userService.listByRole(parsed));
-    }
-
-    private void requireCanUpdate(UUID id, Object principal) {
-        if ("bot".equals(principal)) {
-            return;
-        }
-        if (principal instanceof User user
-                && (user.getId().equals(id) || user.getSystemRole() == SystemRole.SYSTEM_ADMIN)) {
-            return;
-        }
-        throw AppException.forbidden("Only bot, system admin, or target user can update user %s".formatted(id));
     }
 }

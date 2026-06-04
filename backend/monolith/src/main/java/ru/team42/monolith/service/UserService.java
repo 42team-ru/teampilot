@@ -31,8 +31,6 @@ public class UserService {
                 .orElseThrow(() -> AppException.notFound("User %s not found".formatted(id)));
         if (request.firstName() != null) user.setFirstName(request.firstName());
         if (request.lastName() != null) user.setLastName(request.lastName());
-        if (request.telegramLogin() != null && user.getTelegramLogin() == null)
-            user.setTelegramLogin(request.telegramLogin());
         return toResponse(userRepository.save(user));
     }
 

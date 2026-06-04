@@ -31,7 +31,7 @@ public class ChatMessageBatchingService {
     private final TeamUserRepository teamUserRepository;
     private final YouGileService youGileService;
 
-    @Scheduled(fixedDelay = 60_000)
+    @Scheduled(fixedDelay = 5_000)
     @Transactional
     public void flushBatches() {
         List<Long> chatIds = chatMessageRepository.findDistinctChatIdsWithUnprocessedMessages();

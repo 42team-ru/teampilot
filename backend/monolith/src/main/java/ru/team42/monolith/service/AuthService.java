@@ -234,10 +234,7 @@ public class AuthService {
 
     @Transactional
     public AuthResponse registerUser(CreateUserRequest request) {
-        User user = userRepository.findByTelegramId(request.telegramId())
-                .orElseGet(User::new);
-        user.setTelegramId(request.telegramId());
-        user.setTelegramLogin(request.telegramLogin());
+        User user = new User();
         user.setFirstName(request.firstName());
         user.setLastName(request.lastName());
         user = userRepository.save(user);
