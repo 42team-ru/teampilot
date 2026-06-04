@@ -2,7 +2,9 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class GroupSetupStates(StatesGroup):
-    waiting_for_token = State()
+    waiting_for_login = State()
+    waiting_for_password = State()
+    waiting_for_company_select = State()
     waiting_for_board_select = State()
 
 

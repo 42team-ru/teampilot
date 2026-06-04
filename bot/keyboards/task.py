@@ -1,13 +1,25 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 _MAX_TITLE_LEN = 30
-_MAX_PROJECTS = 8
+_MAX_ITEMS = 8
+
+
+def build_companies_keyboard(companies: list[dict]) -> InlineKeyboardMarkup:
+    """companies: [{"id": str, "name": str}, ...]. Max 8 items shown."""
+    buttons = []
+    for company in companies[:_MAX_ITEMS]:
+        name = (company.get("name") or company.get("id", "?"))[:_MAX_TITLE_LEN]
+        buttons.append([InlineKeyboardButton(
+            text=f"🏢 {name}",
+            callback_data=f"yougile_company:{company['id']}",
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def build_projects_keyboard(projects: list[dict]) -> InlineKeyboardMarkup:
-    """projects: [{"id": str, "title": str}, ...]. Max 8 items shown."""
+    """boards/projects: [{"id": str, "title": str}, ...]. Max 8 items shown."""
     buttons = []
-    for project in projects[:_MAX_PROJECTS]:
+    for project in projects[:_MAX_ITEMS]:
         title = project["title"][:_MAX_TITLE_LEN]
         buttons.append([InlineKeyboardButton(
             text=f"📋 {title}",
