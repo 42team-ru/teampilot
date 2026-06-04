@@ -15,6 +15,7 @@ import java.time.Instant;
 @Jacksonized
 @AllArgsConstructor
 @NoArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class LlmTaskCreateEvent extends BaseEvent {
 
     private Long chatId;
