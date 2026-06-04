@@ -16,8 +16,8 @@ from keyboards.member import (
     team_context_member_keyboard,
     team_overview_keyboard,
 )
+from handlers.tasks_commands import _render_my_tasks
 from services.admin_service import get_user_by_telegram_id
-from services.task_service import get_tasks
 from services.team_service import get_member_teams, get_my_teams
 
 router = Router()
@@ -26,16 +26,6 @@ NO_TEAM_TEXT = (
     "Вы зарегистрированы, но пока не состоите ни в одной команде.\n"
     "Нужно, чтобы менеджер добавил вас в команду."
 )
-
-_STATUS_EMOJI = {
-    "OPEN": "🆕",
-    "IN_PROGRESS": "🔄",
-    "REVIEW": "👀",
-    "BLOCKED": "⏸",
-    "DONE": "✅",
-    "CANCELLED": "🗑",
-}
-
 
 async def show_member_panel(message: Message, user: dict) -> None:
     member_teams, manager_teams = await asyncio.gather(
@@ -166,7 +156,7 @@ async def team_ctx_member(callback: CallbackQuery) -> None:
         "",
         f"Telegram чат: {'привязан' if chat_id else 'не привязан'}",
         "",
-        "Чтобы посмотреть свои задачи — используйте /mytasks.",
+        "Свои задачи можно открыть кнопкой ниже или командой /mytasks.",
         "Задачи всей команды доступны в групповом чате командой /tasks.",
     ]
     await callback.message.edit_text(
@@ -178,49 +168,12 @@ async def team_ctx_member(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "member:mytasks")
 async def member_mytasks(callback: CallbackQuery) -> None:
-    tasks = await get_tasks(
-        telegram_id=callback.from_user.id,
-        assignee=callback.from_user.id,
-        status="active",
-        size=100,
-    )
-
-    if not tasks:
-        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить", callback_data="tasks_refresh:my")],
-            [InlineKeyboardButton(text="← Главное меню", callback_data="member:back")],
-        ])
-        await callback.message.edit_text("📭 Активных задач нет.", reply_markup=kb)
-        await callback.answer()
-        return
-
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    rows: list[list[InlineKeyboardButton]] = []
-    lines = ["📋 <b>Твои активные задачи:</b>", ""]
-    for i, task in enumerate(tasks, start=1):
-        status = task.get("status", "")
-        emoji = _STATUS_EMOJI.get(status, "📌")
-        title = escape(task.get("title") or "Без названия")
-        lines.append(f"{i}. {emoji} <b>{title}</b>")
-        task_id = task.get("id")
-        if task_id:
-            rows.append([
-                InlineKeyboardButton(text=f"{i}. ✅ Готово", callback_data=f"status:{task_id}:done"),
-                InlineKeyboardButton(text=f"{i}. ⏸ Блок", callback_data=f"status:{task_id}:blocked"),
-            ])
-
-    lines.append(f"\nВсего: {len(tasks)} активных")
-    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data="tasks_refresh:my")])
-    rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="member:back")])
-
+    text, keyboard = await _render_my_tasks(callback.from_user.id)
     try:
-        await callback.message.edit_text(
-            "\n".join(lines),
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-        )
-    except TelegramBadRequest:
-        pass
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest as error:
+        if "message is not modified" not in str(error):
+            raise
     await callback.answer()
 
 
@@ -265,8 +218,7 @@ async def team_ctx_upload(callback: CallbackQuery, state: FSMContext) -> None:
 async def member_help(callback: CallbackQuery) -> None:
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Мои задачи", callback_data="member:mytasks")],
-        [InlineKeyboardButton(text="🏢 Мои команды", callback_data="member:teams_overview")],
+        [InlineKeyboardButton(text="🏢 Выбрать команду", callback_data="member:teams_overview")],
         [InlineKeyboardButton(text="← Назад", callback_data="member:back")],
     ])
     await callback.message.edit_text(

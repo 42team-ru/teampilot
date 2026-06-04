@@ -24,6 +24,26 @@ async def get_tasks(
     size: int = 10,
 ) -> list[dict]:
     """GET /tasks?chatId=...&assignee=...&status=...&page=...&size=..."""
+    page_data = await get_tasks_page(
+        chat_id=chat_id,
+        telegram_id=telegram_id,
+        assignee=assignee,
+        status=status,
+        page=page,
+        size=size,
+    )
+    return page_data.get("content", [])
+
+
+async def get_tasks_page(
+    chat_id: int | None = None,
+    telegram_id: int | None = None,
+    assignee: int | None = None,
+    status: str | None = None,
+    page: int = 0,
+    size: int = 10,
+) -> dict:
+    """GET /tasks?chatId=...&assignee=...&status=...&page=...&size=..."""
     path = "/tasks"
     params: dict = {"page": page, "size": size}
     if chat_id is not None:
@@ -70,7 +90,7 @@ async def get_tasks(
         )
         raise BackendApiError.from_response(resp)
 
-    return resp.json().get("content", [])
+    return resp.json()
 
 
 async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict | None:
