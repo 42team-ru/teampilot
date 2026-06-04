@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import httpx
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -10,9 +9,12 @@ from loguru import logger
 from config import settings
 from handlers.member import show_member_panel
 from services.admin_service import get_user_by_telegram_id
+from services.backend_error import BackendApiError
+from services.http_client import HttpRequestError, http_client
 from services.http_logging import log_http_request_error, log_http_response_error
 from services.team_service import get_my_teams, link_chat_to_team, get_team_id
 from keyboards.team import build_teams_keyboard
+from states.auth import RegistrationStates
 from states.setup import LinkTeamStates
 from storage import register_user
 
@@ -38,13 +40,12 @@ async def _handle_join(message: Message, team_id: str) -> None:
         "telegram_login": u.username,
     }
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{settings.BACKEND_URL}{path}",
-                headers=_BOT_HEADERS,
-                json=body,
-            )
-    except httpx.RequestError as e:
+        resp = await http_client.post(
+            f"{settings.BACKEND_URL}{path}",
+            headers=_BOT_HEADERS,
+            json=body,
+        )
+    except HttpRequestError as e:
         log_http_request_error(
             service="Backend",
             method="POST",
@@ -53,21 +54,8 @@ async def _handle_join(message: Message, team_id: str) -> None:
             context=context,
             request_json=body,
         )
-        await message.answer("❌ Бэкенд недоступен, попробуй позже.")
-        return
+        raise BackendApiError.unavailable() from e
 
-    if resp.status_code == 400:
-        log_http_response_error(
-            resp,
-            service="Backend",
-            method="POST",
-            path=path,
-            expected="200",
-            context=context,
-            request_json=body,
-        )
-        await message.answer("❌ Неверный запрос.")
-        return
     if resp.status_code != 200:
         log_http_response_error(
             resp,
@@ -78,8 +66,7 @@ async def _handle_join(message: Message, team_id: str) -> None:
             context=context,
             request_json=body,
         )
-        await message.answer("❌ Не удалось вступить в команду. Попробуй позже.")
-        return
+        raise BackendApiError.from_response(resp)
 
     data = resp.json()
     register_user(u.id, u.username, u.full_name)
@@ -180,9 +167,12 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     # No token — show member/manager panel
     user = await get_user_by_telegram_id(message.from_user.id)
     if user is None:
+        await state.update_data(registration_pending_command=message.text)
+        await state.set_state(RegistrationStates.waiting_for_full_name)
         await message.answer(
-            "У вас нет доступа.\n"
-            "Попросите менеджера команды прислать ссылку для вступления."
+            "Сначала нужно зарегистрироваться.\n"
+            "Введите фамилию и имя одним сообщением. Например: <b>Петров Иван</b>",
+            parse_mode="HTML",
         )
         return
 
