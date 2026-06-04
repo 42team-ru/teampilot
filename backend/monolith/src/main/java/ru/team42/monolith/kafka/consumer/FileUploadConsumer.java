@@ -1,4 +1,4 @@
-package ru.team42.monolith.consumer;
+package ru.team42.monolith.kafka.consumer;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

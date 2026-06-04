@@ -8,21 +8,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.entity.Task;
+import ru.team42.monolith.entity.TaskColumn;
 import ru.team42.monolith.entity.TaskStatusHistory;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
-import ru.team42.monolith.entity.enums.TaskStatus;
-import ru.team42.monolith.entity.enums.TaskSyncStatus;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
+import ru.team42.monolith.entity.enums.TaskSyncStatus;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.event.LlmUpdateTaskEvent;
 import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.mapper.LlmTaskUpdateMapper;
+import ru.team42.monolith.repository.TaskColumnRepository;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -33,16 +35,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TaskService {
 
-    private static final int YOUGILE_MAX_RETRIES = 3;
-    private static final long RETRY_BASE_MS = 1_000;
-    private static final List<TaskStatus> ACTIVE_STATUSES = List.of(
-            TaskStatus.OPEN,
-            TaskStatus.IN_PROGRESS,
-            TaskStatus.REVIEW,
-            TaskStatus.BLOCKED
-    );
-
     private final TaskRepository taskRepository;
+    private final TaskColumnRepository taskColumnRepository;
     private final TaskStatusHistoryRepository historyRepository;
     private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
@@ -63,9 +57,13 @@ public class TaskService {
         task.setTitle(event.getTitle());
         task.setDescription(event.getDescription());
         task.setDeadline(event.getDeadline());
-        task.setStatus(TaskStatus.IN_PROGRESS);
-        task.setExternalColumnId(event.getColumnId());
         task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
+        task.setLocalStatus(TaskLocalStatus.PENDING_APPROVAL);
+
+        if (event.getColumnId() != null) {
+            taskColumnRepository.findByTeamIdAndYouGileColumnId(team.getId(), event.getColumnId())
+                    .ifPresent(task::setColumn);
+        }
 
         if (event.getAssigneeTelegramId() != null) {
             resolveTeamUser(team, event.getAssigneeTelegramId()).ifPresent(task::setAssignee);
@@ -74,12 +72,29 @@ public class TaskService {
             resolveTeamUser(team, event.getAuthorTelegramId()).ifPresent(task::setAuthor);
         }
 
-        task = taskRepository.save(task);
-        recordHistory(task, null, TaskStatus.IN_PROGRESS, null);
+        return taskRepository.save(task);
+    }
 
-        youGileService.createTask(team, task);
+    @Transactional
+    public Task approve(UUID taskId, Long telegramId) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(taskId)));
 
-        return task;
+        if (task.getLocalStatus() != TaskLocalStatus.PENDING_APPROVAL) {
+            throw AppException.badRequest("Task %s is not pending approval".formatted(taskId));
+        }
+
+        task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        final Task saved = taskRepository.save(task);
+
+        youGileService.createTask(saved.getTeam(), saved).ifPresent(externalId -> {
+            saved.setExternalId(externalId);
+            saved.setSyncStatus(TaskSyncStatus.SYNCED);
+            taskRepository.save(saved);
+            taskEventPublisher.publishConfirmation(saved);
+        });
+
+        return saved;
     }
 
     @Transactional
@@ -91,16 +106,18 @@ public class TaskService {
 
         llmTaskUpdateMapper.updateTaskFromEvent(event, task);
 
-        if (Boolean.TRUE.equals(event.getDeleted())) {
-            task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
+        if (event.getColumnId() != null) {
+            Optional<TaskColumn> colOpt = taskColumnRepository
+                    .findByTeamIdAndYouGileColumnId(task.getTeam().getId(), event.getColumnId());
+            if (colOpt.isPresent() && !colOpt.get().equals(task.getColumn())) {
+                TaskColumn prev = task.getColumn();
+                task.setColumn(colOpt.get());
+                recordHistory(task, prev, colOpt.get(), telegramIdOf(task));
+            }
         }
 
-        if (Boolean.TRUE.equals(event.getCompleted())) {
-            TaskStatus prev = task.getStatus();
-            task.setStatus(TaskStatus.DONE);
-            if (prev != TaskStatus.DONE) {
-                recordHistory(task, prev, TaskStatus.DONE, null);
-            }
+        if (Boolean.TRUE.equals(event.getDeleted())) {
+            task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
         }
 
         if (event.getAssigneeTelegramId() != null) {
@@ -128,30 +145,31 @@ public class TaskService {
         }
 
         Team team = task.getTeam();
-/*
-        ru.team42.monolith.kanban.YouGileService.YouGileTaskResponse remote =
-                youGileService.fetchTask(team, task.getExternalId())
-                        .orElseThrow(() -> AppException.internalError(
-                                "YouGile did not return task " + task.getExternalId()));
+
+        YouGileService.YouGileTaskResponse remote = youGileService.fetchTask(team, task.getExternalId())
+                .orElseThrow(() -> AppException.internalError(
+                        "YouGile did not return task " + task.getExternalId()));
 
         boolean changed = false;
 
-        if (remote.getColumnId() != null) {
-            TaskStatus newStatus = youGileService.resolveInternalStatus(team, remote.getColumnId());
-            if (newStatus != task.getStatus()) {
-                recordHistory(task, task.getStatus(), newStatus, null);
-                task.setStatus(newStatus);
+        if (remote.columnId() != null) {
+            Optional<TaskColumn> colOpt = taskColumnRepository
+                    .findByTeamIdAndYouGileColumnId(team.getId(), remote.columnId());
+            if (colOpt.isPresent() && !colOpt.get().equals(task.getColumn())) {
+                TaskColumn prev = task.getColumn();
+                task.setColumn(colOpt.get());
+                recordHistory(task, prev, colOpt.get(), null);
                 changed = true;
             }
         }
 
-        if (remote.getTitle() != null && !remote.getTitle().equals(task.getTitle())) {
-            task.setTitle(remote.getTitle());
+        if (remote.title() != null && !remote.title().equals(task.getTitle())) {
+            task.setTitle(remote.title());
             changed = true;
         }
 
-        if (remote.getResponsible() != null) {
-            teamUserRepository.findByTeamIdAndYougileUserId(team.getId(), remote.getResponsible())
+        if (remote.responsible() != null) {
+            teamUserRepository.findByTeamIdAndYougileUserId(team.getId(), remote.responsible())
                     .ifPresent(tu -> {
                         if (!tu.equals(task.getAssignee())) {
                             task.setAssignee(tu);
@@ -162,26 +180,14 @@ public class TaskService {
         if (changed) {
             taskRepository.save(task);
         }
-*/
 
-//        log.info("Synced task {} from YouGile (changed={})", id, changed);
+        log.info("Synced task {} from YouGile", id);
         return task;
     }
 
     @Transactional(readOnly = true)
-    public Page<Task> listByTeam(Long chatId, TaskStatus status, Pageable pageable) {
-        Team team = teamRepository.findByTelegramChatId(chatId)
-                .orElseThrow(() -> AppException.notFound(
-                        "Team not found for chatId %d".formatted(chatId)));
-        if (status != null) {
-            return taskRepository.findByTeamIdAndStatus(team.getId(), status, pageable);
-        }
-        return taskRepository.findByTeamId(team.getId(), pageable);
-    }
-
-    @Transactional(readOnly = true)
-    public Page<Task> list(Long chatId, Long assigneeTelegramId, String rawStatus, Pageable pageable) {
-        List<TaskStatus> statuses = resolveStatusFilter(rawStatus);
+    public Page<Task> list(Long chatId, Long assigneeTelegramId, String rawLocalStatus, Pageable pageable) {
+        Collection<TaskLocalStatus> statuses = resolveLocalStatusFilter(rawLocalStatus);
         UUID teamId = null;
         if (chatId != null) {
             Team team = teamRepository.findByTelegramChatId(chatId)
@@ -196,25 +202,21 @@ public class TaskService {
 
         if (teamId != null && assigneeTelegramId != null) {
             if (statuses != null) {
-                return taskRepository.findByTeamIdAndAssigneeUserTelegramIdAndStatusIn(
-                        teamId,
-                        assigneeTelegramId,
-                        statuses,
-                        pageable
-                );
+                return taskRepository.findByTeamIdAndAssigneeUserTelegramIdAndLocalStatusIn(
+                        teamId, assigneeTelegramId, statuses, pageable);
             }
             return taskRepository.findByTeamIdAndAssigneeUserTelegramId(teamId, assigneeTelegramId, pageable);
         }
 
         if (teamId != null) {
             if (statuses != null) {
-                return taskRepository.findByTeamIdAndStatusIn(teamId, statuses, pageable);
+                return taskRepository.findByTeamIdAndLocalStatusIn(teamId, statuses, pageable);
             }
             return taskRepository.findByTeamId(teamId, pageable);
         }
 
         if (statuses != null) {
-            return taskRepository.findByAssigneeUserTelegramIdAndStatusIn(assigneeTelegramId, statuses, pageable);
+            return taskRepository.findByAssigneeUserTelegramIdAndLocalStatusIn(assigneeTelegramId, statuses, pageable);
         }
         return taskRepository.findByAssigneeUserTelegramId(assigneeTelegramId, pageable);
     }
@@ -227,39 +229,6 @@ public class TaskService {
         return youGileService.fetchAllTasksForBoard(team);
     }
 
-/*
-    private void syncToYouGile(Task task, Team team) {
-        Exception lastException = null;
-        for (int attempt = 1; attempt <= YOUGILE_MAX_RETRIES; attempt++) {
-            try {
-                Optional<String> externalId = youGileService.createTask(team, task);
-                if (externalId.isPresent()) {
-                    task.setExternalId(externalId.get());
-                    task.setSyncStatus(TaskSyncStatus.SYNCED);
-                    taskRepository.save(task);
-                    taskEventPublisher.publishConfirmation(task);
-                    log.info("Task {} synced to YouGile as {}", task.getId(), externalId.get());
-                } else {
-                    log.warn("YouGile returned empty id for task {}, marking SYNC_FAILED", task.getId());
-                    task.setSyncStatus(TaskSyncStatus.SYNC_FAILED);
-                    taskRepository.save(task);
-                }
-                return;
-            } catch (Exception e) {
-                lastException = e;
-                log.warn("YouGile sync attempt {}/{} failed for task {}: {}",
-                        attempt, YOUGILE_MAX_RETRIES, task.getId(), e.getMessage());
-                if (attempt < YOUGILE_MAX_RETRIES) {
-                    sleep(RETRY_BASE_MS * (1L << (attempt - 1)));
-                }
-            }
-        }
-        log.error("YouGile sync failed after {} retries for task {}. Keeping PENDING_SYNC.",
-                YOUGILE_MAX_RETRIES, task.getId(), lastException);
-        // Task stays PENDING_SYNC — a cron job can retry later
-    }
-*/
-
     private void validateEvent(LlmTaskCreateEvent event) {
         if (event.getChatId() == null) throw AppException.badRequest("chatId is required");
         if (event.getTitle() == null || event.getTitle().isBlank())
@@ -270,37 +239,26 @@ public class TaskService {
         return teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), telegramId);
     }
 
-    private List<TaskStatus> resolveStatusFilter(String rawStatus) {
-        if (rawStatus == null || rawStatus.isBlank()) {
-            return null;
-        }
-
-        String normalized = rawStatus.trim().toUpperCase(Locale.ROOT);
-        if ("ACTIVE".equals(normalized)) {
-            return ACTIVE_STATUSES;
-        }
-
+    private Collection<TaskLocalStatus> resolveLocalStatusFilter(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
         try {
-            return List.of(TaskStatus.valueOf(normalized));
+            return List.of(TaskLocalStatus.valueOf(normalized));
         } catch (IllegalArgumentException e) {
-            throw AppException.badRequest("Unknown task status: " + rawStatus);
+            throw AppException.badRequest("Unknown localStatus: " + raw);
         }
     }
 
-    private void recordHistory(Task task, TaskStatus from, TaskStatus to, Long telegramId) {
+    private void recordHistory(Task task, TaskColumn from, TaskColumn to, Long telegramId) {
         TaskStatusHistory h = new TaskStatusHistory();
         h.setTask(task);
-        h.setFromStatus(from);
-        h.setToStatus(to);
+        h.setFromColumn(from);
+        h.setToColumn(to);
         h.setChangedByTelegramId(telegramId);
         historyRepository.save(h);
     }
 
-    private static void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-        }
+    private Long telegramIdOf(Task task) {
+        return task.getAssignee() != null ? task.getAssignee().getUser().getTelegramId() : null;
     }
 }
