@@ -1,6 +1,5 @@
 package ru.team42.monolith.kanban;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.team42.monolith.client.yougile.api.DefaultApi;
@@ -11,7 +10,6 @@ import ru.team42.monolith.client.yougile.model.Deadline;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.enums.TaskStatus;
-import ru.team42.monolith.mapper.TaskToYouGileMapper;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -23,10 +21,9 @@ import java.util.stream.Stream;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class YouGileService {
 
-    private final TaskToYouGileMapper taskToYouGileMapper;
+
 
     // teamId → (TaskStatus → YouGile columnId), populated lazily, never persisted
     private final Map<UUID, Map<TaskStatus, String>> columnCache = new ConcurrentHashMap<>();
@@ -55,7 +52,6 @@ public class YouGileService {
 
         if (task.getDeadline() != null) {
             Deadline dl = new Deadline();
-            dl.setStartDate( BigDecimal.valueOf(task.getCreatedAt().getSecond()));
             dl.setDeadline(BigDecimal.valueOf(task.getDeadline().getEpochSecond()));
             dto.setDeadline(dl);
         }
@@ -70,24 +66,6 @@ public class YouGileService {
             log.error("Failed to create YouGile task for team {}: {}", team.getId(), e.getMessage());
         }
         return Optional.empty();
-    }
-
-    public void updateTask(Team team, Task task) {
-        if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return;
-        if (task.getExternalId() == null) {
-            log.error("Cannot update YouGile task for local task {} — no externalId yet", task.getId());
-            return;
-        }
-        DefaultApi api = buildApi(team);
-
-        try {
-            var dto = taskToYouGileMapper.toUpdateDto(task);
-            api.taskControllerUpdate(task.getExternalId(), dto).block();
-            log.info("Updated YouGile task {} for local task {}", task.getExternalId(), task.getId());
-        } catch (Exception e) {
-            log.error("Failed to update YouGile task {} for local task {}: {}",
-                    task.getExternalId(), task.getId(), e.getMessage());
-        }
     }
 
     public TaskStatus resolveInternalStatus(Team team, String columnId) {
