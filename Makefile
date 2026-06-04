@@ -204,6 +204,30 @@ seed:
 seed-docker:
 	$(COMPOSE) $(CORE_CFG) -f $(DOCKER_DIR)/docker-compose.seed.yml run --rm data-seeder
 
+# ============================================================
+# Proto
+# ============================================================
+
+PROTO_SRC    := backend/core/kafka-proto-common/src/main/proto
+PROTO_PY_OUT := llm-worker/proto_generated
+
+.PHONY: proto-gen
+
+proto-gen:
+	@echo "Генерация Python proto классов из $(PROTO_SRC)..."
+	@mkdir -p $(PROTO_PY_OUT)
+	cd llm-worker && uv run python -m grpc_tools.protoc \
+		-I../$(PROTO_SRC) \
+		--python_out=proto_generated \
+		--pyi_out=proto_generated \
+		ru/team42/events/message_batch.proto
+	@find $(PROTO_PY_OUT) -type d -exec touch {}/__init__.py \;
+	@echo "Done → $(PROTO_PY_OUT)/ru/team42/events/message_batch_pb2.py"
+
+# ============================================================
+# Other
+# ============================================================
+
 .PHONY: ps clean
 
 ps:
