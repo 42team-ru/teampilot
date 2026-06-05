@@ -21,7 +21,8 @@ public record TaskResponse(
         ColumnInfo column,
         AssigneeInfo assignee,
         AssigneeInfo author,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        boolean completed
 ) {
     public record AssigneeInfo(UUID teamUserId, Long telegramId, String telegramLogin, String firstName, String lastName) {}
 
@@ -40,7 +41,8 @@ public record TaskResponse(
                 toColumnInfo(task.getColumn()),
                 toAssigneeInfo(task.getAssignee()),
                 toAssigneeInfo(task.getAuthor()),
-                task.getCreatedAt()
+                task.getCreatedAt(),
+                task.isCompleted()
         );
     }
 
