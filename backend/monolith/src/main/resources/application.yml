@@ -20,6 +20,8 @@ app:
         region: ${S3_REGION:us-east-1}
         default-bucket: ${S3_DEFAULT_BUCKET:audio}
         presigned-url-expiry: ${S3_PRESIGNED_URL_EXPIRY:15m}
+    llm:
+        auto-confirm-threshold: ${LLM_AUTO_CONFIRM_THRESHOLD:0.90}
 
 spring:
     application:

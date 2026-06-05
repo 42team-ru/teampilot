@@ -9,7 +9,7 @@ import ru.team42.monolith.event.TaskConfirmationEvent;
 @Component
 public class TaskEventPublisher extends AbstractEventPublisher {
 
-    public void publishConfirmation(Task task) {
+    public void publishConfirmation(Task task, boolean autoConfirmed) {
         String assigneeUsername = task.getAssignee() != null
                 ? task.getAssignee().getUser().getTelegramLogin()
                 : null;
@@ -22,7 +22,8 @@ public class TaskEventPublisher extends AbstractEventPublisher {
                         task.getTitle(),
                         task.getDescription(),
                         assigneeUsername,
-                        task.getDeadline()
+                        task.getDeadline(),
+                        autoConfirmed
                 ));
     }
 }

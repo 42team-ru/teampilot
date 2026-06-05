@@ -31,4 +31,6 @@ public class LlmTaskCreateEvent extends BaseEvent {
     private String columnId;
 
     private Instant deadline;
+
+    private float confidence;
 }
