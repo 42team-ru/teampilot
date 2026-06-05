@@ -18,6 +18,7 @@ from keyboards.member import (
 )
 from handlers.tasks_commands import _render_my_tasks
 from services.admin_service import get_user_by_telegram_id
+from services.task_service import get_tasks_page
 from services.team_service import get_member_teams, get_my_teams
 
 router = Router()
@@ -117,6 +118,7 @@ async def team_ctx_manager(callback: CallbackQuery, state: FSMContext) -> None:
     chat_id = team.get("telegramChatId")
     kanban = team.get("kanbanId")
     active = "✅ активна" if team.get("active", True) else "⛔ неактивна"
+    pending_count = await _pending_tasks_count(chat_id, callback.from_user.id) if chat_id else None
 
     lines = [
         f"🔑 <b>{escape(title)}</b>",
@@ -129,7 +131,11 @@ async def team_ctx_manager(callback: CallbackQuery, state: FSMContext) -> None:
     ]
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=team_context_manager_keyboard(team_id, has_chat=bool(chat_id)),
+        reply_markup=team_context_manager_keyboard(
+            team_id,
+            has_chat=bool(chat_id),
+            pending_count=pending_count,
+        ),
     )
     await callback.answer()
 
@@ -277,3 +283,14 @@ def _member_panel_text(
     lines.append("")
     lines.append("Выберите действие:")
     return "\n".join(lines)
+
+
+async def _pending_tasks_count(chat_id: int | str, telegram_id: int) -> int:
+    page = await get_tasks_page(
+        chat_id=int(chat_id),
+        telegram_id=telegram_id,
+        status="PENDING_APPROVAL",
+        page=0,
+        size=1,
+    )
+    return int(page.get("totalElements") or len(page.get("content", [])))
