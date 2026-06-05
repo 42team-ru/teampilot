@@ -26,6 +26,8 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     Page<Task> findByAssigneeUserTelegramId(Long telegramId, Pageable pageable);
 
+    Page<Task> findByAssigneeUserTelegramIdAndCompletedFalseAndDeletedFalse(Long telegramId, Pageable pageable);
+
     Page<Task> findByAssigneeUserTelegramIdAndLocalStatusIn(
             Long telegramId,
             Collection<TaskLocalStatus> statuses,
