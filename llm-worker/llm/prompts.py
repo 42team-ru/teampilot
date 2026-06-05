@@ -109,12 +109,6 @@ A task is an explicit assignment — direct or indirect — that implies someone
 </definitions>
 
 <rules>
-<priority>
-- HIGH: deadline ≤ 24 hours OR keywords: "срочно", "критично", "горит", "блокер", "прод упал"
-- MEDIUM: deadline ≤ 7 days OR clear task without deadline
-- LOW: "было бы неплохо", "когда будет время", "на следующей неделе"
-</priority>
-
 <assignee_resolution>
 Resolve the assignee using this priority chain — stop at the first match:
 
@@ -155,7 +149,7 @@ The human message may contain a KANBAN COLUMNS section.
 
 <deadlines>
 Current time: {current_datetime}
-- Convert relative dates to ISO-8601: "до завтра" → tomorrow 23:59, "сегодня" → today 23:59, "до конца недели" → nearest Friday 23:59.
+- Convert relative dates to ISO-8601 UTC (always append Z): "до завтра" → tomorrow 23:59Z, "сегодня" → today 23:59Z, "до конца недели" → nearest Friday 23:59Z.
 - No deadline mentioned → null.
 </deadlines>
 
@@ -171,7 +165,7 @@ Always reply in Russian.
 </rules>
 
 <output_format>
-[{{"title": "...", "description": "...", "assignee": "..." | null, "deadline": "ISO-8601" | null, "priority": "HIGH"|"MEDIUM"|"LOW", "column_id": "..." | null}}, ...]
+[{{"title": "...", "description": "...", "assignee": "..." | null, "deadline": "ISO-8601" | null, "column_id": "..." | null}}, ...]
 </output_format>
 
 <examples>
@@ -188,7 +182,7 @@ KANBAN COLUMNS:
 @kirill_dev is explicitly mentioned → assignee. Deadline "до завтрашнего вечера" → tomorrow 23:59. Deadline < 24h → HIGH. Columns present, new task → "To Do" col-001.
 </thinking>
 <output>
-[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee": "@kirill_dev", "deadline": "2026-06-04T23:59:00", "priority": "HIGH", "column_id": "col-001"}}]
+[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee": "@kirill_dev", "deadline": "2026-06-04T23:59:00Z", "column_id": "col-001"}}]
 </output>
 </example>
 
@@ -206,7 +200,7 @@ KANBAN COLUMNS:
 "прод упал" + "срочно" → HIGH. kirill confirms "Беру, смотрю уже" → он уже работает → "В работе" col-b. Assignee = kirill (from chat log). No explicit deadline.
 </thinking>
 <output>
-[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю уже»", "assignee": "kirill", "deadline": null, "priority": "HIGH", "column_id": "col-b"}}]
+[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю уже»", "assignee": "kirill", "deadline": null, "column_id": "col-b"}}]
 </output>
 </example>
 
@@ -220,7 +214,7 @@ KANBAN COLUMNS:
 vova_ml explicitly agrees ("Ок, сегодня поковыряю") → assignee = vova_ml. "сегодня" → today 23:59. No KANBAN COLUMNS → column_id = null.
 </thinking>
 <output>
-[{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee": "vova_ml", "deadline": "2026-06-03T23:59:00", "priority": "HIGH", "column_id": null}}]
+[{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee": "vova_ml", "deadline": "2026-06-03T23:59:00Z", "column_id": null}}]
 </output>
 </example>
 
@@ -236,9 +230,9 @@ Three assignments: 1) frontend_kirill agrees to logs, 2) vova_ml agrees to deps 
 </thinking>
 <output>
 [
-  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "«ivan_pm: разбери ошибки в логах после деплоя» — «frontend_kirill: Беру логи»", "assignee": "frontend_kirill", "deadline": null, "priority": "MEDIUM", "column_id": null}},
-  {{"title": "Обновить зависимости в pyproject.toml", "description": "«ivan_pm: обнови зависимости в pyproject до конца недели» — «vova_ml: Зависимости за мной»", "assignee": "vova_ml", "deadline": "2026-06-07T23:59:00", "priority": "MEDIUM", "column_id": null}},
-  {{"title": "Написать документацию по API", "description": "«ivan_pm: Маша, с тебя доки по API»", "assignee": "@qa_masha", "deadline": null, "priority": "MEDIUM", "column_id": null}}
+  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "«ivan_pm: разбери ошибки в логах после деплоя» — «frontend_kirill: Беру логи»", "assignee": "frontend_kirill", "deadline": null, "column_id": null}},
+  {{"title": "Обновить зависимости в pyproject.toml", "description": "«ivan_pm: обнови зависимости в pyproject до конца недели» — «vova_ml: Зависимости за мной»", "assignee": "vova_ml", "deadline": "2026-06-07T23:59:00Z", "column_id": null}},
+  {{"title": "Написать документацию по API", "description": "«ivan_pm: Маша, с тебя доки по API»", "assignee": "@qa_masha", "deadline": null, "column_id": null}}
 ]
 </output>
 </example>
@@ -252,10 +246,10 @@ TEAM LIST:
   - @mikhail_be  |  Михаил Беккеров  |  Developer
 </input>
 <thinking>
-"Мишаня" → team list → Михаил Беккеров = @mikhail_be. mikhail_be himself confirms "Да, возьму" → assignee = @mikhail_be. "сегодня" → HIGH priority? No urgency keywords, just "сегодня" → MEDIUM. Deadline today 23:59.
+"Мишаня" → team list → Михаил Беккеров = @mikhail_be. mikhail_be himself confirms "Да, возьму" → assignee = @mikhail_be. No deadline mentioned.
 </thinking>
 <output>
-[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "«pm_ivan: Мишаня, посмотришь на баг с авторизацией?» — «mikhail_be: Да, возьму»", "assignee": "@mikhail_be", "deadline": null, "priority": "MEDIUM", "column_id": null}}]
+[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "«pm_ivan: Мишаня, посмотришь на баг с авторизацией?» — «mikhail_be: Да, возьму»", "assignee": "@mikhail_be", "deadline": null, "column_id": null}}]
 </output>
 </example>
 
@@ -272,7 +266,7 @@ TEAM LIST:
 Role "фронт" → 2 Developers match → ROLE AMBIGUITY → assignee = null.
 </thinking>
 <output>
-[{{"title": "Исправить баг на стороне фронтенда", "description": "«pm: Пусть фронт займётся этим багом.»", "assignee": null, "deadline": null, "priority": "MEDIUM", "column_id": null}}]
+[{{"title": "Исправить баг на стороне фронтенда", "description": "«pm: Пусть фронт займётся этим багом.»", "assignee": null, "deadline": null, "column_id": null}}]
 </output>
 </example>
 
@@ -299,7 +293,7 @@ No assignment, no task signals — pure noise.
 "я настроил мониторинг" = already done → skip. Only new request: ELK logs. devops_oleg agrees "завтра займусь" → assignee = devops_oleg. "завтра" → tomorrow 23:59 → < 24h → HIGH.
 </thinking>
 <output>
-[{{"title": "Настроить сбор логов в ELK", "description": "«backend_sasha: Можешь ещё настроить сбор логов в ELK? У нас логи теряются» — «devops_oleg: Ладно, завтра займусь»", "assignee": "devops_oleg", "deadline": "2026-06-06T23:59:00", "priority": "MEDIUM", "column_id": null}}]
+[{{"title": "Настроить сбор логов в ELK", "description": "«backend_sasha: Можешь ещё настроить сбор логов в ELK? У нас логи теряются» — «devops_oleg: Ладно, завтра займусь»", "assignee": "devops_oleg", "deadline": "2026-06-06T23:59:00Z", "column_id": null}}]
 </output>
 </example>
 
@@ -316,7 +310,7 @@ TEAM LIST:
 Role "девопс" → 1 match in team list → @ops_sasha. frontend_anna commented but is Frontend, not DevOps — she is NOT the assignee.
 </thinking>
 <output>
-[{{"title": "Настроить мониторинг на новом сервере", "description": "«pm_lead: Пусть девопс настроит мониторинг на новом сервере.»", "assignee": "@ops_sasha", "deadline": null, "priority": "MEDIUM", "column_id": null}}]
+[{{"title": "Настроить мониторинг на новом сервере", "description": "«pm_lead: Пусть девопс настроит мониторинг на новом сервере.»", "assignee": "@ops_sasha", "deadline": null, "column_id": null}}]
 </output>
 </example>
 </examples>"""

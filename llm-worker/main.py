@@ -7,22 +7,24 @@ from typing import Any
 from loguru import logger
 
 from infra.kafka import BatchConsumer, flush, publish
+from infra.qdrant import delete_task, init_collections, store_task
 from models import (
     MessageBatchEvent,
     StatusChangeEvent,
     TaskCreateEvent,
+    TaskLifecycleEvent,
     TranscriptReadyEvent,
     proto_to_batch_event,
 )
 from processor import process_batch, process_transcript
-from infra.qdrant import init_collections
 from proto_generated.ru.team42.events import message_batch_pb2
 from settings import settings
 
 TOPIC_IN = "messages.batches"
 TOPIC_TASKS = "llm.tasks.create"
-TOPIC_STATUS = "llm.status.change"
+TOPIC_STATUS = ""
 TOPIC_TRANSCRIPT = "audio.transcript.ready"
+TOPIC_LIFECYCLE = "tasks.lifecycle"
 
 
 def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
@@ -34,6 +36,28 @@ def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
         elif isinstance(event, StatusChangeEvent):
             publish(TOPIC_STATUS, event, key=str(batch.team_id))
             logger.info(f"Status event published: {event.action}")
+
+
+def run_lifecycle_consumer(stop_event: threading.Event) -> None:
+    consumer = BatchConsumer(TOPIC_LIFECYCLE)
+    try:
+        while not stop_event.is_set():
+            msg = consumer.poll(timeout=1.0)
+            if msg is None:
+                continue
+            try:
+                event = TaskLifecycleEvent.model_validate_json(msg.value().decode())
+                if event.type in ("CONFIRMED", "UPDATED"):
+                    store_task(event.task_id, event.title, event.description or "", event.team_id)
+                    logger.info(f"Stored/updated task {event.task_id!r} in Qdrant")
+                elif event.type == "CANCELLED":
+                    delete_task(event.task_id)
+            except Exception as e:
+                logger.error(f"Error processing lifecycle event: {e}")
+            finally:
+                consumer.commit(msg)
+    finally:
+        consumer.close()
 
 
 def run_transcript_consumer(stop_event: threading.Event) -> None:
@@ -87,6 +111,14 @@ def main() -> None:
     )
     transcript_thread.start()
 
+    lifecycle_thread = threading.Thread(
+        target=run_lifecycle_consumer,
+        args=(stop_event,),
+        daemon=True,
+        name="lifecycle-consumer",
+    )
+    lifecycle_thread.start()
+
     consumer = BatchConsumer(TOPIC_IN)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
@@ -135,6 +167,7 @@ def main() -> None:
             consumer.close()
             flush()
             transcript_thread.join(timeout=5)
+            lifecycle_thread.join(timeout=5)
 
 
 if __name__ == "__main__":

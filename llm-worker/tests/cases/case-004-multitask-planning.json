@@ -58,18 +58,15 @@
     "data": [
       {
         "title": "Перенести store на Redux Toolkit",
-        "assignee": "@frontend_kirill",
-        "priority": "MEDIUM"
+        "assignee": "@frontend_kirill"
       },
       {
         "title": "Провести рефакторинг Kafka Consumer",
-        "assignee": "@backend_vlad",
-        "priority": "MEDIUM"
+        "assignee": "@backend_vlad"
       },
       {
         "title": "Описать новые ручки оплаты в Swagger",
-        "assignee": "@qa_masha",
-        "priority": "MEDIUM"
+        "assignee": "@qa_masha"
       }
     ]
   }

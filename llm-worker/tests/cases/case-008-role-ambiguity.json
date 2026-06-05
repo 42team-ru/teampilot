@@ -42,8 +42,7 @@
     "type": "task",
     "data": {
       "title": "Исправить баг на стороне фронтенда",
-      "assignee": null,
-      "priority": "MEDIUM"
+      "assignee": null
     }
   }
 }

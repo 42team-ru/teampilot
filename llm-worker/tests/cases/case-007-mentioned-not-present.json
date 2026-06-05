@@ -36,8 +36,7 @@
     "type": "task",
     "data": {
       "title": "Проверить UI перед релизом",
-      "assignee": "@nastya_qa",
-      "priority": "MEDIUM"
+      "assignee": "@nastya_qa"
     }
   }
 }

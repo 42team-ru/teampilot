@@ -42,8 +42,7 @@
     "type": "task",
     "data": {
       "title": "Разобраться с CI-пайплайном",
-      "assignee": "@devops_max",
-      "priority": "MEDIUM"
+      "assignee": "@devops_max"
     }
   }
 }
