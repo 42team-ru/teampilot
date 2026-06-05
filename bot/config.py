@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     HTTP_SOCK_READ_TIMEOUT_SECONDS: float = 30.0
     HTTP_SLOW_REQUEST_MS: float = 500.0
     HTTP_TRACE_PHASE_MS: float = 100.0
-    HTTP_FORCE_IPV4: bool = True
+    HTTP_FORCE_IPV4: bool = True 
     EVENT_LOOP_LAG_WARN_MS: float = 250.0
     EVENT_LOOP_LAG_INTERVAL_SECONDS: float = 0.5
     UPDATE_SLOW_HANDLER_MS: float = 1000.0
