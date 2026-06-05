@@ -137,3 +137,36 @@ Reworked member and manager bot panels into button-first grouped two-column layo
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Diagnose slow bot backend requests
+
+**Date**: 2026-06-06
+**Task**: Diagnose slow bot backend requests
+**Branch**: `master`
+
+### Summary
+
+Added HTTP phase tracing, IPv4-first backend connector defaults, event-loop lag monitoring, slow update logging, and offloaded synchronous Kafka publish calls from the bot event loop.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `910a305` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
