@@ -178,7 +178,7 @@ public class YouGileBoardSyncService {
 
         Task saved = taskRepository.save(task);
         recordHistory(saved, null, column);
-        taskEventPublisher.publishCreated(saved);
+        taskEventPublisher.publishImported(saved);
         log.info("Imported YouGile task {} as local task {} for team {}", remote.id(), saved.getId(), team.getId());
     }
 
