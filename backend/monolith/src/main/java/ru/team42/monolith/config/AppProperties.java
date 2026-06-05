@@ -12,6 +12,7 @@ public class AppProperties {
     private Bot bot = new Bot();
     private Jwt jwt = new Jwt();
     private Telegram telegram = new Telegram();
+    private Llm llm = new Llm();
 
     @Data
     public static class Bot {
@@ -27,5 +28,10 @@ public class AppProperties {
     @Data
     public static class Telegram {
         private String botToken;
+    }
+
+    @Data
+    public static class Llm {
+        private float autoConfirmThreshold = 0.90f;
     }
 }

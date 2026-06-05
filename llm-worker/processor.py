@@ -1,0 +1,307 @@
+import uuid
+from datetime import datetime, timezone
+from typing import List, Union
+
+from loguru import logger
+from pydantic import ValidationError
+
+from infra.kafka import publish
+from infra.qdrant import find_task_by_hint, is_task_duplicate, store_batch, store_task
+from llm.chains import classifier_chain, status_chain, task_chain
+from llm.transcript import chunk_text
+from models import (
+    ClassificationResult,
+    ColumnInfo,
+    MessageBatchEvent,
+    StatusChangeEvent,
+    StatusExtractionList,
+    TaskCreateEvent,
+    TaskExtractionList,
+    TeamMember,
+    TranscriptReadyEvent,
+)
+from infra.minio import download_file
+from settings import settings
+
+TOPIC_TASKS = "llm.tasks.create"
+TOPIC_STATUS = "llm.status.change"
+
+_DONE_KEYWORDS = {"готово", "done", "завершен", "завершено", "закрыт", "closed", "complete"}
+_PROGRESS_KEYWORDS = {"процесс", "progress", "работ", "in progress", "в работе", "делается"}
+_TODO_KEYWORDS = {"бэклог", "backlog", "to do", "todo", "новые", "открыт", "очередь", "open", "queue"}
+
+
+def format_messages(batch: MessageBatchEvent) -> str:
+    return "\n".join(
+        f"[{m.timestamp.strftime('%H:%M')}] {m.username or m.full_name}: {m.text}"
+        for m in batch.messages
+    )
+
+
+def format_team_context(batch: MessageBatchEvent) -> str:
+    if not batch.team:
+        return "TEAM LIST: not provided (use chat log usernames only)"
+
+    role_synonyms: dict[str, str] = {
+        "devops": "девопс",
+        "developer": "разработчик",
+        "frontend": "фронтенд/фронт",
+        "backend": "бэкенд/бэк",
+        "qa": "тестировщик/QA",
+        "pm": "менеджер/PM",
+        "lead": "лид/тимлид",
+        "designer": "дизайнер",
+    }
+
+    lines = ["TEAM LIST (use this to resolve names and roles to @username):"]
+    for m in batch.team:
+        username = m.username if m.username.startswith("@") else f"@{m.username}"
+        synonym = role_synonyms.get(m.role.lower(), "")
+        role_display = f"{m.role} ({synonym})" if synonym else m.role
+        position_display = f"  [{m.position}]" if m.position else ""
+        lines.append(f"  - {username}  |  {m.full_name}  |  {role_display}{position_display}")
+    return "\n".join(lines)
+
+
+def resolve_assignee_id(assignee: str | None, team: list[TeamMember]) -> int | None:
+    if not assignee or not team:
+        return None
+    assignee_clean = assignee.lstrip("@").lower()
+    for member in team:
+        if member.username.lstrip("@").lower() == assignee_clean:
+            return member.telegram_id
+    return None
+
+
+def _pick_column(columns: list, priority: str = "MEDIUM") -> ColumnInfo | None:
+    if not columns:
+        return None
+
+    def score(col) -> int:
+        t = col.title.lower()
+        if any(k in t for k in _DONE_KEYWORDS):
+            return -10
+        if priority == "HIGH" and any(k in t for k in _PROGRESS_KEYWORDS):
+            return 20
+        if any(k in t for k in _TODO_KEYWORDS):
+            return 10
+        if any(k in t for k in _PROGRESS_KEYWORDS):
+            return 5
+        return 1
+
+    best = max(columns, key=score)
+    if score(best) < 0:
+        return columns[-1]
+    return best
+
+
+def build_column_map(batch: MessageBatchEvent) -> dict[str, str]:
+    return {str(i + 1): col.id for i, col in enumerate(batch.columns)}
+
+
+def format_columns_context(batch: MessageBatchEvent) -> tuple[str, dict[str, str]]:
+    if not batch.columns:
+        return "KANBAN COLUMNS: not provided — set column_id = null", {}
+    col_map = build_column_map(batch)
+    real_to_short = {v: k for k, v in col_map.items()}
+    lines = ["KANBAN COLUMNS (use the short id as column_id):"]
+    for col in batch.columns:
+        short = real_to_short[col.id]
+        lines.append(f"  - column_id: \"{short}\"  |  title: \"{col.title}\"")
+    return "\n".join(lines), col_map
+
+
+def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
+    text = format_messages(batch)
+    store_batch(batch.event_id, text, batch.team_id)
+
+    results = []
+
+    try:
+        clf_output = classifier_chain.invoke({"messages": text})
+        clf = ClassificationResult.model_validate(clf_output)
+    except (ValidationError, Exception) as e:
+        logger.error(f"Classifier failed (batch={batch.event_id}): {e}")
+        return results
+
+    logger.debug(f"Classification for batch {batch.event_id}: {clf}")
+
+    if clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD:
+        results.extend(_extract_tasks(batch, text, clf.confidence_task))
+
+    if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
+        results.extend(_extract_statuses(batch, text))
+
+    return results
+
+
+def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0) -> List[TaskCreateEvent]:
+    try:
+        columns_ctx, col_map = format_columns_context(batch)
+        raw = task_chain.invoke({
+            "messages": text,
+            "current_datetime": batch.occurred_at.isoformat(),
+            "team_context": format_team_context(batch),
+            "columns_context": columns_ctx,
+        })
+        extraction_list = TaskExtractionList.model_validate(raw)
+
+        if extraction_list.failed_items > 0:
+            logger.warning(
+                f"Task extraction: {extraction_list.failed_items} item(s) failed "
+                f"validation and were skipped (batch={batch.event_id})"
+            )
+
+        events = []
+        for extraction in extraction_list.tasks:
+            if is_task_duplicate(extraction.title, extraction.description or "", batch.team_id):
+                logger.info(f"Duplicate task skipped: {extraction.title!r}")
+                continue
+
+            task_id = str(uuid.uuid4())
+            store_task(task_id, extraction.title, extraction.description or "", batch.team_id)
+
+            assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
+            task_data = extraction.model_dump()
+
+            short_id = str(task_data.get("column_id") or "")
+            real_id = col_map.get(short_id)
+            if not real_id and batch.columns:
+                fallback = _pick_column(batch.columns, task_data.get("priority", "MEDIUM"))
+                real_id = fallback.id
+                logger.warning(f"column_id={short_id!r} not in map → fallback '{fallback.title}'")
+            task_data["column_id"] = real_id
+
+            events.append(TaskCreateEvent(
+                team_id=batch.team_id,
+                source_batch_id=batch.event_id,
+                assignee_id=assignee_id,
+                confidence=confidence,
+                **task_data,
+            ))
+
+        return events
+    except Exception as e:
+        logger.error(f"Task extraction chain failed (batch={batch.event_id}): {e}")
+        return []
+
+
+def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeEvent]:
+    try:
+        raw = status_chain.invoke({
+            "messages": text,
+            "team_context": format_team_context(batch),
+        })
+        extraction_list = StatusExtractionList.model_validate(raw)
+
+        if extraction_list.failed_items > 0:
+            logger.warning(
+                f"Status extraction: {extraction_list.failed_items} item(s) failed "
+                f"validation and were skipped (batch={batch.event_id})"
+            )
+
+        events = []
+        for extraction in extraction_list.statuses:
+            assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
+            resolved_task_id = find_task_by_hint(extraction.task_hint, batch.team_id)
+            if resolved_task_id:
+                logger.debug(f"Status hint {extraction.task_hint!r} resolved to task_id={resolved_task_id}")
+            events.append(StatusChangeEvent(
+                team_id=batch.team_id,
+                source_batch_id=batch.event_id,
+                assignee_id=assignee_id,
+                resolved_task_id=resolved_task_id,
+                **extraction.model_dump(),
+            ))
+        return events
+    except Exception as e:
+        logger.error(f"Status extraction chain failed (batch={batch.event_id}): {e}")
+        return []
+
+
+def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReadyEvent) -> None:
+    try:
+        clf_output = classifier_chain.invoke({"messages": chunk})
+        clf = ClassificationResult.model_validate(clf_output)
+    except Exception as e:
+        logger.error(f"Classifier failed for transcript {event.file_id} chunk {chunk_idx}: {e}")
+        return
+
+    logger.debug(f"Transcript {event.file_id} chunk {chunk_idx} classification: {clf}")
+
+    if clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD:
+        try:
+            raw = task_chain.invoke({
+                "messages": chunk,
+                "current_datetime": datetime.now(timezone.utc).isoformat(),
+                "team_context": "TEAM LIST: not provided",
+                "columns_context": "KANBAN COLUMNS: not provided — set column_id = null",
+            })
+            extraction_list = TaskExtractionList.model_validate(raw)
+            if extraction_list.failed_items > 0:
+                logger.warning(
+                    f"Transcript task extraction: {extraction_list.failed_items} item(s) skipped "
+                    f"(file={event.file_id} chunk={chunk_idx})"
+                )
+            for extraction in extraction_list.tasks:
+                if is_task_duplicate(extraction.title, extraction.description or "", event.team_id):
+                    logger.info(f"Duplicate transcript task skipped: {extraction.title!r}")
+                    continue
+                task_id = str(uuid.uuid4())
+                store_task(task_id, extraction.title, extraction.description or "", event.team_id)
+                task_data = extraction.model_dump()
+                task_data["column_id"] = None
+                publish(TOPIC_TASKS, TaskCreateEvent(
+                    team_id=event.team_id,
+                    source_batch_id=event.file_id,
+                    assignee_id=None,
+                    **task_data,
+                ), key=event.file_id)
+                logger.info(f"Transcript task published: {extraction.title!r} (chunk {chunk_idx})")
+        except Exception as e:
+            logger.error(f"Task extraction failed for transcript {event.file_id} chunk {chunk_idx}: {e}")
+
+    if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
+        try:
+            raw = status_chain.invoke({
+                "messages": chunk,
+                "team_context": "TEAM LIST: not provided",
+            })
+            extraction_list = StatusExtractionList.model_validate(raw)
+            if extraction_list.failed_items > 0:
+                logger.warning(
+                    f"Transcript status extraction: {extraction_list.failed_items} item(s) skipped "
+                    f"(file={event.file_id} chunk={chunk_idx})"
+                )
+            for extraction in extraction_list.statuses:
+                resolved_task_id = find_task_by_hint(extraction.task_hint, event.team_id)
+                if resolved_task_id:
+                    logger.debug(
+                        f"Transcript status hint {extraction.task_hint!r} → task_id={resolved_task_id}"
+                    )
+                publish(TOPIC_STATUS, StatusChangeEvent(
+                    team_id=event.team_id,
+                    source_batch_id=event.file_id,
+                    assignee_id=None,
+                    resolved_task_id=resolved_task_id,
+                    **extraction.model_dump(),
+                ), key=event.file_id)
+                logger.info(f"Transcript status published: {extraction.action} (chunk {chunk_idx})")
+        except Exception as e:
+            logger.error(f"Status extraction failed for transcript {event.file_id} chunk {chunk_idx}: {e}")
+
+
+def process_transcript(event: TranscriptReadyEvent) -> None:
+    logger.info(f"Processing transcript file_id={event.file_id} from {event.bucket}/{event.s3_key}")
+
+    try:
+        text = download_file(event.bucket, event.s3_key).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Failed to download transcript {event.s3_key}: {e}")
+        return
+
+    chunks = chunk_text(text)
+    logger.info(f"Transcript {event.file_id}: {len(text)} chars → {len(chunks)} chunk(s)")
+
+    for idx, chunk in enumerate(chunks):
+        _process_transcript_chunk(chunk, idx, event)

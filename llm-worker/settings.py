@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # Классификатор
     CLASSIFIER_THRESHOLD: float = 0.65
+    AUTO_CONFIRM_THRESHOLD: float = 0.90
 
     # Параллелизм воркера
     LLM_WORKER_CONCURRENCY: int = 4

@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.backend.web_common.exception.AppException;
+import ru.team42.monolith.config.AppProperties;
 import ru.team42.monolith.entity.*;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
@@ -40,6 +41,7 @@ public class TaskService {
     private final YouGileService youGileService;
     private final TaskEventPublisher taskEventPublisher;
     private final LlmTaskUpdateMapper llmTaskUpdateMapper;
+    private final AppProperties appProperties;
 
     @Transactional
     public Task createFromLlmEvent(LlmTaskCreateEvent event) {
@@ -55,7 +57,6 @@ public class TaskService {
         task.setDescription(event.getDescription());
         task.setDeadline(event.getDeadline());
         task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
-        task.setLocalStatus(TaskLocalStatus.PENDING_APPROVAL);
 
         if (event.getColumnId() != null) {
             try {
@@ -73,6 +74,36 @@ public class TaskService {
             resolveTeamUser(team, event.getAuthorTelegramId()).ifPresent(task::setAuthor);
         }
 
+        boolean autoConfirm = event.getConfidence() >= appProperties.getLlm().getAutoConfirmThreshold();
+
+        if (autoConfirm) {
+            task.setLocalStatus(TaskLocalStatus.ACTIVE);
+            Task saved = taskRepository.save(task);
+            youGileService.createTask(saved.getTeam(), saved).ifPresent(externalId -> {
+                saved.setExternalId(externalId);
+                saved.setSyncStatus(TaskSyncStatus.SYNCED);
+                taskRepository.save(saved);
+            });
+            taskEventPublisher.publishConfirmation(saved, true);
+            log.info("Auto-confirmed task '{}' (confidence={})", saved.getTitle(), event.getConfidence());
+            return saved;
+        }
+
+        task.setLocalStatus(TaskLocalStatus.PENDING_APPROVAL);
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public Task cancel(UUID taskId) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(taskId)));
+
+        if (task.getExternalId() != null) {
+            youGileService.deleteTask(task.getTeam(), task.getExternalId());
+        }
+
+        task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
+        task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
         return taskRepository.save(task);
     }
 
@@ -98,7 +129,7 @@ public class TaskService {
             saved.setExternalId(externalId);
             saved.setSyncStatus(TaskSyncStatus.SYNCED);
             taskRepository.save(saved);
-            taskEventPublisher.publishConfirmation(saved);
+            taskEventPublisher.publishConfirmation(saved, false);
         });
 
         return saved;

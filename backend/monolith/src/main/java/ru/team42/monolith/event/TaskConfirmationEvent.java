@@ -15,14 +15,17 @@ public class TaskConfirmationEvent extends BaseEvent {
     private final String description;
     private final String assigneeUsername;
     private final Instant deadline;
+    private final boolean autoConfirmed;
 
     public TaskConfirmationEvent(UUID taskId, Long chatId, String title,
-                                 String description, String assigneeUsername, Instant deadline) {
+                                 String description, String assigneeUsername,
+                                 Instant deadline, boolean autoConfirmed) {
         this.taskId = taskId;
         this.chatId = chatId;
         this.title = title;
         this.description = description;
         this.assigneeUsername = assigneeUsername;
         this.deadline = deadline;
+        this.autoConfirmed = autoConfirmed;
     }
 }

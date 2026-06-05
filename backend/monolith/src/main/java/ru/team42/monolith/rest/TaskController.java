@@ -46,6 +46,12 @@ public class TaskController {
         return ResponseUtils.ok(TaskResponse.from(taskService.approve(id, currentUser)));
     }
 
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<TaskResponse> cancel(@PathVariable UUID id) {
+        return ResponseUtils.ok(TaskResponse.from(taskService.cancel(id)));
+    }
+
     @PreAuthorize("isAuthenticated()")
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(

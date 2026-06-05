@@ -79,7 +79,7 @@ class MLTestRunner:
             logger.warning("   Убедись, что Ollama запущена и модель загружена.")
             # Импортируем ТОЛЬКО здесь — чтобы не создавать Kafka Producer в mock-режиме
             from models import MessageBatchEvent, TaskCreateEvent, StatusChangeEvent
-            from main import process_batch
+            from processor import process_batch
             self._live_imports = {
                 "MessageBatchEvent": MessageBatchEvent,
                 "TaskCreateEvent": TaskCreateEvent,

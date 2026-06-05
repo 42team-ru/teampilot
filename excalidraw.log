@@ -1,0 +1,70 @@
+2026-06-05 21:36:30.916 [info] Starting Excalidraw MCP server...
+2026-06-05 21:36:30.917 [debug] Connecting to transport...
+2026-06-05 21:36:30.917 [info] Excalidraw MCP server running on stdio
+2026-06-05 21:36:30.924 [info] Listing available tools
+2026-06-05 21:38:04.843 [info] Handling tool call: get_resource
+2026-06-05 21:38:04.843 [info] Getting resource
+2026-06-05 21:39:11.082 [info] Handling tool call: create_element
+2026-06-05 21:39:11.082 [info] Creating element
+2026-06-05 21:39:17.499 [info] Handling tool call: create_element
+2026-06-05 21:39:17.499 [info] Creating element
+2026-06-05 21:39:24.785 [info] Handling tool call: create_element
+2026-06-05 21:39:24.785 [info] Creating element
+2026-06-05 21:39:31.317 [info] Handling tool call: create_element
+2026-06-05 21:39:31.318 [info] Creating element
+2026-06-05 21:39:37.902 [info] Handling tool call: create_element
+2026-06-05 21:39:37.902 [info] Creating element
+2026-06-05 21:39:43.669 [info] Handling tool call: create_element
+2026-06-05 21:39:43.669 [info] Creating element
+2026-06-05 21:39:51.937 [info] Handling tool call: create_element
+2026-06-05 21:39:51.937 [info] Creating element
+2026-06-05 21:39:58.406 [info] Handling tool call: create_element
+2026-06-05 21:39:58.406 [info] Creating element
+2026-06-05 21:40:04.943 [info] Handling tool call: create_element
+2026-06-05 21:40:04.943 [info] Creating element
+2026-06-05 21:40:13.573 [info] Handling tool call: create_element
+2026-06-05 21:40:13.573 [info] Creating element
+2026-06-05 21:40:21.818 [info] Handling tool call: create_element
+2026-06-05 21:40:21.818 [info] Creating element
+2026-06-05 21:40:30.428 [info] Handling tool call: create_element
+2026-06-05 21:40:30.428 [info] Creating element
+2026-06-05 21:40:39.919 [info] Handling tool call: create_element
+2026-06-05 21:40:39.919 [info] Creating element
+2026-06-05 21:40:47.280 [info] Handling tool call: create_element
+2026-06-05 21:40:47.280 [info] Creating element
+2026-06-05 21:41:18.893 [info] Handling tool call: create_element
+2026-06-05 21:41:18.893 [info] Creating element
+2026-06-05 21:41:30.022 [info] Handling tool call: create_element
+2026-06-05 21:41:30.022 [info] Creating element
+2026-06-05 21:41:46.067 [info] Handling tool call: create_element
+2026-06-05 21:41:46.067 [info] Creating element
+2026-06-05 21:41:52.481 [info] Handling tool call: create_element
+2026-06-05 21:41:52.481 [info] Creating element
+2026-06-05 21:41:58.238 [info] Handling tool call: create_element
+2026-06-05 21:41:58.238 [info] Creating element
+2026-06-05 21:42:04.252 [info] Handling tool call: create_element
+2026-06-05 21:42:04.252 [info] Creating element
+2026-06-05 21:42:12.040 [info] Handling tool call: create_element
+2026-06-05 21:42:12.040 [info] Creating element
+2026-06-05 21:42:19.028 [info] Handling tool call: create_element
+2026-06-05 21:42:19.028 [info] Creating element
+2026-06-05 21:42:26.172 [info] Handling tool call: create_element
+2026-06-05 21:42:26.172 [info] Creating element
+2026-06-05 21:42:33.440 [info] Handling tool call: create_element
+2026-06-05 21:42:33.440 [info] Creating element
+2026-06-05 21:42:38.828 [info] Handling tool call: create_element
+2026-06-05 21:42:38.828 [info] Creating element
+2026-06-05 21:42:45.108 [info] Handling tool call: create_element
+2026-06-05 21:42:45.108 [info] Creating element
+2026-06-05 21:42:51.447 [info] Handling tool call: create_element
+2026-06-05 21:42:51.447 [info] Creating element
+2026-06-05 21:42:59.611 [info] Handling tool call: create_element
+2026-06-05 21:42:59.611 [info] Creating element
+2026-06-05 21:43:05.770 [info] Handling tool call: create_element
+2026-06-05 21:43:05.770 [info] Creating element
+2026-06-05 21:43:13.906 [info] Handling tool call: create_element
+2026-06-05 21:43:13.906 [info] Creating element
+2026-06-05 21:43:19.615 [info] Handling tool call: create_element
+2026-06-05 21:43:19.615 [info] Creating element
+2026-06-05 21:43:29.468 [info] Handling tool call: create_element
+2026-06-05 21:43:29.468 [info] Creating element

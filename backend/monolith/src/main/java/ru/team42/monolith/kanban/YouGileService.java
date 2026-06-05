@@ -7,6 +7,7 @@ import ru.team42.monolith.client.yougile.api.DefaultApi;
 import ru.team42.monolith.config.YougileClientConfig;
 import ru.team42.monolith.client.yougile.model.CreateTaskDto;
 import ru.team42.monolith.client.yougile.model.Deadline;
+import ru.team42.monolith.client.yougile.model.UpdateTaskDto;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.mapper.TaskToYouGileMapper;
@@ -83,6 +84,19 @@ public class YouGileService {
         } catch (Exception e) {
             log.error("Failed to update YouGile task {} for local task {}: {}",
                     task.getExternalId(), task.getId(), e.getMessage());
+        }
+    }
+
+    public void deleteTask(Team team, String externalTaskId) {
+        if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return;
+        DefaultApi api = buildApi(team);
+        try {
+            UpdateTaskDto dto = new UpdateTaskDto();
+            dto.setDeleted(true);
+            api.taskControllerUpdate(externalTaskId, dto).block();
+            log.info("Deleted YouGile task {}", externalTaskId);
+        } catch (Exception e) {
+            log.error("Failed to delete YouGile task {}: {}", externalTaskId, e.getMessage());
         }
     }
 
