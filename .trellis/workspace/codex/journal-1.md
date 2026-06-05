@@ -104,3 +104,36 @@ Implemented bot Kafka consumers for backend notification/task topics and added m
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Bot button-first panel UX
+
+**Date**: 2026-06-06
+**Task**: Bot button-first panel UX
+**Branch**: `master`
+
+### Summary
+
+Reworked member and manager bot panels into button-first grouped two-column layouts, added board callback, team task button for members, and button-based upload cancellation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cffc82f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
