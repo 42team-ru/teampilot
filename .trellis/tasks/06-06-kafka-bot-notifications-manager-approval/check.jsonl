@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend contract assumptions and integration boundaries."}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Verify manager-panel UX placement and copy consistency."}
-{"file": ".trellis/tasks/06-06-kafka-bot-notifications-manager-approval/research/backend-contract.md", "reason": "Check implementation against researched REST/Kafka contracts."}

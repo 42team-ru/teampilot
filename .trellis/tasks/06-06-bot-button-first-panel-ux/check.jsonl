@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Check panel UX consistency and button layout."}
-{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend contract remains untouched."}
-{"file": ".trellis/tasks/06-06-bot-button-first-panel-ux/prd.md", "reason": "Validate implementation against requested UX goals."}

@@ -23,7 +23,7 @@ async def get_tasks(
     page: int = 0,
     size: int = 10,
 ) -> list[dict]:
-    """GET /tasks?chatId=...&assignee=...&localStatus=...&page=...&size=..."""
+    """GET /tasks?chatId=...&assignee=...&status=...&page=...&size=..."""
     page_data = await get_tasks_page(
         chat_id=chat_id,
         telegram_id=telegram_id,
@@ -43,16 +43,15 @@ async def get_tasks_page(
     page: int = 0,
     size: int = 10,
 ) -> dict:
-    """GET /tasks?chatId=...&assignee=...&localStatus=...&page=...&size=..."""
+    """GET /tasks?chatId=...&assignee=...&status=...&page=...&size=..."""
     path = "/tasks"
     params: dict = {"page": page, "size": size}
     if chat_id is not None:
         params["chatId"] = chat_id
     if assignee is not None:
         params["assignee"] = assignee
-    local_status = _local_status_param(status)
-    if local_status:
-        params["localStatus"] = local_status
+    if status:
+        params["status"] = status.upper()
 
     context = {
         "chat_id": chat_id,
@@ -91,12 +90,7 @@ async def get_tasks_page(
         )
         raise BackendApiError.from_response(resp)
 
-    page_data = resp.json()
-    page_data["content"] = [
-        _normalize_task_response(task)
-        for task in page_data.get("content", [])
-    ]
-    return page_data
+    return resp.json()
 
 
 async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict | None:
@@ -134,52 +128,4 @@ async def get_task_by_id(task_id: str, telegram_id: int | None = None) -> dict |
         )
         raise BackendApiError.from_response(resp)
 
-    return _normalize_task_response(resp.json())
-
-
-async def approve_task(task_id: str, telegram_id: int) -> dict:
-    """POST /tasks/{id}/approve - manager-only task approval."""
-    path = f"/tasks/{task_id}/approve"
-    context = {"task_id": task_id, "telegram_id": telegram_id}
-    try:
-        resp = await http_client.post(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-        )
-    except HttpRequestError as e:
-        log_http_request_error(
-            service="Backend",
-            method="POST",
-            path=f"{settings.BACKEND_URL}{path}",
-            error=e,
-            context=context,
-        )
-        raise BackendApiError.unavailable() from e
-
-    if resp.status_code != 200:
-        log_http_response_error(
-            resp,
-            service="Backend",
-            method="POST",
-            path=f"{settings.BACKEND_URL}{path}",
-            expected="200",
-            context=context,
-        )
-        raise BackendApiError.from_response(resp)
-
-    return _normalize_task_response(resp.json())
-
-
-def _normalize_task_response(task: dict) -> dict:
-    if "status" not in task and task.get("localStatus") is not None:
-        task["status"] = task["localStatus"]
-    return task
-
-
-def _local_status_param(status: str | None) -> str | None:
-    if not status:
-        return None
-    normalized = status.upper()
-    if normalized in {"ACTIVE", "PENDING_APPROVAL", "DELETED_FROM_YOUGILE"}:
-        return normalized
-    return None
+    return resp.json()

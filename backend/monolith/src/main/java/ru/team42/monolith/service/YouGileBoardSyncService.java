@@ -19,6 +19,8 @@ import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 
 @Slf4j
 @Service
@@ -30,17 +32,21 @@ public class YouGileBoardSyncService {
     private final TaskColumnRepository taskColumnRepository;
     private final TaskStatusHistoryRepository historyRepository;
     private final TeamUserRepository teamUserRepository;
+    private final TaskEventPublisher taskEventPublisher;
 
-    @Transactional
+    @Autowired
+    @Lazy
+    private YouGileBoardSyncService self;
+
     public void syncTeam(Team team) {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return;
 
-        syncColumns(team);
+        self.syncColumns(team);
 
         List<YouGileService.YouGileTaskResponse> remoteTasks = youGileService.fetchAllTasksForBoard(team);
         for (YouGileService.YouGileTaskResponse remote : remoteTasks) {
             try {
-                syncRemoteTask(team, remote);
+                self.syncRemoteTask(team, remote);
             } catch (Exception e) {
                 log.warn("Failed to sync YouGile task {} for team {}: {}", remote.id(), team.getId(), e.getMessage());
             }
@@ -71,7 +77,8 @@ public class YouGileBoardSyncService {
         return result;
     }
 
-    private void syncRemoteTask(Team team, YouGileService.YouGileTaskResponse remote) {
+    @Transactional
+    public void syncRemoteTask(Team team, YouGileService.YouGileTaskResponse remote) {
         Optional<Task> existing = taskRepository.findByTeamIdAndExternalId(team.getId(), remote.id());
         if (existing.isPresent()) {
             updateTask(team, existing.get(), remote);
@@ -82,6 +89,8 @@ public class YouGileBoardSyncService {
 
     private void updateTask(Team team, Task task, YouGileService.YouGileTaskResponse remote) {
         boolean changed = false;
+        boolean columnChanged = false;
+        boolean contentChanged = false;
 
         if (remote.columnId() != null) {
             Optional<TaskColumn> colOpt = taskColumnRepository
@@ -91,17 +100,20 @@ public class YouGileBoardSyncService {
                 task.setColumn(colOpt.get());
                 recordHistory(task, prev, colOpt.get());
                 changed = true;
+                columnChanged = true;
             }
         }
 
         if (remote.title() != null && !remote.title().equals(task.getTitle())) {
             task.setTitle(remote.title());
             changed = true;
+            contentChanged = true;
         }
 
         if (remote.description() != null && !remote.description().equals(task.getDescription())) {
             task.setDescription(remote.description());
             changed = true;
+            contentChanged = true;
         }
 
         if (remote.deadline() != null && !remote.deadline().equals(task.getDeadline())) {
@@ -126,6 +138,12 @@ public class YouGileBoardSyncService {
 
         if (changed) {
             taskRepository.save(task);
+            if (columnChanged) {
+                taskEventPublisher.publishColumnChanged(task, task.getColumn());
+            }
+            if (contentChanged) {
+                taskEventPublisher.publishUpdated(task);
+            }
         }
     }
 
@@ -160,6 +178,7 @@ public class YouGileBoardSyncService {
 
         Task saved = taskRepository.save(task);
         recordHistory(saved, null, column);
+        taskEventPublisher.publishCreated(saved);
         log.info("Imported YouGile task {} as local task {} for team {}", remote.id(), saved.getId(), team.getId());
     }
 

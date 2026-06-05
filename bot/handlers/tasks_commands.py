@@ -16,8 +16,8 @@ router = Router()
 
 _DISPLAY_TZ = timezone(timedelta(hours=3))
 _VALID_STATUSES = {"OPEN", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE", "CANCELLED"}
-_ACTIVE_STATUSES = {"ACTIVE", "OPEN", "IN_PROGRESS", "REVIEW", "BLOCKED"}
-_BOARD_WORK_STATUSES = {"ACTIVE", "OPEN", "IN_PROGRESS", "BLOCKED"}
+_ACTIVE_STATUSES = {"OPEN", "IN_PROGRESS", "REVIEW", "BLOCKED"}
+_BOARD_WORK_STATUSES = {"OPEN", "IN_PROGRESS", "BLOCKED"}
 _TASKS_PAGE_SIZE = 5
 
 _STATUS_FILTER_LABELS = {
@@ -32,13 +32,11 @@ _STATUS_FILTER_LABELS = {
 }
 _STATUS_FILTER_BUTTON_ROWS = (
     (("active", "🟢 Активные"), ("all", "Все")),
-    (("OPEN", "🆕 Новые"), ("IN_PROGRESS", "🔄 В работе")),
-    (("REVIEW", "👀 Проверка"), ("BLOCKED", "⏸ Блок")),
-    (("DONE", "✅ Готово"), ("CANCELLED", "🗑 Отменены")),
+    (("OPEN", "🆕 Новые"), ("IN_PROGRESS", "🔄 В работе"), ("REVIEW", "👀 Проверка")),
+    (("BLOCKED", "⏸ Блок"), ("DONE", "✅ Готово"), ("CANCELLED", "🗑 Отменены")),
 )
 
 _STATUS_EMOJI = {
-    "ACTIVE": "📌",
     "OPEN": "🆕",
     "IN_PROGRESS": "🔄",
     "REVIEW": "👀",
@@ -286,9 +284,9 @@ def _task_action_rows(task: dict, index: int) -> list[list[InlineKeyboardButton]
         for label, status in action_specs
     ]
 
-    rows = [[*first_row, *actions[:1]]]
-    for start in range(1, len(actions), 2):
-        rows.append(actions[start:start + 2])
+    rows = [first_row + actions[:2]]
+    if len(actions) > 2:
+        rows.append(actions[2:])
     return rows
 
 
@@ -466,15 +464,8 @@ async def _render_team_tasks(
     status_key: str = "active",
     page: int = 0,
 ) -> tuple[str, InlineKeyboardMarkup] | None:
-    manager_teams, member_teams = await asyncio.gather(
-        get_my_teams(manager_id),
-        get_member_teams(manager_id),
-    )
-    team = next((t for t in manager_teams if str(t.get("id")) == team_id), None)
-    back_scope = "manager"
-    if team is None:
-        team = next((t for t in member_teams if str(t.get("id")) == team_id), None)
-        back_scope = "member"
+    teams = await get_my_teams(manager_id)
+    team = next((t for t in teams if str(t.get("id")) == team_id), None)
     if team is None:
         return None
 
@@ -496,7 +487,7 @@ async def _render_team_tasks(
         scope="team",
         status_key=status_key,
         target_id=team_id,
-        back_data=f"team_ctx:{back_scope}:{team_id}",
+        back_data=f"team_ctx:manager:{team_id}",
     )
 
 
@@ -593,25 +584,6 @@ async def _render_board(telegram_id: int, message: Message) -> tuple[str, Inline
 
     tasks = await _fetch_board_tasks(telegram_id, teams)
     return _format_board(tasks), _refresh_keyboard("tasks_refresh:board")
-
-
-async def _render_team_board(
-    telegram_id: int,
-    team_id: str,
-) -> tuple[str, InlineKeyboardMarkup] | None:
-    teams = await get_my_teams(telegram_id)
-    team = next((t for t in teams if str(t.get("id")) == team_id), None)
-    if team is None or _team_chat_id(team) is None:
-        return None
-
-    tasks = await _fetch_board_tasks(telegram_id, [team])
-    title = escape(team.get("chatTitle") or team_id)
-    text = _format_board(tasks).replace(
-        "📊 <b>Доска команды",
-        f"📊 <b>Доска: {title}",
-        1,
-    )
-    return text, _refresh_keyboard(f"tasks_board:team:{team_id}", back_data=f"team_ctx:manager:{team_id}")
 
 
 async def _team_members_by_username(teams: list[dict], manager_id: int, username: str) -> list[dict]:
@@ -906,27 +878,6 @@ async def navigate_tasks(callback: CallbackQuery) -> None:
         await callback.answer("Не удалось открыть задачи", show_alert=True)
         return
 
-    try:
-        await callback.message.edit_text(text, reply_markup=keyboard)
-    except TelegramBadRequest as error:
-        if "message is not modified" not in str(error):
-            raise
-    await callback.answer("Готово")
-
-
-@router.callback_query(F.data.startswith("tasks_board:team:"))
-async def show_team_board(callback: CallbackQuery) -> None:
-    if callback.message is None:
-        await callback.answer()
-        return
-
-    team_id = (callback.data or "").split(":", 2)[2]
-    rendered = await _render_team_board(callback.from_user.id, team_id)
-    if rendered is None:
-        await callback.answer("Доска доступна только менеджеру команды", show_alert=True)
-        return
-
-    text, keyboard = rendered
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
     except TelegramBadRequest as error:

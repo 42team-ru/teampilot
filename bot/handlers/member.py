@@ -13,18 +13,11 @@ from keyboards.member import (
     back_to_teams_keyboard,
     member_main_keyboard,
     team_context_manager_keyboard,
-    team_context_manager_files_keyboard,
-    team_context_manager_manage_keyboard,
-    team_context_manager_tasks_keyboard,
     team_context_member_keyboard,
-    team_context_member_files_keyboard,
-    team_context_member_tasks_keyboard,
     team_overview_keyboard,
-    upload_waiting_keyboard,
 )
 from handlers.tasks_commands import _render_my_tasks
 from services.admin_service import get_user_by_telegram_id
-from services.task_service import get_tasks_page
 from services.team_service import get_member_teams, get_my_teams
 
 router = Router()
@@ -33,12 +26,6 @@ NO_TEAM_TEXT = (
     "Вы зарегистрированы, но пока не состоите ни в одной команде.\n"
     "Нужно, чтобы менеджер добавил вас в команду."
 )
-
-
-@router.callback_query(F.data == "noop")
-async def noop(callback: CallbackQuery) -> None:
-    await callback.answer()
-
 
 async def show_member_panel(message: Message, user: dict) -> None:
     member_teams, manager_teams = await asyncio.gather(
@@ -73,7 +60,6 @@ async def member_back(callback: CallbackQuery, state: FSMContext) -> None:
         reply_markup=member_main_keyboard(),
     )
     await callback.answer()
-
 
 
 @router.callback_query(F.data == "member:teams_overview")
@@ -131,7 +117,6 @@ async def team_ctx_manager(callback: CallbackQuery, state: FSMContext) -> None:
     chat_id = team.get("telegramChatId")
     kanban = team.get("kanbanId")
     active = "✅ активна" if team.get("active", True) else "⛔ неактивна"
-    pending_count = await _pending_tasks_count(chat_id, callback.from_user.id) if chat_id else None
 
     lines = [
         f"🔑 <b>{escape(title)}</b>",
@@ -144,11 +129,7 @@ async def team_ctx_manager(callback: CallbackQuery, state: FSMContext) -> None:
     ]
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=team_context_manager_keyboard(
-            team_id,
-            has_chat=bool(chat_id),
-            pending_count=pending_count,
-        ),
+        reply_markup=team_context_manager_keyboard(team_id, has_chat=bool(chat_id)),
     )
     await callback.answer()
 
@@ -175,102 +156,12 @@ async def team_ctx_member(callback: CallbackQuery) -> None:
         "",
         f"Telegram чат: {'привязан' if chat_id else 'не привязан'}",
         "",
-        "Доступные действия собраны в блоках ниже.",
+        "Свои задачи можно открыть кнопкой ниже или командой /mytasks.",
+        "Задачи всей команды доступны в групповом чате командой /tasks.",
     ]
     await callback.message.edit_text(
         "\n".join(lines),
         reply_markup=team_context_member_keyboard(team_id, has_chat=bool(chat_id)),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("tm:m:t:"))
-async def team_manager_tasks_menu(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_manager_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-
-    chat_id = team.get("telegramChatId")
-    if not chat_id:
-        await callback.answer("Сначала привяжите Telegram-чат к команде.", show_alert=True)
-        return
-
-    pending_count = await _pending_tasks_count(chat_id, callback.from_user.id)
-    await callback.message.edit_text(
-        f"📋 <b>Задачи: {escape(team.get('chatTitle') or team_id)}</b>\n\nВыберите действие с задачами:",
-        reply_markup=team_context_manager_tasks_keyboard(team_id, pending_count=pending_count),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("tm:m:f:"))
-async def team_manager_files_menu(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_manager_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-    if not team.get("telegramChatId"):
-        await callback.answer("Сначала привяжите Telegram-чат к команде.", show_alert=True)
-        return
-
-    await callback.message.edit_text(
-        f"📎 <b>Файлы: {escape(team.get('chatTitle') or team_id)}</b>\n\nЗдесь можно загрузить файл в чат команды.",
-        reply_markup=team_context_manager_files_keyboard(team_id),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("tm:m:g:"))
-async def team_manager_manage_menu(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_manager_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-
-    await callback.message.edit_text(
-        f"⚙️ <b>Управление командой: {escape(team.get('chatTitle') or team_id)}</b>\n\n"
-        "Выберите, что нужно изменить:",
-        reply_markup=team_context_manager_manage_keyboard(team_id),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("tm:u:t:"))
-async def team_member_tasks_menu(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_member_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-    if not team.get("telegramChatId"):
-        await callback.answer("У команды пока нет привязанного Telegram-чата.", show_alert=True)
-        return
-
-    await callback.message.edit_text(
-        f"📋 <b>Задачи: {escape(team.get('chatTitle') or team_id)}</b>\n\nВыберите список задач:",
-        reply_markup=team_context_member_tasks_keyboard(team_id),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("tm:u:f:"))
-async def team_member_files_menu(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_member_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-    if not team.get("telegramChatId"):
-        await callback.answer("У команды пока нет привязанного Telegram-чата.", show_alert=True)
-        return
-
-    await callback.message.edit_text(
-        f"📎 <b>Файлы: {escape(team.get('chatTitle') or team_id)}</b>\n\nЗдесь можно загрузить файл в чат команды.",
-        reply_markup=team_context_member_files_keyboard(team_id),
     )
     await callback.answer()
 
@@ -318,11 +209,35 @@ async def team_ctx_upload(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer(
         f"📤 Загрузка файла для команды <b>{escape(team_title)}</b>\n\n"
         "Отправьте аудио или видео. Поддерживаемые типы: аудио, голосовое, видео, видеосообщение.\n"
-        "Отменить загрузку можно кнопкой ниже.",
-        reply_markup=upload_waiting_keyboard(),
+        "Используйте /cancel для отмены."
     )
     await callback.answer()
 
+
+@router.callback_query(F.data == "member:help")
+async def member_help(callback: CallbackQuery) -> None:
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏢 Выбрать команду", callback_data="member:teams_overview")],
+        [InlineKeyboardButton(text="← Назад", callback_data="member:back")],
+    ])
+    await callback.message.edit_text(
+        "<b>Помощь</b>\n\n"
+        "<b>Команды:</b>\n"
+        "/start — открыть главное меню\n"
+        "/mytasks — мои активные задачи\n"
+        "/board — доска команды (для менеджера)\n"
+        "/tasks — задачи в групповом чате\n"
+        "/upload — загрузить аудио или видео\n"
+        "/cancel — отменить текущее действие\n\n"
+        "<b>Роли:</b>\n"
+        "🔑 <b>Менеджер</b> — создаёт команды, управляет участниками, "
+        "привязывает чаты и канбан-доски\n"
+        "👤 <b>Участник</b> — видит свои задачи, обновляет их статус\n\n"
+        "<b>Задачи</b> автоматически извлекаются из переписки в групповом чате.",
+        reply_markup=kb,
+    )
+    await callback.answer()
 
 
 def _member_panel_text(
@@ -362,24 +277,3 @@ def _member_panel_text(
     lines.append("")
     lines.append("Выберите действие:")
     return "\n".join(lines)
-
-
-async def _get_manager_team(telegram_id: int, team_id: str) -> dict | None:
-    teams = await get_my_teams(telegram_id)
-    return next((team for team in teams if str(team.get("id")) == team_id), None)
-
-
-async def _get_member_team(telegram_id: int, team_id: str) -> dict | None:
-    teams = await get_member_teams(telegram_id)
-    return next((team for team in teams if str(team.get("id")) == team_id), None)
-
-
-async def _pending_tasks_count(chat_id: int | str, telegram_id: int) -> int:
-    page = await get_tasks_page(
-        chat_id=int(chat_id),
-        telegram_id=telegram_id,
-        status="PENDING_APPROVAL",
-        page=0,
-        size=1,
-    )
-    return int(page.get("totalElements") or len(page.get("content", [])))

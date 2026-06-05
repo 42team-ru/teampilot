@@ -7,12 +7,11 @@ from datetime import datetime, timezone
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message
 from loguru import logger
 
 from kafka.producer import EventProducer
 from kafka.topics import Topics
-from keyboards.member import upload_waiting_keyboard
 from models.events import FileUploadedEvent
 from services.minio_client import minio_client
 from states.upload import FileUploadStates
@@ -21,7 +20,7 @@ router = Router()
 
 UPLOAD_PROMPT_TEXT = (
     "Отправьте аудио или видео для загрузки. Поддерживаемые типы: аудио, голосовое, видео, видеосообщение.\n"
-    "Отменить загрузку можно кнопкой ниже."
+    "Используйте /cancel для отмены."
 )
 
 
@@ -63,8 +62,7 @@ async def cmd_upload(message: Message, state: FSMContext) -> None:
         from html import escape
         await message.answer(
             f"📤 Загрузка файла для команды <b>{escape(team_title)}</b>\n\n"
-            + UPLOAD_PROMPT_TEXT,
-            reply_markup=upload_waiting_keyboard(),
+            + UPLOAD_PROMPT_TEXT
         )
         return
 
@@ -82,13 +80,6 @@ async def cmd_cancel_upload(message: Message, state: FSMContext) -> None:
     await message.answer("Загрузка отменена.")
 
 
-@router.callback_query(FileUploadStates.waiting_for_file, F.data == "upload:cancel")
-async def cancel_upload(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await callback.message.edit_text("Загрузка отменена.")
-    await callback.answer()
-
-
 @router.message(
     FileUploadStates.waiting_for_file,
     F.audio | F.voice | F.video | F.video_note,
@@ -101,10 +92,7 @@ async def handle_upload_file(
 ) -> None:
     payload = _extract_file_payload(message)
     if payload is None:
-        await message.answer(
-            "Пожалуйста, отправьте аудио или видео файл.",
-            reply_markup=upload_waiting_keyboard(),
-        )
+        await message.answer("Пожалуйста, отправьте аудио или видео файл. Используйте /cancel для отмены.")
         return
 
     if message.from_user is None:
@@ -202,17 +190,13 @@ async def handle_group_media_auto(
 async def handle_unsupported_file_type(message: Message) -> None:
     await message.answer(
         "Этот тип файла не поддерживается. Отправьте аудио или видео.\n"
-        "Отменить загрузку можно кнопкой ниже.",
-        reply_markup=upload_waiting_keyboard(),
+        "Используйте /cancel для отмены."
     )
 
 
 @router.message(FileUploadStates.waiting_for_file)
 async def handle_non_file_while_waiting(message: Message) -> None:
-    await message.answer(
-        "Пожалуйста, отправьте аудио или видео файл.",
-        reply_markup=upload_waiting_keyboard(),
-    )
+    await message.answer("Пожалуйста, отправьте аудио или видео файл. Используйте /cancel для отмены.")
 
 
 async def _upload_and_publish(

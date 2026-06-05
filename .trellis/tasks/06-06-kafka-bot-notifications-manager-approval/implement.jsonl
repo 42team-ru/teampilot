@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend/API and Kafka integration guidelines for this repo."}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Telegram bot manager-panel UX should follow project UI thinking where applicable."}
-{"file": ".trellis/tasks/06-06-kafka-bot-notifications-manager-approval/research/backend-contract.md", "reason": "Local research on Swagger, backend REST approval, and Kafka event payload contracts."}

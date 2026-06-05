@@ -53,16 +53,6 @@ public class TaskController {
     }
 
     @PreAuthorize("isAuthenticated()")
-    @GetMapping("/my")
-    public ResponseEntity<PageResponse<TaskResponse>> listMyTasks(
-            @RequestParam Long assignee,
-            @PageableDefault(size = 20) Pageable pageable) {
-        Page<TaskResponse> page = taskService.listMyTasks(assignee, pageable)
-                .map(TaskResponse::from);
-        return ResponseUtils.page(PageResponse.fromPage(page));
-    }
-
-    @PreAuthorize("isAuthenticated()")
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(
             @RequestParam(required = false) Long chatId,

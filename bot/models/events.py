@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # Outgoing: Bot → Backend
@@ -80,44 +81,15 @@ class SummarySendEvent(BaseModel):
     tasks_count: int
 
 
-class BackendEvent(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+class TaskStateEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
 
-
-class BotNotificationEvent(BackendEvent):
-    telegram_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("telegramId", "telegram_id"),
-    )
-    chat_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("chatId", "chat_id"),
-    )
-    type: str
-    task_id: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("taskId", "task_id"),
-    )
-    task_title: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("taskTitle", "task_title"),
-    )
-
-
-class TaskConfirmationEvent(BackendEvent):
-    task_id: str = Field(validation_alias=AliasChoices("taskId", "task_id"))
-    chat_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("chatId", "chat_id"),
-    )
+    event_id: str = Field(alias="eventId")
+    occurred_at: datetime = Field(alias="occurredAt")
+    task_id: str = Field(alias="taskId")
+    chat_id: int = Field(alias="chatId")
+    type: Literal["CREATED", "CANCELLED", "COLUMN_CHANGED"]
     title: str
-    description: str | None = None
-    assignee_username: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("assigneeUsername", "assignee_username"),
-    )
+    column_title: str | None = Field(default=None, alias="columnTitle")
+    assignee_username: str | None = Field(default=None, alias="assigneeUsername")
     deadline: datetime | None = None
-    auto_confirmed: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("autoConfirmed", "auto_confirmed"),
-    )

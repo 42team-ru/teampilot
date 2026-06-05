@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Bot inline keyboards are user-facing navigation UI."}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend callback/API contracts should remain unchanged while restructuring bot menus."}
-{"file": ".trellis/tasks/06-06-bot-nested-menu-panels/prd.md", "reason": "Task-specific nested bot menu requirements."}
