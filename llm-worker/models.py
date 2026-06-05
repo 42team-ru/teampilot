@@ -95,7 +95,7 @@ class TaskCreateEvent(BaseModel):
     title: str
     description: str
     assignee: str | None = None
-    assignee_id: int | None = None
+    assignee_telegram_id: int | None = None
     deadline: str | None = None
     column_id: str | None = None
     source_batch_id: str
@@ -106,7 +106,7 @@ class StatusChangeEvent(BaseModel):
     team_id: str
     task_hint: str
     assignee: str | None = None
-    assignee_id: int | None = None
+    assignee_telegram_id: int | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
     source_batch_id: str
     resolved_task_id: str | None = None
