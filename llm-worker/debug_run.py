@@ -18,7 +18,7 @@ from loguru import logger
 from models import MessageBatchEvent, TaskCreateEvent, StatusChangeEvent
 
 # Импорт цепочек
-from main import _extract_tasks, _extract_statuses
+from processor import _extract_tasks, _extract_statuses
 from llm.chains import classifier_chain
 
 

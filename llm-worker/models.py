@@ -100,6 +100,7 @@ class TaskCreateEvent(BaseModel):
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
     column_id: str | None = None
     source_batch_id: str
+    confidence: float = 0.0
 
 
 class StatusChangeEvent(BaseModel):
