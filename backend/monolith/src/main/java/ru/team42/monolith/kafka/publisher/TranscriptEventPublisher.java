@@ -10,9 +10,10 @@ import java.util.UUID;
 @Component
 public class TranscriptEventPublisher extends AbstractEventPublisher {
 
-    public void publishTranscriptReady(UUID fileId, String bucket, String s3Key) {
+    public void publishTranscriptReady(UUID fileId, String teamId, String bucket, String s3Key) {
         var event = TranscriptReadyEvent.builder()
                 .fileId(fileId)
+                .teamId(teamId)
                 .bucket(bucket)
                 .s3Key(s3Key)
                 .build();

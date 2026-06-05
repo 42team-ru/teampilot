@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/06-05-transcript-chunking-task-extraction/prd.md", "reason": "Требования: чанкинг, пайплайн чанков, chunk_text(), настройки"}
+{"file": ".trellis/tasks/06-05-rag-qdrant-structure-llm-worker/rag-structure.md", "reason": "Структура Qdrant: is_task_duplicate, find_task_by_hint, store_task — используются в пайплайне"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Стандарты Python-кода"}

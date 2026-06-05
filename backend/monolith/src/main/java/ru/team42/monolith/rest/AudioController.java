@@ -22,12 +22,13 @@ public class AudioController {
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AudioUploadResponse> upload(
-            @RequestParam("file") MultipartFile file
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("teamId") String teamId
     ) {
         if (file.isEmpty()) {
             throw AppException.badRequest("Audio file is empty");
         }
-        var response = audioService.upload(file);
+        var response = audioService.upload(file, teamId);
         return ResponseUtils.created("/audio/" + response.fileId(), response);
     }
 }

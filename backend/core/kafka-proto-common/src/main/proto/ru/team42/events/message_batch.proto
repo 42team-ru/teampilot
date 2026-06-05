@@ -11,7 +11,7 @@ import "google/protobuf/timestamp.proto";
 message MessageBatchEvent {
   string event_id = 1;
   google.protobuf.Timestamp occurred_at = 2;
-  int64 chat_id = 3;
+  string team_id = 3;
   google.protobuf.Timestamp batch_start = 4;
   google.protobuf.Timestamp batch_end = 5;
   repeated MessageDto messages = 6;

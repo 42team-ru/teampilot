@@ -13,7 +13,7 @@ import java.util.List;
 @Jacksonized
 public class MessageBatchEvent extends BaseEvent {
 
-    private final Long chatId;
+    private final String teamId;
     private final List<MessageDto> messages;
     private final Instant batchStart;
     private final Instant batchEnd;

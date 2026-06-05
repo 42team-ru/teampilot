@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
 import ru.team42.backend.kafka_common.event.KafkaTopics;
 import ru.team42.backend.proto.events.MessageBatchProto;
 import ru.team42.monolith.entity.ChatMessage;
+import ru.team42.monolith.entity.TaskColumn;
 import ru.team42.monolith.entity.TeamUser;
-import ru.team42.monolith.kanban.YouGileService;
 
 import java.time.Instant;
 import java.util.List;
@@ -24,13 +24,13 @@ public class ChatMessageBatchPublisher {
         this.protoKafkaTemplate = protoKafkaTemplate;
     }
 
-    public void publishBatch(Long chatId, List<ChatMessage> messages,
+    public void publishBatch(String teamId, List<ChatMessage> messages,
                              List<TeamUser> teamMembers,
-                             List<YouGileService.ColumnInfo> columns) {
+                             List<TaskColumn> columns) {
         var event = MessageBatchProto.MessageBatchEvent.newBuilder()
                 .setEventId(UUID.randomUUID().toString())
                 .setOccurredAt(toTimestamp(Instant.now()))
-                .setChatId(chatId)
+                .setTeamId(teamId)
                 .setBatchStart(toTimestamp(messages.getFirst().getMessageTimestamp()))
                 .setBatchEnd(toTimestamp(messages.getLast().getMessageTimestamp()))
                 .addAllMessages(messages.stream().map(this::toProtoMessage).toList())
@@ -38,7 +38,7 @@ public class ChatMessageBatchPublisher {
                 .addAllColumns(columns.stream().map(this::toProtoColumn).toList())
                 .build();
 
-        protoKafkaTemplate.send(KafkaTopics.MESSAGES_BATCHES, String.valueOf(chatId), event.toByteArray());
+        protoKafkaTemplate.send(KafkaTopics.MESSAGES_BATCHES, teamId, event.toByteArray());
     }
 
     private MessageBatchProto.MessageBatchEvent.MessageDto toProtoMessage(ChatMessage m) {
@@ -61,10 +61,10 @@ public class ChatMessageBatchPublisher {
                 .build();
     }
 
-    private MessageBatchProto.MessageBatchEvent.ColumnDto toProtoColumn(YouGileService.ColumnInfo col) {
+    private MessageBatchProto.MessageBatchEvent.ColumnDto toProtoColumn(TaskColumn col) {
         return MessageBatchProto.MessageBatchEvent.ColumnDto.newBuilder()
-                .setId(col.id())
-                .setTitle(col.title())
+                .setId(col.getId().toString())
+                .setTitle(col.getTitle())
                 .build();
     }
 

@@ -25,7 +25,7 @@ public class AudioTranscriptService {
     private final TranscriptEventPublisher transcriptEventPublisher;
 
     @Async
-    public void transcribeAsync(UUID fileId, byte[] audioBytes, String filename) {
+    public void transcribeAsync(UUID fileId, byte[] audioBytes, String filename, String teamId) {
         try {
             byte[] wavBytes;
             try {
@@ -37,7 +37,7 @@ public class AudioTranscriptService {
             }
             String text = whisperService.transcribe(wavBytes, filename.endsWith(".wav") ? filename : filename + ".wav");
             String key = save(fileId, text);
-            transcriptEventPublisher.publishTranscriptReady(fileId, s3Properties.getDefaultBucket(), key);
+            transcriptEventPublisher.publishTranscriptReady(fileId, teamId, s3Properties.getDefaultBucket(), key);
         } catch (Exception e) {
             log.error("Whisper transcription failed for fileId={}", fileId, e);
         }

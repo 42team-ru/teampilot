@@ -18,8 +18,8 @@ public class LlmTaskCreateConsumer {
 
     @KafkaListener(topics = KafkaTopics.LLM_TASKS_CREATE)
     public void consume(LlmTaskCreateEvent event) {
-        log.info("Received llm.tasks.create for chatId={} title='{}'",
-                event.getChatId(), event.getTitle());
+        log.info("Received llm.tasks.create for teamId={} title='{}'",
+                event.getTeamId(), event.getTitle());
         taskService.createFromLlmEvent(event);
     }
 

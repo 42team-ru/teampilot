@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-contract-batch-event-team-id-instead-of-chat-id/prd.md", "reason": "Acceptance criteria: chatId отсутствует, teamId присутствует во всех слоях"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Проверить согласованность контракта через все слои"}
