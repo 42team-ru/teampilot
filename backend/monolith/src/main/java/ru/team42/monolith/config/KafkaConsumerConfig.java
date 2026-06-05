@@ -1,14 +1,11 @@
 package ru.team42.monolith.config;
 
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.jspecify.annotations.Nullable;
@@ -23,12 +20,7 @@ import org.springframework.kafka.support.KafkaNull;
 import org.springframework.kafka.support.converter.ConversionException;
 import org.springframework.kafka.support.converter.MessagingMessageConverter;
 
-import java.io.IOException;
 import java.lang.reflect.Type;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeParseException;
 
 @Configuration
 public class KafkaConsumerConfig {
@@ -52,7 +44,7 @@ public class KafkaConsumerConfig {
     static class Jackson2RecordMessageConverter extends MessagingMessageConverter {
 
         private final ObjectMapper mapper = JsonMapper.builder()
-                .addModule(lenientInstantModule())
+                .addModule(new JavaTimeModule())
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .build();
@@ -70,23 +62,6 @@ public class KafkaConsumerConfig {
             } catch (JsonProcessingException e) {
                 throw new ConversionException("Failed to convert from JSON for topic " + record.topic(), record, e);
             }
-        }
-
-        // Python worker sends "2026-06-05T23:59:00" without Z — treat as UTC
-        private static SimpleModule lenientInstantModule() {
-            var module = new SimpleModule();
-            module.addDeserializer(Instant.class, new StdDeserializer<>(Instant.class) {
-                @Override
-                public Instant deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-                    String text = p.getText().trim();
-                    try {
-                        return Instant.parse(text);
-                    } catch (DateTimeParseException ignored) {
-                        return LocalDateTime.parse(text).toInstant(ZoneOffset.UTC);
-                    }
-                }
-            });
-            return module;
         }
     }
 }

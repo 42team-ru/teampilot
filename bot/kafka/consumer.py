@@ -14,6 +14,7 @@ from kafka.topics import (
     TOPIC_REMINDER_SEND,
     TOPIC_SUMMARY_SEND,
     TOPIC_TASK_PROPOSE,
+    TOPIC_TASKS_STATE,
 )
 from keyboards.task import build_task_keyboard
 from models.events import (
@@ -22,6 +23,7 @@ from models.events import (
     SummarySendEvent,
     TaskConfirmationEvent,
     TaskProposeEvent,
+    TaskStateEvent,
 )
 
 _DISPLAY_TZ = timezone(timedelta(hours=3))
@@ -32,6 +34,7 @@ class EventConsumer:
         TOPIC_TASK_PROPOSE,
         TOPIC_REMINDER_SEND,
         TOPIC_SUMMARY_SEND,
+        TOPIC_TASKS_STATE,
         TOPIC_BOTS_TASKS,
         TOPIC_BOTS_NOTIFICATIONS,
     ]
@@ -79,6 +82,10 @@ class EventConsumer:
             event = SummarySendEvent.model_validate_json(payload)
             await bot.send_message(chat_id=event.chat_id, text=event.summary_text)
 
+        elif topic == TOPIC_TASKS_STATE:
+            event = TaskStateEvent.model_validate_json(payload)
+            await self._send_task_state(bot, event)
+
         elif topic == TOPIC_BOTS_NOTIFICATIONS:
             event = BotNotificationEvent.model_validate_json(payload)
             await self._send_bot_notification(bot, event)
@@ -86,6 +93,31 @@ class EventConsumer:
         elif topic == TOPIC_BOTS_TASKS:
             event = TaskConfirmationEvent.model_validate_json(payload)
             await self._send_task_confirmation(bot, event)
+
+    async def _send_task_state(self, bot: Bot, event: TaskStateEvent) -> None:
+        deadline_str = event.deadline.strftime("%d.%m %H:%M") if event.deadline else "не указан"
+        assignee_str = f"@{event.assignee_username}" if event.assignee_username else "не указан"
+
+        if event.type == "CREATED":
+            column_str = event.column_title or "без колонки"
+            text = (
+                f"✅ <b>Задача создана</b>\n\n"
+                f"<b>{event.title}</b>\n"
+                f"📂 Колонка: {column_str}\n"
+                f"👤 Ответственный: {assignee_str}\n"
+                f"⏰ Дедлайн: {deadline_str}"
+            )
+        elif event.type == "COLUMN_CHANGED":
+            column_str = event.column_title or "неизвестно"
+            text = (
+                f"🔄 <b>Задача перемещена</b>\n\n"
+                f"<b>{event.title}</b>\n"
+                f"📂 Новая колонка: {column_str}"
+            )
+        else:  # CANCELLED
+            text = f"❌ <b>Задача отменена</b>\n\n<b>{event.title}</b>"
+
+        await bot.send_message(chat_id=event.chat_id, text=text, parse_mode="HTML")
 
     async def _send_task_proposal(self, bot: Bot, event: TaskProposeEvent) -> None:
         kb = build_task_keyboard(event.proposal_id)

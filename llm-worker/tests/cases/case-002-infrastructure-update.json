@@ -36,8 +36,7 @@
     "type": "task",
     "data": {
       "title": "Поднять лимиты памяти для Qdrant в кубер-манифесте",
-      "assignee": "devops_max",
-      "priority": "MEDIUM"
+      "assignee": "devops_max"
     }
   }
 }

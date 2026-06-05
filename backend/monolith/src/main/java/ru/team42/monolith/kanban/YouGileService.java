@@ -52,9 +52,12 @@ public class YouGileService {
 
         if (task.getDeadline() != null) {
             Deadline dl = new Deadline();
-            dl.setStartDate(BigDecimal.valueOf(task.getCreatedAt().getSecond()));
-            dl.setDeadline(BigDecimal.valueOf(task.getDeadline().getEpochSecond()));
+            dl.setDeadline(BigDecimal.valueOf(task.getDeadline().toEpochMilli()));
             dto.setDeadline(dl);
+        }
+
+        if (task.getAssignee() != null && task.getAssignee().getYougileUserId() != null) {
+            dto.setAssigned(List.of(task.getAssignee().getYougileUserId()));
         }
 
         try {
@@ -169,7 +172,7 @@ public class YouGileService {
 
     private java.time.Instant toInstant(ru.team42.monolith.client.yougile.model.Deadline d) {
         if (d == null || d.getDeadline() == null) return null;
-        return java.time.Instant.ofEpochSecond(d.getDeadline().longValue());
+        return java.time.Instant.ofEpochMilli(d.getDeadline().longValue());
     }
 
     private DefaultApi buildApi(Team team) {

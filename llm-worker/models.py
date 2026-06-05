@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ── Kafka: Spring → LLM Worker ─────────────────────────────────────────────
@@ -95,9 +95,8 @@ class TaskCreateEvent(BaseModel):
     title: str
     description: str
     assignee: str | None = None
-    assignee_id: int | None = None
+    assignee_telegram_id: int | None = None
     deadline: str | None = None
-    priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
     column_id: str | None = None
     source_batch_id: str
     confidence: float = 0.0
@@ -107,7 +106,7 @@ class StatusChangeEvent(BaseModel):
     team_id: str
     task_hint: str
     assignee: str | None = None
-    assignee_id: int | None = None
+    assignee_telegram_id: int | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
     source_batch_id: str
     resolved_task_id: str | None = None
@@ -127,7 +126,6 @@ class TaskExtraction(BaseModel):
     description: str
     assignee: str | None = None
     deadline: str | None = None
-    priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
     column_id: str | None = None
 
 
@@ -137,65 +135,36 @@ class StatusExtraction(BaseModel):
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
 
 
-# ── Fault-tolerant list wrappers ─────────────────────────────────────────────
-# Принимают сырой JSON-массив от LLM: [{...}, {...}]
-# Плохие элементы отбрасываются молча; failed_items — для логирования в main.py
-
 class TaskExtractionList(BaseModel):
-    """
-    Fault-tolerant wrapper для ответа task_chain.
-
-    LLaMA возвращает JSON-массив. Каждый элемент валидируется отдельно.
-    Если один элемент кривой — остальные задачи всё равно создаются.
-    """
     tasks: list[TaskExtraction] = Field(default_factory=list)
-    failed_items: int = Field(default=0, exclude=True)  # исключён из model_dump()
 
     @model_validator(mode="before")
     @classmethod
     def coerce_from_raw_list(cls, data: Any) -> dict:
-        """Принимает и список [{...}] и словарь {"tasks": [...]} — оба формата."""
         if isinstance(data, list):
-            valid, failed = [], 0
-            for item in data:
-                try:
-                    parsed = (
-                        item
-                        if isinstance(item, TaskExtraction)
-                        else TaskExtraction.model_validate(item)
-                    )
-                    valid.append(parsed)
-                except (ValidationError, Exception):
-                    failed += 1
-            return {"tasks": valid, "failed_items": failed}
+            return {"tasks": data}
         return data
 
 
-class StatusExtractionList(BaseModel):
-    """
-    Fault-tolerant wrapper для ответа status_chain.
+class TaskLifecycleEvent(BaseModel):
+    """Incoming event from tasks.lifecycle — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
 
-    Аналогично TaskExtractionList: per-item валидация,
-    один сбойный элемент не роняет остальные.
-    """
+    event_id: str = Field(alias="eventId")
+    occurred_at: datetime = Field(alias="occurredAt")
+    task_id: str = Field(alias="taskId")
+    team_id: str = Field(alias="teamId")
+    type: Literal["CONFIRMED", "UPDATED", "CANCELLED"]
+    title: str
+    description: str | None = None
+
+
+class StatusExtractionList(BaseModel):
     statuses: list[StatusExtraction] = Field(default_factory=list)
-    failed_items: int = Field(default=0, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
     def coerce_from_raw_list(cls, data: Any) -> dict:
-        """Принимает и список [{...}] и словарь {"statuses": [...]} — оба формата."""
         if isinstance(data, list):
-            valid, failed = [], 0
-            for item in data:
-                try:
-                    parsed = (
-                        item
-                        if isinstance(item, StatusExtraction)
-                        else StatusExtraction.model_validate(item)
-                    )
-                    valid.append(parsed)
-                except (ValidationError, Exception):
-                    failed += 1
-            return {"statuses": valid, "failed_items": failed}
+            return {"statuses": data}
         return data

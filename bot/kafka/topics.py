@@ -11,7 +11,8 @@ TOPIC_STATUS_CHANGED = "tasks.status"
 TOPIC_TASK_PROPOSE  = "tasks.propose"
 TOPIC_REMINDER_SEND = "reminders.send"
 TOPIC_SUMMARY_SEND  = "summary.send"
-TOPIC_BOTS_TASKS = "bots.tasks"
+TOPIC_TASKS_STATE        = "tasks.state"
+TOPIC_BOTS_TASKS         = "bots.tasks"
 TOPIC_BOTS_NOTIFICATIONS = "bots.notifications"
 
 
