@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-auto-confirm-high-confidence-tasks-proto-contracts-for-llm-kafka-events/prd.md", "reason": "Acceptance criteria to verify against"}
+{"file": "CLAUDE.md", "reason": "Code conventions to check: AppException usage, ResponseUtils, endpoint naming"}

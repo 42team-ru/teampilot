@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-auto-confirm-high-confidence-tasks-proto-contracts-for-llm-kafka-events/prd.md", "reason": "Full requirements: auto-confirm flow, proto contracts, decisions, file list"}
+{"file": "CLAUDE.md", "reason": "Project conventions: exception handling, response utils, Kafka patterns, entity conventions"}
