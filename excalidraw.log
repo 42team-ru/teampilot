@@ -68,3 +68,7 @@
 2026-06-05 21:43:19.615 [info] Creating element
 2026-06-05 21:43:29.468 [info] Handling tool call: create_element
 2026-06-05 21:43:29.468 [info] Creating element
+2026-06-06 01:26:11.061 [info] Starting Excalidraw MCP server...
+2026-06-06 01:26:11.062 [debug] Connecting to transport...
+2026-06-06 01:26:11.063 [info] Excalidraw MCP server running on stdio
+2026-06-06 01:26:11.071 [info] Listing available tools
