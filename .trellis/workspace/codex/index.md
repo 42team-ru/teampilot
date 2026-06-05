@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 5
 - **Last Active**: 2026-06-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~106 | Active |
+| `journal-1.md` | ~172 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-06-06 | Diagnose slow bot backend requests | `910a305` | `master` |
+| 4 | 2026-06-06 | Bot button-first panel UX | `cffc82f` | `master` |
 | 3 | 2026-06-06 | Kafka bot notifications and manager task approval | `a359e1d` | `master` |
 | 2 | 2026-06-04 | Increase user-lookup connect timeout | `1a05ed0` | `master` |
 | 1 | 2026-06-04 | Log full URL in bot HTTP error helpers | `98654e8` | `master` |

@@ -89,6 +89,43 @@ class BackendApiErrorMiddleware(BaseMiddleware):
             return None
 
 
+class UpdateTimingMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        started = asyncio.get_running_loop().time()
+        try:
+            return await handler(event, data)
+        finally:
+            elapsed_ms = (asyncio.get_running_loop().time() - started) * 1000
+            if elapsed_ms >= settings.UPDATE_SLOW_HANDLER_MS:
+                logger.warning(
+                    "Slow Telegram update handler: event_type={} elapsed_ms={:.1f}",
+                    type(event).__name__,
+                    elapsed_ms,
+                )
+
+
+async def monitor_event_loop_lag() -> None:
+    interval = settings.EVENT_LOOP_LAG_INTERVAL_SECONDS
+    warn_ms = settings.EVENT_LOOP_LAG_WARN_MS
+    if interval <= 0 or warn_ms <= 0:
+        return
+
+    loop = asyncio.get_running_loop()
+    expected = loop.time() + interval
+    while True:
+        await asyncio.sleep(interval)
+        now = loop.time()
+        lag_ms = max((now - expected) * 1000, 0)
+        if lag_ms >= warn_ms:
+            logger.warning("Event loop lag detected: lag_ms={:.1f}", lag_ms)
+        expected = now + interval
+
+
 async def main() -> None:
     session = AiohttpSession(timeout=settings.HTTP_TIMEOUT_SECONDS)
     bot = Bot(
@@ -99,6 +136,7 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
 
     producer = EventProducer(settings.KAFKA_BOOTSTRAP_SERVERS)
+    dp.update.middleware(UpdateTimingMiddleware())
     dp.update.middleware(TelegramStaleCallbackMiddleware())
     dp.update.middleware(BackendApiErrorMiddleware())
     dp.update.middleware(KafkaProducerMiddleware(producer))
@@ -118,15 +156,19 @@ async def main() -> None:
 
     consumer = EventConsumer()
     consumer_task = asyncio.create_task(consumer.start(bot))
+    loop_lag_task = asyncio.create_task(monitor_event_loop_lag())
 
     logger.info("Starting bot polling...")
     try:
         await dp.start_polling(bot)
     finally:
         consumer_task.cancel()
+        loop_lag_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await consumer_task
-        producer.flush()
+        with contextlib.suppress(asyncio.CancelledError):
+            await loop_lag_task
+        await asyncio.to_thread(producer.flush)
         await http_client.close()
         await bot.session.close()
 

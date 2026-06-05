@@ -104,3 +104,69 @@ Implemented bot Kafka consumers for backend notification/task topics and added m
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Bot button-first panel UX
+
+**Date**: 2026-06-06
+**Task**: Bot button-first panel UX
+**Branch**: `master`
+
+### Summary
+
+Reworked member and manager bot panels into button-first grouped two-column layouts, added board callback, team task button for members, and button-based upload cancellation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cffc82f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 5: Diagnose slow bot backend requests
+
+**Date**: 2026-06-06
+**Task**: Diagnose slow bot backend requests
+**Branch**: `master`
+
+### Summary
+
+Added HTTP phase tracing, IPv4-first backend connector defaults, event-loop lag monitoring, slow update logging, and offloaded synchronous Kafka publish calls from the bot event loop.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `910a305` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
