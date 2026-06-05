@@ -56,6 +56,10 @@ public class YouGileService {
             dto.setDeadline(dl);
         }
 
+        if (task.getAssignee() != null && task.getAssignee().getYougileUserId() != null) {
+            dto.setAssigned(List.of(task.getAssignee().getYougileUserId()));
+        }
+
         try {
             var result = api.taskControllerCreate(dto).block();
             if (result != null) {

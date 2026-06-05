@@ -71,3 +71,36 @@ Raised _USER_LOOKUP_TIMEOUT in admin_service.py from connect=0.5s to connect=3.0
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Kafka bot notifications and manager task approval
+
+**Date**: 2026-06-06
+**Task**: Kafka bot notifications and manager task approval
+**Branch**: `master`
+
+### Summary
+
+Implemented bot Kafka consumers for backend notification/task topics and added manager-panel approval flow for pending tasks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a359e1d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

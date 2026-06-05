@@ -165,7 +165,12 @@ public class TaskService {
 
         boolean deleted = Boolean.TRUE.equals(event.getDeleted());
         if (deleted) {
+            task.setDeleted(true);
             task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
+        }
+
+        if (Boolean.TRUE.equals(event.getCompleted())) {
+            task.setCompleted(true);
         }
 
         if (event.getAssigneeTelegramId() != null) {
@@ -273,6 +278,11 @@ public class TaskService {
             return taskRepository.findByAssigneeUserTelegramIdAndLocalStatusIn(assigneeTelegramId, statuses, pageable);
         }
         return taskRepository.findByAssigneeUserTelegramId(assigneeTelegramId, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Task> listMyTasks(Long telegramId, Pageable pageable) {
+        return taskRepository.findByAssigneeUserTelegramIdAndCompletedFalseAndDeletedFalse(telegramId, pageable);
     }
 
     @Transactional(readOnly = true)

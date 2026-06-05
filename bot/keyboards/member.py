@@ -40,7 +40,11 @@ def team_overview_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def team_context_manager_keyboard(team_id: str, has_chat: bool = True) -> InlineKeyboardMarkup:
+def team_context_manager_keyboard(
+    team_id: str,
+    has_chat: bool = True,
+    pending_count: int | None = None,
+) -> InlineKeyboardMarkup:
     buttons: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton(text="👥 Участники команды", callback_data=f"team_ctx:members:{team_id}")],
         [InlineKeyboardButton(text="🔗 Привязать чат", callback_data=f"team_ctx:link_chat:{team_id}")],
@@ -48,6 +52,10 @@ def team_context_manager_keyboard(team_id: str, has_chat: bool = True) -> Inline
         [InlineKeyboardButton(text="🗑 Деактивировать", callback_data=f"team_ctx:deactivate:{team_id}")],
     ]
     if has_chat:
+        pending_label = "🆕 Новые задачи"
+        if pending_count:
+            pending_label = f"{pending_label} ({pending_count})"
+        buttons.append([InlineKeyboardButton(text=pending_label, callback_data=f"mgr:pending:{team_id}:0")])
         buttons.append([InlineKeyboardButton(text="📥 Мои задачи", callback_data=f"tasks:team_my:{team_id}:active:0")])
         buttons.append([InlineKeyboardButton(text="📋 Задачи команды", callback_data=f"tasks:team:{team_id}:active:0")])
         buttons.append([InlineKeyboardButton(text="📤 Загрузить файл", callback_data=f"team_ctx:upload:{team_id}")])

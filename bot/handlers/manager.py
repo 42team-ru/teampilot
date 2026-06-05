@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from html import escape
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
@@ -15,6 +18,7 @@ from keyboards.manager import (
     manager_skip_keyboard,
     manager_team_select_keyboard,
 )
+from services.task_service import approve_task, get_task_by_id, get_tasks_page
 from services.team_service import (
     deactivate_team,
     get_my_teams,
@@ -27,6 +31,9 @@ from services.team_service import (
 from states.manager import ManagerLinkChatStates, ManagerUpdateStates
 
 router = Router()
+
+_PENDING_TASKS_PAGE_SIZE = 4
+_DISPLAY_TZ = timezone(timedelta(hours=3))
 
 
 def _team_title(team: dict) -> str:
@@ -68,6 +75,254 @@ async def _send_join_link_to_group(callback: CallbackQuery, chat_id: int, team_i
         )
     except TelegramForbiddenError:
         pass
+
+
+def _team_chat_id(team: dict) -> int | None:
+    chat_id = team.get("telegramChatId")
+    if chat_id is None:
+        return None
+    try:
+        return int(chat_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_page(raw_page: str | int | None) -> int:
+    try:
+        return max(int(raw_page), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _total_pages(page_data: dict) -> int:
+    return int(page_data.get("totalPages") or 0)
+
+
+def _total_elements(page_data: dict) -> int:
+    return int(page_data.get("totalElements") or len(page_data.get("content", [])))
+
+
+def _format_deadline(value: str | None) -> str:
+    if not value:
+        return "не указан"
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return escape(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(_DISPLAY_TZ).strftime("%d.%m %H:%M")
+
+
+def _person_name(info: dict | None, default: str = "не указан") -> str:
+    if not info:
+        return default
+    login = info.get("telegramLogin")
+    if login:
+        return f"@{escape(str(login))}"
+    name = f"{info.get('firstName') or ''} {info.get('lastName') or ''}".strip()
+    return escape(name or default)
+
+
+def _clip(value: str | None, max_length: int = 700) -> str:
+    if not value:
+        return "—"
+    stripped = value.strip()
+    if len(stripped) <= max_length:
+        return stripped
+    return stripped[:max_length - 1].rstrip() + "…"
+
+
+async def _fetch_pending_tasks_page(
+    telegram_id: int,
+    team_id: str,
+    page: int,
+) -> tuple[dict, dict] | None:
+    team = await _get_team_for_manager(telegram_id, team_id)
+    if team is None:
+        return None
+
+    chat_id = _team_chat_id(team)
+    if chat_id is None:
+        return None
+
+    requested_page = _safe_page(page)
+    page_data = await get_tasks_page(
+        chat_id=chat_id,
+        telegram_id=telegram_id,
+        status="PENDING_APPROVAL",
+        page=requested_page,
+        size=_PENDING_TASKS_PAGE_SIZE,
+    )
+
+    total_pages = _total_pages(page_data)
+    if requested_page > 0 and total_pages and not page_data.get("content") and requested_page >= total_pages:
+        page_data = await get_tasks_page(
+            chat_id=chat_id,
+            telegram_id=telegram_id,
+            status="PENDING_APPROVAL",
+            page=total_pages - 1,
+            size=_PENDING_TASKS_PAGE_SIZE,
+        )
+
+    return team, page_data
+
+
+def _format_pending_task_row(task: dict, index: int) -> str:
+    title = escape(task.get("title") or "Без названия")
+    assignee = _person_name(task.get("assignee"), default="без исполнителя")
+    deadline = _format_deadline(task.get("deadline"))
+    return (
+        f"{index}. <b>{title}</b>\n"
+        f"   Исполнитель: {assignee}\n"
+        f"   Дедлайн: {deadline}"
+    )
+
+
+def _pending_tasks_keyboard(page_data: dict, team_id: str) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    page = int(page_data.get("page") or 0)
+    tasks = page_data.get("content", [])
+    start_index = page * int(page_data.get("size") or _PENDING_TASKS_PAGE_SIZE) + 1
+
+    for offset, task in enumerate(tasks):
+        task_id = task.get("id")
+        if not task_id:
+            continue
+        index = start_index + offset
+        rows.append([
+            InlineKeyboardButton(text=f"{index}. 👁 Детали", callback_data=f"mgr:preview:{task_id}"),
+            InlineKeyboardButton(text=f"{index}. ✅ Подтвердить", callback_data=f"mgr:approve:{task_id}"),
+        ])
+
+    total_pages = _total_pages(page_data)
+    if total_pages > 1:
+        prev_page = max(page - 1, 0)
+        next_page = min(page + 1, total_pages - 1)
+        rows.append([
+            InlineKeyboardButton(text="◀️", callback_data=f"mgr:pending:{team_id}:{prev_page}"),
+            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data=f"mgr:pending:{team_id}:{page}"),
+            InlineKeyboardButton(text="▶️", callback_data=f"mgr:pending:{team_id}:{next_page}"),
+        ])
+
+    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"mgr:pending:{team_id}:{page}")])
+    rows.append([InlineKeyboardButton(text="← Назад к команде", callback_data=f"team_ctx:manager:{team_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _format_pending_tasks_page(team: dict, page_data: dict) -> str:
+    team_title = escape(_team_title(team))
+    tasks = page_data.get("content", [])
+    total = _total_elements(page_data)
+    page = int(page_data.get("page") or 0)
+    total_pages = _total_pages(page_data)
+
+    lines = [
+        f"🆕 <b>Новые задачи: {team_title}</b>",
+        f"Ожидают подтверждения: <b>{total}</b>",
+    ]
+    if total_pages:
+        lines.append(f"Страница: <b>{page + 1}/{total_pages}</b>")
+
+    if not tasks:
+        lines.extend(["", "Новых задач на подтверждение нет."])
+    else:
+        start_index = page * int(page_data.get("size") or _PENDING_TASKS_PAGE_SIZE) + 1
+        lines.append("")
+        lines.extend(
+            _format_pending_task_row(task, start_index + offset)
+            for offset, task in enumerate(tasks)
+        )
+
+    return "\n\n".join(lines)
+
+
+def _format_pending_task_details(task: dict, team: dict) -> str:
+    title = escape(task.get("title") or "Без названия")
+    description = escape(_clip(task.get("description")))
+    return "\n".join([
+        "🆕 <b>Задача на подтверждение</b>",
+        "",
+        f"<b>{title}</b>",
+        f"Команда: <b>{escape(_team_title(team))}</b>",
+        f"Исполнитель: {_person_name(task.get('assignee'))}",
+        f"Автор: {_person_name(task.get('author'))}",
+        f"Дедлайн: {_format_deadline(task.get('deadline'))}",
+        f"ID: <code>{escape(str(task.get('id') or '—'))}</code>",
+        "",
+        f"<b>Описание:</b>\n{description}",
+    ])
+
+
+def _pending_task_details_keyboard(task: dict, team_id: str) -> InlineKeyboardMarkup:
+    task_id = task.get("id")
+    rows: list[list[InlineKeyboardButton]] = []
+    if task_id:
+        rows.append([InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"mgr:approve:{task_id}")])
+    rows.append([InlineKeyboardButton(text="← К новым задачам", callback_data=f"mgr:pending:{team_id}:0")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("mgr:pending:"))
+async def manager_pending_tasks(callback: CallbackQuery) -> None:
+    parts = (callback.data or "").split(":")
+    if len(parts) != 4:
+        await callback.answer("Не удалось открыть новые задачи", show_alert=True)
+        return
+
+    team_id = parts[2]
+    page = _safe_page(parts[3])
+    rendered = await _fetch_pending_tasks_page(callback.from_user.id, team_id, page)
+    if rendered is None:
+        await callback.answer("Команда недоступна или чат не привязан", show_alert=True)
+        return
+
+    team, page_data = rendered
+    await callback.message.edit_text(
+        _format_pending_tasks_page(team, page_data),
+        reply_markup=_pending_tasks_keyboard(page_data, team_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:preview:"))
+async def manager_pending_task_preview(callback: CallbackQuery) -> None:
+    task_id = (callback.data or "").split(":", 2)[2]
+    task = await get_task_by_id(task_id, telegram_id=callback.from_user.id)
+    team_id = str(task.get("teamId") or "")
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    if team is None:
+        await callback.answer("Задача недоступна", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        _format_pending_task_details(task, team),
+        reply_markup=_pending_task_details_keyboard(task, team_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:approve:"))
+async def manager_pending_task_approve(callback: CallbackQuery) -> None:
+    task_id = (callback.data or "").split(":", 2)[2]
+    approved = await approve_task(task_id, callback.from_user.id)
+    team_id = str(approved.get("teamId") or "")
+    rendered = await _fetch_pending_tasks_page(callback.from_user.id, team_id, 0)
+    if rendered is None:
+        await callback.message.edit_text(
+            "✅ Задача подтверждена.",
+            reply_markup=manager_back_keyboard(),
+        )
+        await callback.answer("Подтверждено")
+        return
+
+    team, page_data = rendered
+    text = "✅ Задача подтверждена.\n\n" + _format_pending_tasks_page(team, page_data)
+    await callback.message.edit_text(
+        text,
+        reply_markup=_pending_tasks_keyboard(page_data, team_id),
+    )
+    await callback.answer("Подтверждено")
 
 
 @router.callback_query(F.data == "manager:members")

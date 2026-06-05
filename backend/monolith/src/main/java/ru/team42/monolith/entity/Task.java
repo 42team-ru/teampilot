@@ -41,6 +41,9 @@ public class Task extends AbstractEntity {
     @Column(name = "deleted")
     private boolean deleted = false;
 
+    @Column(name = "completed")
+    private boolean completed = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "sync_status", nullable = false, length = 30)
     private TaskSyncStatus syncStatus = TaskSyncStatus.PENDING_SYNC;

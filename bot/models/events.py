@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 # Outgoing: Bot → Backend
@@ -93,3 +93,46 @@ class TaskStateEvent(BaseModel):
     column_title: str | None = Field(default=None, alias="columnTitle")
     assignee_username: str | None = Field(default=None, alias="assigneeUsername")
     deadline: datetime | None = None
+
+
+class BackendEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+
+class BotNotificationEvent(BackendEvent):
+    telegram_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("telegramId", "telegram_id"),
+    )
+    chat_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("chatId", "chat_id"),
+    )
+    type: str
+    task_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("taskId", "task_id"),
+    )
+    task_title: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("taskTitle", "task_title"),
+    )
+
+
+class TaskConfirmationEvent(BackendEvent):
+    task_id: str = Field(validation_alias=AliasChoices("taskId", "task_id"))
+    chat_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("chatId", "chat_id"),
+    )
+    title: str
+    description: str | None = None
+    assignee_username: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("assigneeUsername", "assignee_username"),
+    )
+    deadline: datetime | None = None
+    auto_confirmed: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("autoConfirmed", "auto_confirmed"),
+    )
