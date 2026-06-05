@@ -13,6 +13,7 @@ class TranscriptReadyEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     file_id: str = Field(alias="fileId")
+    team_id: str = Field(alias="teamId")
     bucket: str
     s3_key: str = Field(alias="s3Key")
 
@@ -41,7 +42,7 @@ class ColumnInfo(BaseModel):
 class MessageBatchEvent(BaseModel):
     event_id: str
     occurred_at: datetime
-    chat_id: int
+    team_id: str
     team: list[TeamMember] = Field(default_factory=list)
     columns: list[ColumnInfo] = Field(default_factory=list)
     messages: list[MessageDto]
@@ -57,7 +58,7 @@ def proto_to_batch_event(proto_event: Any) -> MessageBatchEvent:
     return MessageBatchEvent(
         event_id=proto_event.event_id,
         occurred_at=ts_to_dt(proto_event.occurred_at),
-        chat_id=proto_event.chat_id,
+        team_id=proto_event.team_id,
         batch_start=ts_to_dt(proto_event.batch_start),
         batch_end=ts_to_dt(proto_event.batch_end),
         messages=[
@@ -90,7 +91,7 @@ def proto_to_batch_event(proto_event: Any) -> MessageBatchEvent:
 # ── Kafka: LLM Worker → Spring ──────────────────────────────────────────────
 
 class TaskCreateEvent(BaseModel):
-    chat_id: int
+    team_id: str
     title: str
     description: str
     assignee: str | None = None
@@ -102,12 +103,13 @@ class TaskCreateEvent(BaseModel):
 
 
 class StatusChangeEvent(BaseModel):
-    chat_id: int
+    team_id: str
     task_hint: str
     assignee: str | None = None
     assignee_id: int | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
     source_batch_id: str
+    resolved_task_id: str | None = None
 
 
 # ── LLM output — валидируем ответ модели ────────────────────────────────────
