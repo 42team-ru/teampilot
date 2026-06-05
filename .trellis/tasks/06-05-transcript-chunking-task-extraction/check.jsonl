@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-transcript-chunking-task-extraction/prd.md", "reason": "Acceptance criteria: чанкинг, classifier skip, dedup, resolved_task_id"}
+{"file": ".trellis/tasks/06-05-rag-qdrant-structure-llm-worker/rag-structure.md", "reason": "Проверить что team_id фильтр и пороги соблюдены"}

@@ -6,10 +6,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.entity.ChatMessage;
+import ru.team42.monolith.entity.TaskColumn;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
-import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.repository.ChatMessageRepository;
+import ru.team42.monolith.repository.TaskColumnRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
@@ -29,7 +30,7 @@ public class ChatMessageBatchingService {
     private final ChatMessageBatchPublisher batchPublisher;
     private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
-    private final YouGileService youGileService;
+    private final TaskColumnRepository taskColumnRepository;
 
     @Scheduled(fixedDelay = 5_000)
     @Transactional
@@ -49,29 +50,24 @@ public class ChatMessageBatchingService {
 
             if (!sizeThresholdReached && !timeThresholdReached) continue;
 
-            List<TeamUser> teamMembers = loadTeamMembers(chatId);
-            List<YouGileService.ColumnInfo> columns = loadColumns(chatId);
+            Team team = teamRepository.findByTelegramChatId(chatId).orElse(null);
+            if (team == null) {
+                log.warn("No team found for chatId={}, skipping batch", chatId);
+                continue;
+            }
 
-            batchPublisher.publishBatch(chatId, messages, teamMembers, columns);
+            List<TeamUser> teamMembers = teamUserRepository.findByTeamId(team.getId());
+            List<TaskColumn> columns = taskColumnRepository.findByTeamId(team.getId());
+
+            batchPublisher.publishBatch(team.getId().toString(), messages, teamMembers, columns);
             messages.forEach(m -> m.setSentToLlmAt(now));
             chatMessageRepository.saveAll(messages);
 
-            log.info("Flushed batch: chatId={} size={} reason={} teamSize={} columns={}",
-                    chatId, messages.size(),
+            log.info("Flushed batch: teamId={} chatId={} size={} reason={} teamSize={} columns={}",
+                    team.getId(), chatId, messages.size(),
                     sizeThresholdReached ? "size" : "timeout",
                     teamMembers.size(), columns.size());
         }
     }
 
-    private List<TeamUser> loadTeamMembers(Long chatId) {
-        return teamRepository.findByTelegramChatId(chatId)
-                .map(team -> teamUserRepository.findByTeamId(team.getId()))
-                .orElse(List.of());
-    }
-
-    private List<YouGileService.ColumnInfo> loadColumns(Long chatId) {
-        return teamRepository.findByTelegramChatId(chatId)
-                .map(youGileService::fetchColumns)
-                .orElse(List.of());
-    }
 }

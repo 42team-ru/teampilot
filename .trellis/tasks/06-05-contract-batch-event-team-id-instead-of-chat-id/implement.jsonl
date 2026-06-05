@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/06-05-contract-batch-event-team-id-instead-of-chat-id/prd.md", "reason": "Требования: какие поля менять, в каких файлах, почему team_id вместо chat_id"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Стандарты кода Spring + Python"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Контракт между Spring и LLM worker через Kafka/Proto"}

@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-load-columns-from-taskcolumn-postgres/prd.md", "reason": "Acceptance criteria: нет HTTP к YouGile в loadColumns, ColumnDto.id = UUID"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Проверить корректность JPA запросов"}

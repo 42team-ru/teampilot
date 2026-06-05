@@ -10,6 +10,7 @@ import java.util.UUID;
 public class TranscriptReadyEvent extends BaseEvent {
 
     private final UUID fileId;
+    private final String teamId;
     private final String bucket;
     private final String s3Key;
 }

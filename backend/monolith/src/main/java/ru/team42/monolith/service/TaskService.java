@@ -45,9 +45,9 @@ public class TaskService {
     public Task createFromLlmEvent(LlmTaskCreateEvent event) {
         validateEvent(event);
 
-        Team team = teamRepository.findByTelegramChatId(event.getChatId())
+        Team team = teamRepository.findById(UUID.fromString(event.getTeamId()))
                 .orElseThrow(() -> AppException.notFound(
-                        "Team not found for chatId %d".formatted(event.getChatId())));
+                        "Team not found for teamId %s".formatted(event.getTeamId())));
 
         Task task = new Task();
         task.setTeam(team);
@@ -58,8 +58,12 @@ public class TaskService {
         task.setLocalStatus(TaskLocalStatus.PENDING_APPROVAL);
 
         if (event.getColumnId() != null) {
-            taskColumnRepository.findByTeamIdAndYouGileColumnId(team.getId(), event.getColumnId())
-                    .ifPresent(task::setColumn);
+            try {
+                taskColumnRepository.findById(UUID.fromString(event.getColumnId()))
+                        .ifPresent(task::setColumn);
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid columnId '{}' in LlmTaskCreateEvent, skipping column assignment", event.getColumnId());
+            }
         }
 
         if (event.getAssigneeTelegramId() != null) {
@@ -110,12 +114,15 @@ public class TaskService {
         llmTaskUpdateMapper.updateTaskFromEvent(event, task);
 
         if (event.getColumnId() != null) {
-            Optional<TaskColumn> colOpt = taskColumnRepository
-                    .findByTeamIdAndYouGileColumnId(task.getTeam().getId(), event.getColumnId());
-            if (colOpt.isPresent() && !colOpt.get().equals(task.getColumn())) {
-                TaskColumn prev = task.getColumn();
-                task.setColumn(colOpt.get());
-                recordHistory(task, prev, colOpt.get(), telegramIdOf(task));
+            try {
+                Optional<TaskColumn> colOpt = taskColumnRepository.findById(UUID.fromString(event.getColumnId()));
+                if (colOpt.isPresent() && !colOpt.get().equals(task.getColumn())) {
+                    TaskColumn prev = task.getColumn();
+                    task.setColumn(colOpt.get());
+                    recordHistory(task, prev, colOpt.get(), telegramIdOf(task));
+                }
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid columnId '{}' in LlmUpdateTaskEvent, skipping column assignment", event.getColumnId());
             }
         }
 
@@ -233,7 +240,7 @@ public class TaskService {
     }
 
     private void validateEvent(LlmTaskCreateEvent event) {
-        if (event.getChatId() == null) throw AppException.badRequest("chatId is required");
+        if (event.getTeamId() == null || event.getTeamId().isBlank()) throw AppException.badRequest("teamId is required");
         if (event.getTitle() == null || event.getTitle().isBlank())
             throw AppException.badRequest("title is required");
     }

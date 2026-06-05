@@ -64,7 +64,7 @@ def main():
         batch = MessageBatchEvent(
             event_id="debug_batch",
             occurred_at=datetime.now(),
-            chat_id=1,
+            team_id="00000000-0000-0000-0000-000000000001",
             messages=[],
             batch_start=datetime.now(),
             batch_end=datetime.now()

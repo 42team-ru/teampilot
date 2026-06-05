@@ -22,9 +22,17 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_BATCHES: str = "message_batches"
     QDRANT_COLLECTION_TASKS: str = "tasks"
     DEDUP_THRESHOLD: float = 0.92
+    STATUS_HINT_THRESHOLD: float = 0.70
 
     # Классификатор
     CLASSIFIER_THRESHOLD: float = 0.65
+
+    # Параллелизм воркера
+    LLM_WORKER_CONCURRENCY: int = 4
+
+    # Чанкинг транскриптов
+    TRANSCRIPT_CHUNK_CHARS: int = 6000
+    TRANSCRIPT_CHUNK_OVERLAP_CHARS: int = 500
 
     # MinIO
     MINIO_ENDPOINT: str = "localhost:9000"

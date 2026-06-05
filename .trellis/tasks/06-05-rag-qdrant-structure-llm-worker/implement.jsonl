@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/06-05-rag-qdrant-structure-llm-worker/rag-structure.md", "reason": "Основной дизайн: коллекции, функции, пороги, точки интеграции"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Стандарты качества кода"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Взаимодействие между слоями (Spring ↔ LLM worker)"}

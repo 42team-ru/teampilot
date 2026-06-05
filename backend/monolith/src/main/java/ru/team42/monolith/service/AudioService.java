@@ -27,7 +27,7 @@ public class AudioService {
     private final AudioTranscriptService audioTranscriptService;
 
     @Transactional
-    public AudioUploadResponse upload(MultipartFile file) {
+    public AudioUploadResponse upload(MultipartFile file, String teamId) {
         String originalFilename = file.getOriginalFilename() != null
                 ? file.getOriginalFilename()
                 : file.getName();
@@ -55,7 +55,7 @@ public class AudioService {
         audioFile.setSizeBytes((long) audioBytes.length);
         audioFileRepository.save(audioFile);
 
-        audioTranscriptService.transcribeAsync(audioFile.getId(), audioBytes, originalFilename);
+        audioTranscriptService.transcribeAsync(audioFile.getId(), audioBytes, originalFilename, teamId);
 
         return new AudioUploadResponse(
                 audioFile.getId(),
