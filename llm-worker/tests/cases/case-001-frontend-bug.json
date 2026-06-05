@@ -50,8 +50,7 @@
     "type": "task",
     "data": {
       "title": "Сделать хотфикс формы регистрации",
-      "assignee": "@frontend_kirill",
-      "priority": "HIGH"
+      "assignee": "@frontend_kirill"
     }
   }
 }

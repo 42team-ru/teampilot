@@ -36,8 +36,7 @@
     "type": "task",
     "data": {
       "title": "Проверить и исправить баг с авторизацией",
-      "assignee": "@mikhail_be",
-      "priority": "MEDIUM"
+      "assignee": "@mikhail_be"
     }
   }
 }

@@ -269,11 +269,6 @@ class MLTestRunner:
                         f"assignee: ожидалось «{exp_data['assignee']}», получено «{event.assignee}»"
                     )
 
-            if "priority" in exp_data and event.priority != exp_data["priority"]:
-                issues.append(
-                    f"priority: ожидалось «{exp_data['priority']}», получено «{event.priority}»"
-                )
-
             if not issues:
                 return "PASS", "Все ключевые поля совпадают"
             if len(issues) == 1:

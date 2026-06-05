@@ -85,6 +85,7 @@ public class TaskService {
                 taskRepository.save(saved);
             });
             taskEventPublisher.publishConfirmation(saved, true);
+            taskEventPublisher.publishCreated(saved);
             log.info("Auto-confirmed task '{}' (confidence={})", saved.getTitle(), event.getConfidence());
             return saved;
         }
@@ -104,7 +105,9 @@ public class TaskService {
 
         task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
         task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
-        return taskRepository.save(task);
+        Task saved = taskRepository.save(task);
+        taskEventPublisher.publishCancelled(saved);
+        return saved;
     }
 
     @Transactional
@@ -130,6 +133,7 @@ public class TaskService {
             saved.setSyncStatus(TaskSyncStatus.SYNCED);
             taskRepository.save(saved);
             taskEventPublisher.publishConfirmation(saved, false);
+            taskEventPublisher.publishCreated(saved);
         });
 
         return saved;
@@ -144,12 +148,14 @@ public class TaskService {
 
         llmTaskUpdateMapper.updateTaskFromEvent(event, task);
 
+        TaskColumn newColumn = null;
         if (event.getColumnId() != null) {
             try {
                 Optional<TaskColumn> colOpt = taskColumnRepository.findById(UUID.fromString(event.getColumnId()));
                 if (colOpt.isPresent() && !colOpt.get().equals(task.getColumn())) {
                     TaskColumn prev = task.getColumn();
                     task.setColumn(colOpt.get());
+                    newColumn = colOpt.get();
                     recordHistory(task, prev, colOpt.get(), telegramIdOf(task));
                 }
             } catch (IllegalArgumentException e) {
@@ -157,7 +163,8 @@ public class TaskService {
             }
         }
 
-        if (Boolean.TRUE.equals(event.getDeleted())) {
+        boolean deleted = Boolean.TRUE.equals(event.getDeleted());
+        if (deleted) {
             task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
         }
 
@@ -168,6 +175,12 @@ public class TaskService {
 
         task = taskRepository.save(task);
         youGileService.updateTask(task.getTeam(), task);
+
+        if (deleted) {
+            taskEventPublisher.publishCancelled(task);
+        } else if (newColumn != null) {
+            taskEventPublisher.publishColumnChanged(task, newColumn);
+        }
     }
 
     @Transactional(readOnly = true)

@@ -34,7 +34,7 @@ public interface TaskToYouGileMapper {
     default UpdateDeadline mapDeadline(Task task) {
         if (task.getDeadline() == null) return null;
         UpdateDeadline dl = new UpdateDeadline();
-        dl.setDeadline(BigDecimal.valueOf(task.getDeadline().getEpochSecond()));
+        dl.setDeadline(BigDecimal.valueOf(task.getDeadline().toEpochMilli()));
         return dl;
     }
 }

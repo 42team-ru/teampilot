@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 from typing import List, Union
 
@@ -6,12 +5,10 @@ from loguru import logger
 from pydantic import ValidationError
 
 from infra.kafka import publish
-from infra.qdrant import find_task_by_hint, is_task_duplicate, store_batch, store_task
 from llm.chains import classifier_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
     ClassificationResult,
-    ColumnInfo,
     MessageBatchEvent,
     StatusChangeEvent,
     StatusExtractionList,
@@ -26,10 +23,6 @@ from settings import settings
 TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
 
-_DONE_KEYWORDS = {"готово", "done", "завершен", "завершено", "закрыт", "closed", "complete"}
-_PROGRESS_KEYWORDS = {"процесс", "progress", "работ", "in progress", "в работе", "делается"}
-_TODO_KEYWORDS = {"бэклог", "backlog", "to do", "todo", "новые", "открыт", "очередь", "open", "queue"}
-
 
 def format_messages(batch: MessageBatchEvent) -> str:
     return "\n".join(
@@ -42,24 +35,11 @@ def format_team_context(batch: MessageBatchEvent) -> str:
     if not batch.team:
         return "TEAM LIST: not provided (use chat log usernames only)"
 
-    role_synonyms: dict[str, str] = {
-        "devops": "девопс",
-        "developer": "разработчик",
-        "frontend": "фронтенд/фронт",
-        "backend": "бэкенд/бэк",
-        "qa": "тестировщик/QA",
-        "pm": "менеджер/PM",
-        "lead": "лид/тимлид",
-        "designer": "дизайнер",
-    }
-
     lines = ["TEAM LIST (use this to resolve names and roles to @username):"]
     for m in batch.team:
         username = m.username if m.username.startswith("@") else f"@{m.username}"
-        synonym = role_synonyms.get(m.role.lower(), "")
-        role_display = f"{m.role} ({synonym})" if synonym else m.role
         position_display = f"  [{m.position}]" if m.position else ""
-        lines.append(f"  - {username}  |  {m.full_name}  |  {role_display}{position_display}")
+        lines.append(f"  - {username}  |  {m.full_name}  |  {m.role}{position_display}")
     return "\n".join(lines)
 
 
@@ -71,28 +51,6 @@ def resolve_assignee_id(assignee: str | None, team: list[TeamMember]) -> int | N
         if member.username.lstrip("@").lower() == assignee_clean:
             return member.telegram_id
     return None
-
-
-def _pick_column(columns: list, priority: str = "MEDIUM") -> ColumnInfo | None:
-    if not columns:
-        return None
-
-    def score(col) -> int:
-        t = col.title.lower()
-        if any(k in t for k in _DONE_KEYWORDS):
-            return -10
-        if priority == "HIGH" and any(k in t for k in _PROGRESS_KEYWORDS):
-            return 20
-        if any(k in t for k in _TODO_KEYWORDS):
-            return 10
-        if any(k in t for k in _PROGRESS_KEYWORDS):
-            return 5
-        return 1
-
-    best = max(columns, key=score)
-    if score(best) < 0:
-        return columns[-1]
-    return best
 
 
 def build_column_map(batch: MessageBatchEvent) -> dict[str, str]:
@@ -113,8 +71,6 @@ def format_columns_context(batch: MessageBatchEvent) -> tuple[str, dict[str, str
 
 def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
     text = format_messages(batch)
-    store_batch(batch.event_id, text, batch.team_id)
-
     results = []
 
     try:
@@ -146,31 +102,15 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
         })
         extraction_list = TaskExtractionList.model_validate(raw)
 
-        if extraction_list.failed_items > 0:
-            logger.warning(
-                f"Task extraction: {extraction_list.failed_items} item(s) failed "
-                f"validation and were skipped (batch={batch.event_id})"
-            )
-
         events = []
         for extraction in extraction_list.tasks:
-            if is_task_duplicate(extraction.title, extraction.description or "", batch.team_id):
-                logger.info(f"Duplicate task skipped: {extraction.title!r}")
-                continue
-
-            task_id = str(uuid.uuid4())
-            store_task(task_id, extraction.title, extraction.description or "", batch.team_id)
-
             assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
             task_data = extraction.model_dump()
+            if task_data.get("deadline") and not task_data["deadline"].endswith("Z"):
+                task_data["deadline"] = task_data["deadline"] + "Z"
 
             short_id = str(task_data.get("column_id") or "")
-            real_id = col_map.get(short_id)
-            if not real_id and batch.columns:
-                fallback = _pick_column(batch.columns, task_data.get("priority", "MEDIUM"))
-                real_id = fallback.id
-                logger.warning(f"column_id={short_id!r} not in map → fallback '{fallback.title}'")
-            task_data["column_id"] = real_id
+            task_data["column_id"] = col_map.get(short_id)
 
             events.append(TaskCreateEvent(
                 team_id=batch.team_id,
@@ -194,23 +134,14 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
         })
         extraction_list = StatusExtractionList.model_validate(raw)
 
-        if extraction_list.failed_items > 0:
-            logger.warning(
-                f"Status extraction: {extraction_list.failed_items} item(s) failed "
-                f"validation and were skipped (batch={batch.event_id})"
-            )
-
         events = []
         for extraction in extraction_list.statuses:
             assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
-            resolved_task_id = find_task_by_hint(extraction.task_hint, batch.team_id)
-            if resolved_task_id:
-                logger.debug(f"Status hint {extraction.task_hint!r} resolved to task_id={resolved_task_id}")
             events.append(StatusChangeEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
                 assignee_id=assignee_id,
-                resolved_task_id=resolved_task_id,
+                resolved_task_id=None,
                 **extraction.model_dump(),
             ))
         return events
@@ -238,19 +169,11 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
                 "columns_context": "KANBAN COLUMNS: not provided — set column_id = null",
             })
             extraction_list = TaskExtractionList.model_validate(raw)
-            if extraction_list.failed_items > 0:
-                logger.warning(
-                    f"Transcript task extraction: {extraction_list.failed_items} item(s) skipped "
-                    f"(file={event.file_id} chunk={chunk_idx})"
-                )
             for extraction in extraction_list.tasks:
-                if is_task_duplicate(extraction.title, extraction.description or "", event.team_id):
-                    logger.info(f"Duplicate transcript task skipped: {extraction.title!r}")
-                    continue
-                task_id = str(uuid.uuid4())
-                store_task(task_id, extraction.title, extraction.description or "", event.team_id)
                 task_data = extraction.model_dump()
                 task_data["column_id"] = None
+                if task_data.get("deadline") and not task_data["deadline"].endswith("Z"):
+                    task_data["deadline"] = task_data["deadline"] + "Z"
                 publish(TOPIC_TASKS, TaskCreateEvent(
                     team_id=event.team_id,
                     source_batch_id=event.file_id,
@@ -268,22 +191,12 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
                 "team_context": "TEAM LIST: not provided",
             })
             extraction_list = StatusExtractionList.model_validate(raw)
-            if extraction_list.failed_items > 0:
-                logger.warning(
-                    f"Transcript status extraction: {extraction_list.failed_items} item(s) skipped "
-                    f"(file={event.file_id} chunk={chunk_idx})"
-                )
             for extraction in extraction_list.statuses:
-                resolved_task_id = find_task_by_hint(extraction.task_hint, event.team_id)
-                if resolved_task_id:
-                    logger.debug(
-                        f"Transcript status hint {extraction.task_hint!r} → task_id={resolved_task_id}"
-                    )
                 publish(TOPIC_STATUS, StatusChangeEvent(
                     team_id=event.team_id,
                     source_batch_id=event.file_id,
                     assignee_id=None,
-                    resolved_task_id=resolved_task_id,
+                    resolved_task_id=None,
                     **extraction.model_dump(),
                 ), key=event.file_id)
                 logger.info(f"Transcript status published: {extraction.action} (chunk {chunk_idx})")

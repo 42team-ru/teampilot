@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # Outgoing: Bot → Backend
@@ -78,3 +79,17 @@ class SummarySendEvent(BaseModel):
     chat_id: int
     summary_text: str
     tasks_count: int
+
+
+class TaskStateEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    event_id: str = Field(alias="eventId")
+    occurred_at: datetime = Field(alias="occurredAt")
+    task_id: str = Field(alias="taskId")
+    chat_id: int = Field(alias="chatId")
+    type: Literal["CREATED", "CANCELLED", "COLUMN_CHANGED"]
+    title: str
+    column_title: str | None = Field(default=None, alias="columnTitle")
+    assignee_username: str | None = Field(default=None, alias="assigneeUsername")
+    deadline: datetime | None = None

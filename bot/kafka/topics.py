@@ -11,6 +11,7 @@ TOPIC_STATUS_CHANGED = "tasks.status"
 TOPIC_TASK_PROPOSE  = "tasks.propose"
 TOPIC_REMINDER_SEND = "reminders.send"
 TOPIC_SUMMARY_SEND  = "summary.send"
+TOPIC_TASKS_STATE   = "tasks.state"
 
 
 class Topics:
