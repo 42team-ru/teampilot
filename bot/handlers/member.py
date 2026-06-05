@@ -15,6 +15,7 @@ from keyboards.member import (
     team_context_manager_keyboard,
     team_context_member_keyboard,
     team_overview_keyboard,
+    upload_waiting_keyboard,
 )
 from handlers.tasks_commands import _render_my_tasks
 from services.admin_service import get_user_by_telegram_id
@@ -27,6 +28,11 @@ NO_TEAM_TEXT = (
     "Вы зарегистрированы, но пока не состоите ни в одной команде.\n"
     "Нужно, чтобы менеджер добавил вас в команду."
 )
+
+
+@router.callback_query(F.data == "noop")
+async def noop(callback: CallbackQuery) -> None:
+    await callback.answer()
 
 async def show_member_panel(message: Message, user: dict) -> None:
     member_teams, manager_teams = await asyncio.gather(
@@ -162,8 +168,7 @@ async def team_ctx_member(callback: CallbackQuery) -> None:
         "",
         f"Telegram чат: {'привязан' if chat_id else 'не привязан'}",
         "",
-        "Свои задачи можно открыть кнопкой ниже или командой /mytasks.",
-        "Задачи всей команды доступны в групповом чате командой /tasks.",
+        "Доступные действия собраны в блоках ниже.",
     ]
     await callback.message.edit_text(
         "\n".join(lines),
@@ -215,7 +220,8 @@ async def team_ctx_upload(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer(
         f"📤 Загрузка файла для команды <b>{escape(team_title)}</b>\n\n"
         "Отправьте аудио или видео. Поддерживаемые типы: аудио, голосовое, видео, видеосообщение.\n"
-        "Используйте /cancel для отмены."
+        "Отменить загрузку можно кнопкой ниже.",
+        reply_markup=upload_waiting_keyboard(),
     )
     await callback.answer()
 
@@ -224,23 +230,19 @@ async def team_ctx_upload(callback: CallbackQuery, state: FSMContext) -> None:
 async def member_help(callback: CallbackQuery) -> None:
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏢 Выбрать команду", callback_data="member:teams_overview")],
+        [
+            InlineKeyboardButton(text="📥 Мои задачи", callback_data="member:mytasks"),
+            InlineKeyboardButton(text="🏢 Команды", callback_data="member:teams_overview"),
+        ],
         [InlineKeyboardButton(text="← Назад", callback_data="member:back")],
     ])
     await callback.message.edit_text(
         "<b>Помощь</b>\n\n"
-        "<b>Команды:</b>\n"
-        "/start — открыть главное меню\n"
-        "/mytasks — мои активные задачи\n"
-        "/board — доска команды (для менеджера)\n"
-        "/tasks — задачи в групповом чате\n"
-        "/upload — загрузить аудио или видео\n"
-        "/cancel — отменить текущее действие\n\n"
         "<b>Роли:</b>\n"
         "🔑 <b>Менеджер</b> — создаёт команды, управляет участниками, "
         "привязывает чаты и канбан-доски\n"
         "👤 <b>Участник</b> — видит свои задачи, обновляет их статус\n\n"
-        "<b>Задачи</b> автоматически извлекаются из переписки в групповом чате.",
+        "Все основные действия доступны кнопками в главном меню и внутри карточки команды.",
         reply_markup=kb,
     )
     await callback.answer()
