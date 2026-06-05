@@ -14,8 +14,11 @@ class Settings(BaseSettings):
     LLM_CHEAP_MODEL: str = "mistral"
     LLM_EXPENSIVE_MODEL: str = "llama3.1:8b"
 
-    # Локальные эмбеддинги через FastEmbed (скачивает модель автоматически)
-    FASTEMBED_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    # Cloud embeddings (OpenAI-compatible)
+    EMBEDDINGS_API_BASE: str = "https://api.openai.com/v1"
+    EMBEDDINGS_API_KEY: str = "sk-..."
+    EMBEDDINGS_MODEL: str = "text-embedding-3-small"
+    EMBEDDINGS_DIM: int = 1536
 
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
