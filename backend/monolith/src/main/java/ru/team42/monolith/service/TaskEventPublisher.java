@@ -42,6 +42,10 @@ public class TaskEventPublisher extends AbstractEventPublisher {
         sendLifecycle(task, TaskLifecycleEvent.Type.UPDATED);
     }
 
+    public void publishImported(Task task) {
+        sendLifecycle(task, TaskLifecycleEvent.Type.CONFIRMED);
+    }
+
     public void publishColumnChanged(Task task, TaskColumn newColumn) {
         sendState(task, TaskStateEvent.Type.COLUMN_CHANGED,
                 newColumn != null ? newColumn.getTitle() : null);
