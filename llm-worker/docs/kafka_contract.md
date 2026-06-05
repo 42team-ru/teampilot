@@ -123,7 +123,7 @@ LLM Worker вставляет список команды прямо в сист
 
 LLM Worker пишет результаты в два топика:
 - Новые задачи: `llm.tasks.create` (задаётся через `KAFKA_TOPIC_TASKS`)
-- Смена статуса: `llm.tasks.status` (задаётся через `KAFKA_TOPIC_STATUS`)
+- Смена статуса: `llm.status.change` (задаётся через `KAFKA_TOPIC_STATUS`)
 
 > **Kafka key**: для обоих топиков `key = str(chat_id)`. Это сохраняет порядок событий из одного чата в одной партиции.
 
@@ -136,7 +136,7 @@ LLM Worker пишет результаты в два топика:
   "title": "Разобраться с CI-пайплайном",
   "description": "«pm_ivan: Дайте задачу девопсу, пусть разберётся с CI»",
   "assignee": "@devops_max",
-  "assignee_id": 405,
+  "assignee_telegram_id": 405,
   "deadline": null,
   "priority": "MEDIUM"
 }
@@ -149,7 +149,7 @@ LLM Worker пишет результаты в два топика:
 | `title` | string | Краткое название задачи. Формат: глагол + объект. Всегда на русском |
 | `description` | string | Включает точную цитату из чата в формате `«author: text»` |
 | `assignee` | string \| null | `@username` из team list или чат-лога. `null` если неоднозначно |
-| `assignee_id` | int \| null | "Святой" `user_id` исполнителя, разрезолвленный из `team` массива |
+| `assignee_telegram_id` | int \| null | Telegram `user_id` исполнителя, разрезолвленный из `team` массива |
 | `deadline` | ISO-8601 \| null | Приведённый дедлайн. `null` если не указан |
 | `priority` | `HIGH` \| `MEDIUM` \| `LOW` | Определяется по срочности и ключевым словам |
 
@@ -161,7 +161,7 @@ LLM Worker пишет результаты в два топика:
   "source_batch_id": "unique-batch-12345",
   "task_hint": "перенос стора на Redux",
   "assignee": "@frontend_kirill",
-  "assignee_id": 201,
+  "assignee_telegram_id": 201,
   "action": "COMPLETE"
 }
 ```
@@ -170,7 +170,7 @@ LLM Worker пишет результаты в два топика:
 |------|-----|----------|
 | `task_hint` | string | Краткое (2-5 слов) описание задачи, по которой меняется статус. Бэкенд матчит его к реальной задаче через fuzzy search |
 | `assignee` | string \| null | Кто выполнил/принял/отменил задачу |
-| `assignee_id` | int \| null | `user_id` исполнителя |
+| `assignee_telegram_id` | int \| null | Telegram `user_id` исполнителя |
 | `action` | `COMPLETE` \| `ASSIGN` \| `CANCEL` | Тип изменения |
 
 ---

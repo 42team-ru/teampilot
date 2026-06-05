@@ -115,7 +115,7 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
             events.append(TaskCreateEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
-                assignee_id=assignee_id,
+                assignee_telegram_id=assignee_id,
                 confidence=confidence,
                 **task_data,
             ))
@@ -140,7 +140,7 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
             events.append(StatusChangeEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
-                assignee_id=assignee_id,
+                assignee_telegram_id=assignee_id,
                 resolved_task_id=None,
                 **extraction.model_dump(),
             ))
@@ -177,7 +177,7 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
                 publish(TOPIC_TASKS, TaskCreateEvent(
                     team_id=event.team_id,
                     source_batch_id=event.file_id,
-                    assignee_id=None,
+                    assignee_telegram_id=None,
                     **task_data,
                 ), key=event.file_id)
                 logger.info(f"Transcript task published: {extraction.title!r} (chunk {chunk_idx})")
@@ -195,7 +195,7 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
                 publish(TOPIC_STATUS, StatusChangeEvent(
                     team_id=event.team_id,
                     source_batch_id=event.file_id,
-                    assignee_id=None,
+                    assignee_telegram_id=None,
                     resolved_task_id=None,
                     **extraction.model_dump(),
                 ), key=event.file_id)
