@@ -1,3 +1,0 @@
-{"file": ".trellis/tasks/06-06-dedup-task-creation-same-title/prd.md", "reason": "Acceptance criteria to verify"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality checklist"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify JPA query naming conventions"}

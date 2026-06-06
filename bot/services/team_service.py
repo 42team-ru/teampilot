@@ -508,30 +508,3 @@ async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None)
         raise BackendApiError.from_response(resp)
 
     return True
-
-
-async def get_team_files(team_id: str, telegram_id: int) -> list[dict]:
-    """GET /teams/{teamId}/files - list uploaded files with presigned download URLs."""
-    path = f"/teams/{team_id}/files"
-    context = {"team_id": team_id, "telegram_id": telegram_id}
-    try:
-        resp = await http_client.get(
-            f"{settings.BACKEND_URL}{path}",
-            headers=_headers(telegram_id),
-        )
-    except HttpRequestError as e:
-        log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
-        raise BackendApiError.unavailable() from e
-
-    if resp.status_code != 200:
-        log_http_response_error(
-            resp,
-            service="Backend",
-            method="GET",
-            path=f"{settings.BACKEND_URL}{path}",
-            expected="200",
-            context=context,
-        )
-        raise BackendApiError.from_response(resp)
-
-    return resp.json()

@@ -11,7 +11,9 @@ from aiogram.types import CallbackQuery, Message
 from keyboards.member import (
     back_to_member_keyboard,
     back_to_teams_keyboard,
+    home_keyboard,
     member_main_keyboard,
+    my_tasks_team_keyboard,
     team_context_manager_keyboard,
     team_context_manager_files_keyboard,
     team_context_manager_manage_keyboard,
@@ -22,10 +24,9 @@ from keyboards.member import (
     upload_waiting_keyboard,
 )
 from services.task_service import get_team_columns
-from handlers.tasks_commands import _render_my_tasks
 from services.admin_service import get_user_by_telegram_id
 from services.task_service import get_tasks_page
-from services.team_service import get_member_teams, get_my_teams, get_team_files
+from services.team_service import get_member_teams, get_my_teams
 
 router = Router()
 
@@ -148,6 +149,7 @@ async def team_ctx_manager(callback: CallbackQuery, state: FSMContext) -> None:
             team_id,
             has_chat=bool(chat_id),
             pending_count=pending_count,
+            has_kanban=bool(kanban),
         ),
     )
     await callback.answer()
@@ -169,17 +171,19 @@ async def team_ctx_member(callback: CallbackQuery) -> None:
 
     title = team.get("chatTitle") or team_id
     chat_id = team.get("telegramChatId")
+    kanban = team.get("kanbanId")
 
     lines = [
         f"👤 <b>{escape(title)}</b>",
         "",
         f"Telegram чат: {'привязан' if chat_id else 'не привязан'}",
+        f"Канбан: {'настроен' if kanban else '⚠️ не настроен'}",
         "",
         "Доступные действия собраны в блоках ниже.",
     ]
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=team_context_member_keyboard(team_id, has_chat=bool(chat_id)),
+        reply_markup=team_context_member_keyboard(team_id, has_chat=bool(chat_id), has_kanban=bool(kanban)),
     )
     await callback.answer()
 
@@ -271,6 +275,39 @@ async def team_member_tasks_menu(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("team_ctx:yougile:"))
+async def team_ctx_yougile(callback: CallbackQuery) -> None:
+    team_id = callback.data.split(":", 2)[2]
+    team = await _get_manager_team(callback.from_user.id, team_id)
+    if team is None:
+        await callback.answer("Команда недоступна.", show_alert=True)
+        return
+
+    chat_id = team.get("telegramChatId")
+    kanban = team.get("kanbanId")
+    yougile = team.get("yougileToken") or team.get("yougileApiKey")
+    title = team.get("chatTitle") or team_id
+
+    lines = [
+        f"🎯 <b>YouGile: {escape(title)}</b>",
+        "",
+        f"Канбан-доска: {'✅ настроена (<code>' + escape(str(kanban)) + '</code>)' if kanban else '⚠️ не настроена'}",
+        f"Интеграция: {'✅ активна' if kanban else '❌ не подключена'}",
+    ]
+    if not chat_id:
+        lines += ["", "⚠️ Подключение канбан-доски доступно только после привязки Telegram-чата к команде."]
+
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    rows = []
+    if chat_id:
+        rows.append([InlineKeyboardButton(text="⚙️ Привязать / настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")])
+    rows.append([InlineKeyboardButton(text="← Управление командой", callback_data=f"tm:m:g:{team_id}")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+
+    await callback.message.edit_text("\n".join(lines), reply_markup=keyboard)
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("tm:u:f:"))
 async def team_member_files_menu(callback: CallbackQuery) -> None:
     team_id = callback.data.split(":", 3)[3]
@@ -289,102 +326,70 @@ async def team_member_files_menu(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(F.data == "member:mytasks")
-async def member_mytasks(callback: CallbackQuery) -> None:
-    text, keyboard = await _render_my_tasks(callback.from_user.id)
-    try:
-        await callback.message.edit_text(text, reply_markup=keyboard)
-    except TelegramBadRequest as error:
-        if "message is not modified" not in str(error):
-            raise
-    await callback.answer()
+async def _show_my_tasks_team(callback: CallbackQuery, team: dict) -> None:
+    team_id = str(team.get("id"))
+    chat_id = team.get("telegramChatId")
+    title = escape(team.get("chatTitle") or team_id)
 
+    columns = await get_team_columns(int(chat_id), callback.from_user.id) if chat_id else []
+    note = "Выберите колонку:" if columns else "⚠️ Канбан-доска не настроена.\nДоступны только личные задачи."
 
-@router.callback_query(F.data.startswith("team_ctx:files_list:"))
-async def team_ctx_files_list(callback: CallbackQuery) -> None:
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    team_id = callback.data.split(":", 2)[2]
-
-    try:
-        files = await get_team_files(team_id, callback.from_user.id)
-    except Exception:
-        await callback.answer("Не удалось загрузить список файлов.", show_alert=True)
-        return
-
-    back_button = [InlineKeyboardButton(text="← Назад", callback_data="member:back")]
-
-    if not files:
-        await callback.message.edit_text(
-            "📂 <b>Файлы команды</b>\n\nФайлов пока нет.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[back_button]),
-        )
-        await callback.answer()
-        return
-
-    rows = []
-    for idx, f in enumerate(files):
-        label = f.get("title") or f.get("originalFilename") or "Файл"
-        icon = "🎙" if (f.get("contentType") or "").startswith("audio") else "🎬"
-        # callback_data limit = 64 bytes; use index instead of UUID
-        rows.append([InlineKeyboardButton(
-            text=f"{icon} {escape(label[:40])}",
-            callback_data=f"fd:{team_id}:{idx}",
-        )])
-    rows.append(back_button)
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(callback.from_user.id),
+        get_member_teams(callback.from_user.id),
+    )
+    back_cb = "member:back" if len(manager_teams + member_teams) == 1 else "member:mytasks"
 
     await callback.message.edit_text(
-        "📂 <b>Файлы команды</b>\n\nВыберите файл для просмотра подробной информации:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        f"📥 <b>Мои задачи: {title}</b>\n\n{note}",
+        reply_markup=team_tasks_keyboard(
+            team_id,
+            columns,
+            my_tasks_callback=f"tasks:team_my:{team_id}:active:0",
+            back_callback=back_cb,
+            col_callback_prefix="tasks:mc",
+        ),
     )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("team_ctx:file_detail:"))
-async def team_ctx_file_detail(callback: CallbackQuery) -> None:
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    parts = callback.data.split(":", 3)
-    team_id, file_id = parts[2], parts[3]
+@router.callback_query(F.data.startswith("mytasks:t:"))
+async def my_tasks_team(callback: CallbackQuery) -> None:
+    team_id = callback.data.split(":", 2)[2]
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(callback.from_user.id),
+        get_member_teams(callback.from_user.id),
+    )
+    all_teams = manager_teams + member_teams
+    team = next((t for t in all_teams if str(t.get("id")) == team_id), None)
+    if team is None:
+        await callback.answer("Команда недоступна.", show_alert=True)
+        return
+    await _show_my_tasks_team(callback, team)
 
-    try:
-        files = await get_team_files(team_id, callback.from_user.id)
-    except Exception:
-        await callback.answer("Не удалось загрузить файл.", show_alert=True)
+
+@router.callback_query(F.data == "member:mytasks")
+async def member_mytasks(callback: CallbackQuery) -> None:
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(callback.from_user.id),
+        get_member_teams(callback.from_user.id),
+    )
+    all_teams = manager_teams + member_teams
+    if not all_teams:
+        await callback.message.edit_text(
+            "У вас нет команд. Попросите менеджера добавить вас в команду.",
+            reply_markup=home_keyboard(),
+        )
+        await callback.answer()
         return
 
-    f = next((x for x in files if str(x.get("id")) == file_id), None)
-    if f is None:
-        await callback.answer("Файл не найден.", show_alert=True)
+    if len(all_teams) == 1:
+        await _show_my_tasks_team(callback, all_teams[0])
         return
-
-    title = f.get("title") or f.get("originalFilename") or "Без названия"
-    description = f.get("description") or ""
-    summary = f.get("summary") or ""
-    download_url = f.get("downloadUrl") or ""
-    content_type = f.get("contentType") or ""
-    size_bytes = f.get("sizeBytes")
-
-    lines = [f"📄 <b>{escape(title)}</b>"]
-    if f.get("originalFilename") and f.get("title"):
-        lines.append(f"<i>Файл: {escape(f['originalFilename'])}</i>")
-    if content_type:
-        lines.append(f"Тип: <code>{escape(content_type)}</code>")
-    if size_bytes:
-        lines.append(f"Размер: {size_bytes // 1024} КБ")
-    if description:
-        lines.append(f"\n📝 <b>Описание</b>\n{escape(description)}")
-    if summary:
-        lines.append(f"\n📋 <b>Резюме встречи</b>\n{escape(summary)}")
-    if not description and not summary:
-        lines.append("\n<i>AI-анализ ещё не готов — обработка аудио занимает время.</i>")
-    if download_url:
-        lines.append(f"\n⬇️ <a href=\"{download_url}\">Скачать файл</a>")
 
     await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="← К списку файлов", callback_data=f"team_ctx:files_list:{team_id}")],
-        ]),
-        disable_web_page_preview=True,
+        "📥 <b>Мои задачи</b>\n\nВыберите команду:",
+        reply_markup=my_tasks_team_keyboard(manager_teams, member_teams),
     )
     await callback.answer()
 
@@ -481,7 +486,7 @@ async def _pending_tasks_count(chat_id: int | str, telegram_id: int) -> int:
     page = await get_tasks_page(
         chat_id=int(chat_id),
         telegram_id=telegram_id,
-        completed=False,
+        status="PENDING_APPROVAL",
         page=0,
         size=1,
     )

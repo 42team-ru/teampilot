@@ -150,7 +150,7 @@ async def _fetch_pending_tasks_page(
     page_data = await get_tasks_page(
         chat_id=chat_id,
         telegram_id=telegram_id,
-        completed=False,
+        status="PENDING_APPROVAL",
         page=requested_page,
         size=_PENDING_TASKS_PAGE_SIZE,
     )
@@ -160,7 +160,7 @@ async def _fetch_pending_tasks_page(
         page_data = await get_tasks_page(
             chat_id=chat_id,
             telegram_id=telegram_id,
-            completed=False,
+            status="PENDING_APPROVAL",
             page=total_pages - 1,
             size=_PENDING_TASKS_PAGE_SIZE,
         )
@@ -646,17 +646,15 @@ async def _finish_update(message: Message, state: FSMContext, telegram_id: int |
     await state.clear()
 
     team_id = data["manager_update_team_id"]
-    ctx_team_id = data.get("manager_update_ctx_team_id")
     fields = data.get("manager_update_fields", {})
     user_id = telegram_id or message.from_user.id
 
     if fields:
         updated = await update_team(team_id, user_id, **fields)
         if updated is None:
-            kb = back_to_team_ctx_keyboard(team_id) if ctx_team_id else manager_back_keyboard()
             await message.answer(
                 "Не удалось обновить команду. Попробуйте позже.",
-                reply_markup=kb,
+                reply_markup=manager_back_keyboard(),
             )
             return
         team = updated
@@ -666,26 +664,9 @@ async def _finish_update(message: Message, state: FSMContext, telegram_id: int |
         team = next((t for t in teams if t["id"] == team_id), None)
         result_text = "Название не изменено."
 
-    chat_id = team.get("telegramChatId") if team else None
-
-    if ctx_team_id:
-        rows = []
-        if chat_id:
-            rows.append([InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")])
-        rows.append([InlineKeyboardButton(text="← Назад к команде", callback_data=f"team_ctx:manager:{team_id}")])
-        kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    else:
-        kb = _yougile_setup_keyboard(chat_id) if chat_id else manager_back_keyboard()
-
+    ctx_team_id = data.get("manager_update_ctx_team_id") or data.get("manager_update_team_id")
+    kb = back_to_team_ctx_keyboard(ctx_team_id) if ctx_team_id else manager_back_keyboard()
     await message.answer(result_text, reply_markup=kb)
-
-
-def _yougile_setup_keyboard(chat_id: int):
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")],
-        [InlineKeyboardButton(text="« Назад", callback_data="manager:back")],
-    ])
 
 
 @router.callback_query(F.data.startswith("manager:setup_yougile:"))
@@ -840,9 +821,10 @@ async def team_ctx_members(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("team_ctx:mbr_confirm:"))
 async def team_ctx_member_remove_confirm(callback: CallbackQuery, state: FSMContext) -> None:
-    team_user_id = callback.data.split(":", 2)[2]
-    data = await state.get_data()
-    team_id = data.get("members_team_id", "")
+    parts = callback.data.split(":", 3)
+    team_id = parts[2]
+    team_user_id = parts[3]
+    await state.update_data(members_team_id=team_id)
 
     members = await get_team_members(team_id, callback.from_user.id)
     member = next((m for m in members if str(m.get("id")) == team_user_id), None)
@@ -865,7 +847,7 @@ async def team_ctx_member_remove_confirm(callback: CallbackQuery, state: FSMCont
 
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"team_ctx:mbr_remove:{team_user_id}")],
+        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"team_ctx:mbr_remove:{team_id}:{team_user_id}")],
         [InlineKeyboardButton(text="← Отмена", callback_data=f"team_ctx:members:{team_id}")],
     ])
     await callback.message.edit_text(
@@ -876,10 +858,10 @@ async def team_ctx_member_remove_confirm(callback: CallbackQuery, state: FSMCont
 
 
 @router.callback_query(F.data.startswith("team_ctx:mbr_remove:"))
-async def team_ctx_member_remove(callback: CallbackQuery, state: FSMContext) -> None:
-    team_user_id = callback.data.split(":", 2)[2]
-    data = await state.get_data()
-    team_id = data.get("members_team_id", "")
+async def team_ctx_member_remove(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":", 3)
+    team_id = parts[2]
+    team_user_id = parts[3]
 
     ok = await remove_team_member(team_id, team_user_id, callback.from_user.id)
     if not ok:
@@ -938,26 +920,18 @@ async def team_ctx_link_chat(callback: CallbackQuery, state: FSMContext) -> None
         await callback.answer()
         return
 
-    await state.update_data(ctx_link_team_id=team_id)
     await callback.message.edit_text(
         "<b>Привязка чата к команде</b>\n\nВыберите чат, куда вы добавили бота:",
-        reply_markup=manager_chat_select_keyboard(chats, "ctx_link_select"),
+        reply_markup=manager_chat_select_keyboard(chats, f"ctx_link_select:{team_id}"),
     )
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("manager:ctx_link_select:"))
-async def team_ctx_link_chat_select(callback: CallbackQuery, state: FSMContext) -> None:
-    raw_chat_id = callback.data.split(":", 2)[2]
-    data = await state.get_data()
-    team_id = data.get("ctx_link_team_id")
-    await state.clear()
-
-    if not team_id:
-        await callback.message.edit_text("Сессия устарела. Начните привязку заново.")
-        await callback.answer()
-        return
-
+async def team_ctx_link_chat_select(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":")
+    team_id = parts[2]
+    raw_chat_id = parts[3]
     try:
         chat_id = int(raw_chat_id)
     except ValueError:
@@ -1097,7 +1071,7 @@ def _ctx_members_list_keyboard(members: list[dict], team_id: str):
                 InlineKeyboardButton(text=display, callback_data="noop"),
                 InlineKeyboardButton(
                     text="❌",
-                    callback_data=f"team_ctx:mbr_confirm:{member_user_id}",
+                    callback_data=f"team_ctx:mbr_confirm:{team_id}:{member_user_id}",
                 ),
             ])
         else:

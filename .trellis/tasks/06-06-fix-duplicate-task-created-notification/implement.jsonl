@@ -1,4 +1,0 @@
-{"file": ".trellis/tasks/06-06-fix-duplicate-task-created-notification/prd.md", "reason": "requirements and approach"}
-{"file": "backend/monolith/src/main/java/ru/team42/monolith/event/TaskConfirmationEvent.java", "reason": "add columnTitle field"}
-{"file": "backend/monolith/src/main/java/ru/team42/monolith/service/TaskEventPublisher.java", "reason": "pass columnTitle in publishConfirmation"}
-{"file": "bot/kafka/consumer.py", "reason": "ignore TASKS_STATE CREATED, remove _queue_created/_flush_created"}

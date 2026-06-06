@@ -1,1 +1,0 @@
-{"file": ".trellis/tasks/06-06-yougile-retry-on-all-requests/prd.md", "reason": "PRD с требованиями: 3 попытки, backoff 2s→4s→8s, Reactor retry wrapper"}

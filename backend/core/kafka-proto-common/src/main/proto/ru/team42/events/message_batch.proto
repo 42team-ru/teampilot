@@ -24,7 +24,6 @@ message MessageBatchEvent {
     string full_name = 3;
     string text = 4;
     google.protobuf.Timestamp timestamp = 5;
-    string message_id = 6;
   }
 
   message TeamMemberDto {
@@ -36,20 +35,6 @@ message MessageBatchEvent {
   }
 
   message ColumnDto {
-    string id = 1;
-    string title = 2;
-  }
-
-  repeated StickerDef stickers = 9;
-
-  message StickerDef {
-    string id = 1;
-    string title = 2;
-    string type = 3;
-    repeated StickerStateDef states = 4;
-  }
-
-  message StickerStateDef {
     string id = 1;
     string title = 2;
   }

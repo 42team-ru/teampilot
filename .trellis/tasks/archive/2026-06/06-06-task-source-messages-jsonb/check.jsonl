@@ -1,3 +1,0 @@
-{"file": ".trellis/tasks/06-06-task-source-messages-jsonb/prd.md", "reason": "Acceptance criteria checklist to verify against"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify JPA entity and relation conventions"}
-{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Verify protobuf and event contract changes"}

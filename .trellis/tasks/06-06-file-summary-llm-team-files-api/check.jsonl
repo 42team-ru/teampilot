@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Проверить что новый FileSummaryEvent соответствует BaseEvent-паттерну"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Проверить что REST endpoint использует AppException, не RuntimeException"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality: нет N+1, транзакции, тесты"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Проверить сквозной data flow: LLM Worker → Kafka → Spring consumer → DB → REST → Bot"}

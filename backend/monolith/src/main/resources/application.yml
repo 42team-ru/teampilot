@@ -9,6 +9,10 @@ app:
     invite:
         expiration-days: 7
         bot-url: ${BOT_URL:t.me/prorab_bot}
+    whisper:
+        base-url: ${WHISPER_BASE_URL:http://localhost:8002}
+        endpoint: ${WHISPER_ENDPOINT:/inference}
+        model: ${WHISPER_MODEL:whisper-1}
     s3:
         endpoint: ${S3_ENDPOINT:http://localhost:9000}
         access-key: ${S3_ACCESS_KEY:minioadmin}

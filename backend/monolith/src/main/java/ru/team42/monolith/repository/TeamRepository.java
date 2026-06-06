@@ -8,6 +8,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface TeamRepository extends JpaRepository<Team, UUID> {
-    Optional<Team> findByTelegramChatIdAndActiveTrue(Long telegramChatId);
+    Optional<Team> findByTelegramChatId(Long telegramChatId);
     List<Team> findByActiveTrue();
 }

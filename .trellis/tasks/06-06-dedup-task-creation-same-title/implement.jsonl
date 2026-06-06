@@ -1,5 +1,0 @@
-{"file": ".trellis/tasks/06-06-dedup-task-creation-same-title/prd.md", "reason": "Full requirements and two-layer dedup design"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "JPA repository conventions for Spring"}
-{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Kafka event flow: tasks.lifecycle → Qdrant indexing"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "How to handle errors in service layer"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality bar for backend changes"}

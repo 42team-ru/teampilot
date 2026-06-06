@@ -9,11 +9,10 @@ import ru.team42.monolith.entity.ChatMessage;
 import ru.team42.monolith.entity.TaskColumn;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
-import ru.team42.monolith.entity.YouGileSticker;
 import ru.team42.monolith.repository.ChatMessageRepository;
 import ru.team42.monolith.repository.TaskColumnRepository;
+import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
-import ru.team42.monolith.repository.YouGileStickerRepository;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -29,20 +28,20 @@ public class ChatMessageBatchingService {
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatMessageBatchPublisher batchPublisher;
+    private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
     private final TaskColumnRepository taskColumnRepository;
-    private final YouGileStickerRepository stickerRepository;
 
     @Scheduled(fixedDelay = 5_000)
     @Transactional
     public void flushBatches() {
-        List<Team> teams = chatMessageRepository.findDistinctTeamsWithUnprocessedMessages();
-        if (teams.isEmpty()) return;
+        List<Long> chatIds = chatMessageRepository.findDistinctChatIdsWithUnprocessedMessages();
+        if (chatIds.isEmpty()) return;
 
         Instant now = Instant.now();
 
-        for (Team team : teams) {
-            List<ChatMessage> messages = chatMessageRepository.findUnprocessedByTeam(team);
+        for (Long chatId : chatIds) {
+            List<ChatMessage> messages = chatMessageRepository.findUnprocessedByChatId(chatId);
             if (messages.isEmpty()) continue;
 
             Instant oldestMessageTime = messages.getFirst().getMessageTimestamp();
@@ -51,18 +50,24 @@ public class ChatMessageBatchingService {
 
             if (!sizeThresholdReached && !timeThresholdReached) continue;
 
+            Team team = teamRepository.findByTelegramChatId(chatId).orElse(null);
+            if (team == null) {
+                log.warn("No team found for chatId={}, skipping batch", chatId);
+                continue;
+            }
+
             List<TeamUser> teamMembers = teamUserRepository.findByTeamId(team.getId());
             List<TaskColumn> columns = taskColumnRepository.findByTeamId(team.getId());
-            List<YouGileSticker> stickers = stickerRepository.findByTeamIdWithStates(team.getId());
 
-            batchPublisher.publishBatch(team.getId().toString(), messages, teamMembers, columns, stickers);
+            batchPublisher.publishBatch(team.getId().toString(), messages, teamMembers, columns);
             messages.forEach(m -> m.setSentToLlmAt(now));
             chatMessageRepository.saveAll(messages);
 
-            log.info("Flushed batch: teamId={} size={} reason={} teamSize={} columns={} stickers={}",
-                    team.getId(), messages.size(),
+            log.info("Flushed batch: teamId={} chatId={} size={} reason={} teamSize={} columns={}",
+                    team.getId(), chatId, messages.size(),
                     sizeThresholdReached ? "size" : "timeout",
-                    teamMembers.size(), columns.size(), stickers.size());
+                    teamMembers.size(), columns.size());
         }
     }
+
 }

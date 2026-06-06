@@ -9,7 +9,6 @@ import ru.team42.backend.proto.events.MessageBatchProto;
 import ru.team42.monolith.entity.ChatMessage;
 import ru.team42.monolith.entity.TaskColumn;
 import ru.team42.monolith.entity.TeamUser;
-import ru.team42.monolith.entity.YouGileSticker;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,8 +26,7 @@ public class ChatMessageBatchPublisher {
 
     public void publishBatch(String teamId, List<ChatMessage> messages,
                              List<TeamUser> teamMembers,
-                             List<TaskColumn> columns,
-                             List<YouGileSticker> stickers) {
+                             List<TaskColumn> columns) {
         var event = MessageBatchProto.MessageBatchEvent.newBuilder()
                 .setEventId(UUID.randomUUID().toString())
                 .setOccurredAt(toTimestamp(Instant.now()))
@@ -38,7 +36,6 @@ public class ChatMessageBatchPublisher {
                 .addAllMessages(messages.stream().map(this::toProtoMessage).toList())
                 .addAllTeam(teamMembers.stream().map(this::toProtoMember).toList())
                 .addAllColumns(columns.stream().map(this::toProtoColumn).toList())
-                .addAllStickers(stickers.stream().map(this::toProtoSticker).toList())
                 .build();
 
         protoKafkaTemplate.send(KafkaTopics.MESSAGES_BATCHES, teamId, event.toByteArray());
@@ -51,7 +48,6 @@ public class ChatMessageBatchPublisher {
                 .setFullName(buildFullName(m.getUser().getFirstName(), m.getUser().getLastName()))
                 .setText(m.getText())
                 .setTimestamp(toTimestamp(m.getMessageTimestamp()))
-                .setMessageId(m.getId().toString())
                 .build();
     }
 
@@ -83,22 +79,6 @@ public class ChatMessageBatchPublisher {
         String f = first != null ? first : "";
         String l = last != null ? " " + last : "";
         return (f + l).trim();
-    }
-
-    private MessageBatchProto.MessageBatchEvent.StickerDef toProtoSticker(YouGileSticker s) {
-        var builder = MessageBatchProto.MessageBatchEvent.StickerDef.newBuilder()
-                .setId(s.getYougileStickerId())
-                .setTitle(s.getTitle())
-                .setType(s.getType().name());
-        if (s.getStates() != null) {
-            s.getStates().forEach(state -> builder.addStates(
-                    MessageBatchProto.MessageBatchEvent.StickerStateDef.newBuilder()
-                            .setId(state.getYougileStateId())
-                            .setTitle(state.getTitle())
-                            .build()
-            ));
-        }
-        return builder.build();
     }
 
     private static String nullToEmpty(String s) {

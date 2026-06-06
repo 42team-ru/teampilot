@@ -7,7 +7,5 @@ public record LoginRequest(
         String telegramLogin,
         String firstName,
         String lastName,
-        String position,
-        String yougileLogin,
-        String yougilePassword
+        String position
 ) {}
