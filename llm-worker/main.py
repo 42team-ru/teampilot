@@ -29,13 +29,19 @@ TOPIC_LIFECYCLE = "tasks.lifecycle"
 
 def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
     events = process_batch(batch)
+    tasks_published = 0
+    statuses_published = 0
     for event in events:
         if isinstance(event, TaskCreateEvent):
             publish(TOPIC_TASKS, event, key=str(batch.team_id))
-            logger.info(f"Task event published: {event.title!r}")
+            tasks_published += 1
         elif isinstance(event, StatusChangeEvent):
             publish(TOPIC_STATUS, event, key=str(batch.team_id))
-            logger.info(f"Status event published: {event.action}")
+            statuses_published += 1
+    logger.info(
+        f"[BATCH {batch.event_id[:8]}] msgs={len(batch.messages)} "
+        f"→ tasks={tasks_published} statuses={statuses_published}"
+    )
 
 
 def run_lifecycle_consumer(stop_event: threading.Event) -> None:
