@@ -3,8 +3,6 @@ package ru.team42.monolith.kanban;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
-import reactor.util.retry.Retry;
 import ru.team42.monolith.client.yougile.api.DefaultApi;
 import ru.team42.monolith.config.YougileClientConfig;
 import ru.team42.monolith.client.yougile.model.CreateTaskDto;
@@ -17,7 +15,6 @@ import ru.team42.monolith.mapper.TaskToYouGileMapper;
 import ru.team42.monolith.entity.enums.StickerType;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -76,7 +73,7 @@ public class YouGileService {
         }
 
         try {
-            var result = blockWithRetry(api.taskControllerCreate(dto));
+            var result = api.taskControllerCreate(dto).block();
             if (result != null) {
                 log.info("Created YouGile task {} for local task {}", result.getId(), task.getId());
                 return Optional.of(result.getId());
@@ -98,7 +95,7 @@ public class YouGileService {
         try {
             var dto = taskToYouGileMapper.toUpdateDto(task);
             dto.setCompleted(task.isCompleted());
-            blockWithRetry(api.taskControllerUpdate(task.getExternalId(), dto));
+            api.taskControllerUpdate(task.getExternalId(), dto).block();
             log.info("Updated YouGile task {} for local task {}", task.getExternalId(), task.getId());
         } catch (Exception e) {
             log.error("Failed to update YouGile task {} for local task {}: {}",
@@ -112,7 +109,7 @@ public class YouGileService {
         try {
             UpdateTaskDto dto = new UpdateTaskDto();
             dto.setDeleted(true);
-            blockWithRetry(api.taskControllerUpdate(externalTaskId, dto));
+            api.taskControllerUpdate(externalTaskId, dto).block();
             log.info("Deleted YouGile task {}", externalTaskId);
         } catch (Exception e) {
             log.error("Failed to delete YouGile task {}: {}", externalTaskId, e.getMessage());
@@ -121,7 +118,7 @@ public class YouGileService {
 
     public Optional<YouGileTaskResponse> fetchTask(Team team, String externalTaskId) {
         try {
-            var dto = blockWithRetry(buildApi(team).taskControllerGet(externalTaskId));
+            var dto = buildApi(team).taskControllerGet(externalTaskId).block();
             if (dto == null) return Optional.empty();
             return Optional.of(toResponse(dto));
         } catch (Exception e) {
@@ -134,7 +131,7 @@ public class YouGileService {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
         DefaultApi api = buildApi(team);
         try {
-            var columns = blockWithRetry(api.columnControllerSearch(false, null, null, null, team.getKanbanId()));
+            var columns = api.columnControllerSearch(false, null, null, null, team.getKanbanId()).block();
             if (columns == null) return List.of();
             return columns.getContent().stream()
                     .flatMap(col -> fetchTasksForColumn(api, col.getId()))
@@ -150,7 +147,7 @@ public class YouGileService {
         DefaultApi api = buildApi(team);
         List<StickerInfo> result = new ArrayList<>();
         try {
-            var sprint = blockWithRetry(api.sprintStickerControllerSearch(false, null, null, null, team.getKanbanId()));
+            var sprint = api.sprintStickerControllerSearch(false, null, null, null, team.getKanbanId()).block();
             if (sprint != null) {
                 sprint.getContent().forEach(s -> {
                     List<StickerStateInfo> states = s.getStates() == null ? List.of() :
@@ -164,7 +161,7 @@ public class YouGileService {
             log.warn("Failed to fetch sprint stickers for team {}: {}", team.getId(), e.getMessage());
         }
         try {
-            var strings = blockWithRetry(api.stringStickerControllerSearch(false, null, null, null, team.getKanbanId()));
+            var strings = api.stringStickerControllerSearch(false, null, null, null, team.getKanbanId()).block();
             if (strings != null) {
                 strings.getContent().forEach(s -> {
                     List<StickerStateInfo> states = s.getStates() == null ? List.of() :
@@ -183,7 +180,7 @@ public class YouGileService {
     public List<ColumnInfo> fetchColumns(Team team) {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
         try {
-            var result = blockWithRetry(buildApi(team).columnControllerSearch(false, null, null, null, team.getKanbanId()));
+            var result = buildApi(team).columnControllerSearch(false, null, null, null, team.getKanbanId()).block();
             if (result == null) return List.of();
             return result.getContent().stream()
                     .map(col -> new ColumnInfo(col.getId(), col.getTitle()))
@@ -196,7 +193,7 @@ public class YouGileService {
 
     private Stream<YouGileTaskResponse> fetchTasksForColumn(DefaultApi api, String columnId) {
         try {
-            var result = blockWithRetry(api.taskControllerSearch(false, BigDecimal.valueOf(100), null, null, columnId, null, null, null));
+            var result = api.taskControllerSearch(false, BigDecimal.valueOf(100), null, null, columnId, null, null, null).block();
             if (result == null) return Stream.empty();
             return result.getContent().stream().map(this::toResponse);
         } catch (Exception e) {
@@ -230,13 +227,5 @@ public class YouGileService {
         var client = YougileClientConfig.createApiClient();
         client.setBearerToken(team.getKanbanApiKey());
         return new DefaultApi(client);
-    }
-
-    private <T> T blockWithRetry(Mono<T> mono) {
-        return mono
-                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
-                        .filter(ex -> !(ex instanceof org.springframework.web.reactive.function.client.WebClientResponseException wcre
-                                && wcre.getStatusCode().is4xxClientError())))
-                .block();
     }
 }
