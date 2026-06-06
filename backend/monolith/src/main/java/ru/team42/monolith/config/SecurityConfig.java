@@ -46,6 +46,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/audio/**").permitAll()
+                        .requestMatchers("/ws", "/ws/**").permitAll()
                         .requestMatchers("/api/users/**").permitAll()
                         .requestMatchers("/api/teams/**").permitAll()
                         .requestMatchers("/api/groups/**").permitAll()

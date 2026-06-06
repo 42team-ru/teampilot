@@ -17,6 +17,7 @@ dependencies {
 
     // Web
     implementation(libs.spring.boot.starter.webmvc)
+    implementation(libs.spring.boot.starter.websocket)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.springdoc.webmvc)
     implementation(libs.spring.boot.starter.webflux)
