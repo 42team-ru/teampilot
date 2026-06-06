@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_GROUP_ID: str = "llm-worker"
+    KAFKA_GROUP_ID_BATCHES: str = "llm-worker-batches"
+    KAFKA_GROUP_ID_AUDIO: str = "llm-worker-audio"
+    KAFKA_GROUP_ID_MEETING_AUDIO: str = "llm-worker-meeting-audio"
+    KAFKA_GROUP_ID_LIFECYCLE: str = "llm-worker-lifecycle"
 
     # LLM (Ollama OpenAI-compatible по умолчанию)
     LLM_API_BASE: str = "http://localhost:11434/v1"
@@ -40,6 +44,7 @@ class Settings(BaseSettings):
     MEETING_CONTEXT_CHARS: int = 6000
     MEETING_EXTRACTION_MIN_CHARS: int = 1000
     MEETING_EXTRACTION_STEP_CHARS: int = 1500
+    MEETING_FINALIZE_WAIT_SECONDS: int = 120
 
     # MinIO
     MINIO_ENDPOINT: str = "localhost:9000"

@@ -217,6 +217,16 @@ class MeetingLiveResultEvent(BaseModel):
     transcript: str
     summary: str = ""
     context: str = ""
+    final_result: bool = False
+    title: str | None = None
+    description: str | None = None
+    recording_bucket: str | None = None
+    recording_s3_key: str | None = None
+    recording_content_type: str | None = None
+    recording_size_bytes: int | None = None
+    transcript_bucket: str | None = None
+    transcript_s3_key: str | None = None
+    finalized_at: datetime | None = None
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
 

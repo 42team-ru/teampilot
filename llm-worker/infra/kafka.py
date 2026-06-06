@@ -8,15 +8,16 @@ _producer = Producer({"bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS})
 
 
 class BatchConsumer:
-    def __init__(self, topic: str) -> None:
+    def __init__(self, topic: str, group_id: str | None = None) -> None:
+        resolved_group_id = group_id or settings.KAFKA_GROUP_ID
         self._consumer = Consumer({
             "bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS,
-            "group.id": settings.KAFKA_GROUP_ID,
+            "group.id": resolved_group_id,
             "auto.offset.reset": "earliest",
             "enable.auto.commit": False,
         })
         self._consumer.subscribe([topic])
-        logger.info(f"Kafka consumer subscribed to {topic!r}")
+        logger.info(f"Kafka consumer subscribed to {topic!r} group_id={resolved_group_id!r}")
 
     def poll(self, timeout: float = 1.0):
         msg = self._consumer.poll(timeout=timeout)

@@ -47,7 +47,7 @@ def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
 
 
 def run_lifecycle_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_LIFECYCLE)
+    consumer = BatchConsumer(TOPIC_LIFECYCLE, settings.KAFKA_GROUP_ID_LIFECYCLE)
     try:
         while not stop_event.is_set():
             msg = consumer.poll(timeout=1.0)
@@ -69,7 +69,7 @@ def run_lifecycle_consumer(stop_event: threading.Event) -> None:
 
 
 def run_audio_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_AUDIO)
+    consumer = BatchConsumer(TOPIC_AUDIO, settings.KAFKA_GROUP_ID_AUDIO)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
@@ -107,7 +107,7 @@ def run_audio_consumer(stop_event: threading.Event) -> None:
 
 
 def run_meeting_audio_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_MEETING_AUDIO)
+    consumer = BatchConsumer(TOPIC_MEETING_AUDIO, settings.KAFKA_GROUP_ID_MEETING_AUDIO)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
@@ -173,7 +173,7 @@ def main() -> None:
     )
     lifecycle_thread.start()
 
-    consumer = BatchConsumer(TOPIC_IN)
+    consumer = BatchConsumer(TOPIC_IN, settings.KAFKA_GROUP_ID_BATCHES)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
