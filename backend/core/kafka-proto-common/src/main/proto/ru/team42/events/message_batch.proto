@@ -39,4 +39,18 @@ message MessageBatchEvent {
     string id = 1;
     string title = 2;
   }
+
+  repeated StickerDef stickers = 9;
+
+  message StickerDef {
+    string id = 1;
+    string title = 2;
+    string type = 3;
+    repeated StickerStateDef states = 4;
+  }
+
+  message StickerStateDef {
+    string id = 1;
+    string title = 2;
+  }
 }

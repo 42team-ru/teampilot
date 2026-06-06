@@ -69,15 +69,16 @@ public class TaskService {
             }
         }
 
-        if (event.getAssigneeTelegramId() != null) {
-            resolveTeamUser(team, event.getAssigneeTelegramId()).ifPresent(task::setAssignee);
-        }
-        if (event.getAuthorTelegramId() != null) {
-            resolveTeamUser(team, event.getAuthorTelegramId()).ifPresent(task::setAuthor);
+        if (event.getAssigneeId() != null) {
+            resolveTeamUser(team, event.getAssigneeId()).ifPresent(task::setAssignee);
         }
 
         if (event.getSourceMessageIds() != null && !event.getSourceMessageIds().isEmpty()) {
             task.setSourceMessages(chatMessageRepository.findAllById(event.getSourceMessageIds()));
+        }
+
+        if (event.getStickers() != null && !event.getStickers().isEmpty()) {
+            task.setStickers(event.getStickers());
         }
 
         boolean autoConfirm = event.getConfidence() >= appProperties.getLlm().getAutoConfirmThreshold();
@@ -179,8 +180,8 @@ public class TaskService {
             task.setCompleted(true);
         }
 
-        if (event.getAssigneeTelegramId() != null) {
-            resolveTeamUser(task.getTeam(), event.getAssigneeTelegramId())
+        if (event.getAssigneeId() != null) {
+            resolveTeamUser(task.getTeam(), event.getAssigneeId())
                     .ifPresent(task::setAssignee);
         }
 
