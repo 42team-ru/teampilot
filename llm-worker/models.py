@@ -50,6 +50,24 @@ class AudioNewEvent(BaseModel):
     stickers: list[AudioStickerInfo] = Field(default_factory=list)
 
 
+class MeetingAudioChunkEvent(BaseModel):
+    """Incoming event from meetings.audio.chunks — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    meeting_id: str = Field(alias="meetingId")
+    team_id: str = Field(alias="teamId")
+    recorder_telegram_id: int | None = Field(alias="recorderTelegramId", default=None)
+    chunk_index: int = Field(alias="chunkIndex")
+    final_chunk: bool = Field(alias="finalChunk", default=False)
+    bucket: str
+    s3_key: str = Field(alias="s3Key")
+    original_filename: str = Field(alias="originalFilename", default="meeting-chunk")
+    content_type: str = Field(alias="contentType", default="audio/webm")
+    team: list[AudioTeamMember] = Field(default_factory=list)
+    columns: list[AudioColumnInfo] = Field(default_factory=list)
+    stickers: list[AudioStickerInfo] = Field(default_factory=list)
+
+
 class MessageDto(BaseModel):
     user_id: int
     username: str | None = None
@@ -174,6 +192,33 @@ class StatusChangeEvent(BaseModel):
     column_id: str | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
     source_batch_id: str
+
+
+class MeetingTaskPreview(BaseModel):
+    title: str
+    description: str
+    assignee_id: int | None = None
+    deadline: str | None = None
+    column_id: str | None = None
+    confidence: float = 0.0
+
+
+class MeetingStatusPreview(BaseModel):
+    task_id: str | None = None
+    assignee_id: int | None = None
+    column_id: str | None = None
+    action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
+
+
+class MeetingLiveResultEvent(BaseModel):
+    meeting_id: str
+    team_id: str
+    chunk_index: int
+    transcript: str
+    summary: str = ""
+    context: str = ""
+    tasks: list[MeetingTaskPreview] = Field(default_factory=list)
+    statuses: list[MeetingStatusPreview] = Field(default_factory=list)
 
 
 # ── LLM output — валидируем ответ модели ────────────────────────────────────
