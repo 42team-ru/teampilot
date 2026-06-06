@@ -158,15 +158,6 @@ public class YouGileBoardSyncService {
         boolean changed = false;
         boolean columnChanged = false;
         boolean contentChanged = false;
-        boolean restored = false;
-
-        if (task.isDeleted() || task.getLocalStatus() == TaskLocalStatus.DELETED_FROM_YOUGILE) {
-            task.setDeleted(false);
-            task.setLocalStatus(TaskLocalStatus.ACTIVE);
-            changed = true;
-            restored = true;
-            log.info("Restoring task '{}' ({}) — reappeared in YouGile after deletion", task.getTitle(), task.getId());
-        }
 
         if (remote.columnId() != null) {
             Optional<TaskColumn> colOpt = taskColumnRepository
@@ -212,17 +203,18 @@ public class YouGileBoardSyncService {
             changed = true;
         }
 
+        if (remote.completed() != task.isCompleted()) {
+            task.setCompleted(remote.completed());
+            changed = true;
+        }
+
         if (changed) {
             taskRepository.save(task);
-            if (restored) {
-                taskEventPublisher.publishImported(task);
-            } else {
-                if (columnChanged) {
-                    taskEventPublisher.publishColumnChanged(task, task.getColumn());
-                }
-                if (contentChanged) {
-                    taskEventPublisher.publishUpdated(task);
-                }
+            if (columnChanged) {
+                taskEventPublisher.publishColumnChanged(task, task.getColumn());
+            }
+            if (contentChanged) {
+                taskEventPublisher.publishUpdated(task);
             }
         }
     }
@@ -237,6 +229,7 @@ public class YouGileBoardSyncService {
         task.setSyncStatus(TaskSyncStatus.SYNCED);
         task.setSource(TaskSource.YOUGILE);
         task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        task.setCompleted(remote.completed());
 
         TaskColumn column = null;
         if (remote.columnId() != null) {

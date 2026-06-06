@@ -1,6 +1,0 @@
-{"file": "backend/monolith/src/main/java/ru/team42/monolith/event/AudioNewEvent.java", "reason": "add members/columns/stickers fields to the event"}
-{"file": "backend/monolith/src/main/java/ru/team42/monolith/kafka/publisher/AudioEventPublisher.java", "reason": "fetch and embed team context when publishing audio.new"}
-{"file": "backend/monolith/src/main/java/ru/team42/monolith/service/ChatMessageBatchPublisher.java", "reason": "reference: same DTO mapping pattern for TeamUser→TeamMemberDto, TaskColumn→ColumnDto, YouGileSticker→StickerDto"}
-{"file": "llm-worker/models.py", "reason": "update AudioNewEvent with team/columns/stickers fields"}
-{"file": "llm-worker/llm/prompts.py", "reason": "add AUDIO_TASK_SYSTEM and AUDIO_STATUS_SYSTEM prompts + chains"}
-{"file": "llm-worker/processor.py", "reason": "update _process_transcript_chunk to use audio chains with real team/column context"}

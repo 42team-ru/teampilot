@@ -1,4 +1,0 @@
-{"file": ".trellis/tasks/06-06-audio-enrichment/prd.md", "reason": "acceptance criteria to verify"}
-{"file": "llm-worker/models.py", "reason": "verify AudioNewEvent has team/columns/stickers fields with correct aliases"}
-{"file": "llm-worker/llm/prompts.py", "reason": "verify audio prompts handle name resolution and transcript format"}
-{"file": "llm-worker/processor.py", "reason": "verify _process_transcript_chunk uses audio chains and passes real context"}

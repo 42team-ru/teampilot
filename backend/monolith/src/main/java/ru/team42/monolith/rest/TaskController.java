@@ -76,15 +76,15 @@ public class TaskController {
     public ResponseEntity<PageResponse<TaskResponse>> list(
             @RequestParam(required = false) Long chatId,
             @RequestParam(required = false) Long assignee,
-            @RequestParam(required = false) String localStatus,
+            @RequestParam(required = false) Boolean completed,
             @RequestParam(required = false) UUID columnId,
             @PageableDefault(size = 20) Pageable pageable) {
 
         Page<TaskResponse> page;
         if (columnId != null) {
-            page = taskService.listByColumn(columnId, pageable).map(TaskResponse::from);
+            page = taskService.listByColumn(columnId, completed, pageable).map(TaskResponse::from);
         } else {
-            page = taskService.list(chatId, assignee, localStatus, pageable).map(TaskResponse::from);
+            page = taskService.list(chatId, assignee, completed, pageable).map(TaskResponse::from);
         }
         return ResponseUtils.page(PageResponse.fromPage(page));
     }
