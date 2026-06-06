@@ -57,8 +57,7 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public InviteResponse createInvite(CreateInviteRequest request) {
-        Team team = teamRepository.findByTelegramChatId(request.chatId())
-                .filter(Team::isActive)
+        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(request.chatId())
                 .orElseThrow(() -> AppException.notFound("Team for chatId %d not found".formatted(request.chatId())));
         return new InviteResponse(team.getId());
     }
@@ -87,6 +86,7 @@ public class AuthService {
                     var api = YougileClientConfig.createAuthenticatedApi(apiKey);
                     var yougileUser = api.userControllerGetMe().block();
                     if (yougileUser != null && yougileUser.getId() != null) {
+                        teamUser.setYougileUserApiKey(apiKey);
                         teamUser.setYougileUserId(yougileUser.getId());
                     }
                 } catch (Exception e) {
@@ -183,7 +183,7 @@ public class AuthService {
         }
 
         String apiKey = fetchApiKey(request.login(), request.password(), companyId);
-        Team team = teamRepository.findByTelegramChatId(request.chatId())
+        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(request.chatId())
                 .orElseThrow(() -> AppException.notFound("Team for chatId %d not found".formatted(request.chatId())));
         team.setKanbanApiKey(apiKey);
 
@@ -221,7 +221,7 @@ public class AuthService {
 
     @Transactional
     public TeamResponse yougileSelectBoard(YouGileBoardSelectRequest request) {
-        Team team = teamRepository.findByTelegramChatId(request.chatId())
+        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(request.chatId())
                 .orElseThrow(() -> AppException.notFound("Team for chatId %d not found".formatted(request.chatId())));
         return teamService.update(team.getId(), new UpdateTeamRequest(null, null, request.boardId(), null));
     }

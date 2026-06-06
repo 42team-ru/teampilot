@@ -267,7 +267,7 @@ public class TaskService {
     public Page<Task> list(Long chatId, Long assigneeTelegramId, Boolean completed, Pageable pageable) {
         UUID teamId = null;
         if (chatId != null) {
-            Team team = teamRepository.findByTelegramChatId(chatId)
+            Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
                     .orElseThrow(() -> AppException.notFound(
                             "Team not found for chatId %d".formatted(chatId)));
             teamId = team.getId();
@@ -314,7 +314,7 @@ public class TaskService {
 
     @Transactional(readOnly = true)
     public List<TaskColumn> listColumns(Long chatId) {
-        Team team = teamRepository.findByTelegramChatId(chatId)
+        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
                 .orElseThrow(() -> AppException.notFound("Team not found for chatId %d".formatted(chatId)));
         return taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId());
     }
@@ -337,7 +337,7 @@ public class TaskService {
 
     @Transactional(readOnly = true)
     public List<YouGileService.YouGileTaskResponse> listFromYouGile(Long chatId) {
-        Team team = teamRepository.findByTelegramChatId(chatId)
+        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
                 .orElseThrow(() -> AppException.notFound(
                         "Team not found for chatId %d".formatted(chatId)));
         return youGileService.fetchAllTasksForBoard(team);
