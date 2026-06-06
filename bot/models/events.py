@@ -61,7 +61,11 @@ class StatusChangedEvent(BaseModel):
 
 class TaskProposeEvent(BaseModel):
     proposal_id: str
-    chat_id: int
+    chat_id: int | None = None
+    recipient_telegram_ids: list[int] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("recipientTelegramIds", "recipient_telegram_ids"),
+    )
     task_title: str
     assignee_name: str | None
     deadline: datetime | None
@@ -87,8 +91,15 @@ class TaskStateEvent(BaseModel):
     event_id: str = Field(alias="eventId")
     occurred_at: datetime = Field(alias="occurredAt")
     task_id: str = Field(alias="taskId")
-    chat_id: int = Field(alias="chatId")
-    type: Literal["CREATED", "CANCELLED", "COLUMN_CHANGED"]
+    chat_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("chatId", "chat_id"),
+    )
+    recipient_telegram_ids: list[int] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("recipientTelegramIds", "recipient_telegram_ids"),
+    )
+    type: Literal["CREATED", "UPDATED", "CANCELLED", "COLUMN_CHANGED"]
     title: str
     column_title: str | None = Field(default=None, alias="columnTitle")
     assignee_username: str | None = Field(default=None, alias="assigneeUsername")
@@ -100,6 +111,10 @@ class BackendEvent(BaseModel):
 
 
 class BotNotificationEvent(BackendEvent):
+    recipient_telegram_ids: list[int] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("recipientTelegramIds", "recipient_telegram_ids"),
+    )
     telegram_id: int | None = Field(
         default=None,
         validation_alias=AliasChoices("telegramId", "telegram_id"),
@@ -124,6 +139,10 @@ class TaskConfirmationEvent(BackendEvent):
     chat_id: int | None = Field(
         default=None,
         validation_alias=AliasChoices("chatId", "chat_id"),
+    )
+    recipient_telegram_ids: list[int] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("recipientTelegramIds", "recipient_telegram_ids"),
     )
     title: str
     description: str | None = None

@@ -1,5 +1,7 @@
 package ru.team42.monolith.service;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import ru.team42.backend.kafka_common.AbstractEventPublisher;
 import ru.team42.backend.kafka_common.event.KafkaTopics;
@@ -9,17 +11,28 @@ import ru.team42.monolith.event.TaskConfirmationEvent;
 import ru.team42.monolith.event.TaskLifecycleEvent;
 import ru.team42.monolith.event.TaskStateEvent;
 
+import java.util.List;
+
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class TaskEventPublisher extends AbstractEventPublisher {
+
+    private final TaskNotificationRecipientResolver recipientResolver;
 
     public void publishConfirmation(Task task, boolean autoConfirmed) {
         String assigneeUsername = assigneeOf(task);
         String columnTitle = task.getColumn() != null ? task.getColumn().getTitle() : null;
+        List<Long> recipients = recipientResolver.resolveRecipients(task);
+        if (recipients.isEmpty()) {
+            log.warn("Skipping task confirmation notification for task {}: no DM recipients", task.getId());
+            return;
+        }
         send(KafkaTopics.BOTS_TASKS,
-                task.getTeam().getTelegramChatId().toString(),
+                task.getTeam().getId().toString(),
                 new TaskConfirmationEvent(
                         task.getId(),
-                        task.getTeam().getTelegramChatId(),
+                        recipients,
                         task.getTitle(),
                         task.getDescription(),
                         assigneeUsername,
@@ -41,6 +54,8 @@ public class TaskEventPublisher extends AbstractEventPublisher {
     }
 
     public void publishUpdated(Task task) {
+        String columnTitle = task.getColumn() != null ? task.getColumn().getTitle() : null;
+        sendState(task, TaskStateEvent.Type.UPDATED, columnTitle);
         sendLifecycle(task, TaskLifecycleEvent.Type.UPDATED);
     }
 
@@ -54,10 +69,13 @@ public class TaskEventPublisher extends AbstractEventPublisher {
     }
 
     private void sendState(Task task, TaskStateEvent.Type type, String columnTitle) {
-        Long chatId = task.getTeam().getTelegramChatId();
-        if (chatId == null) return;
+        List<Long> recipients = recipientResolver.resolveRecipients(task);
+        if (recipients.isEmpty()) {
+            log.warn("Skipping task state notification for task {}: no DM recipients", task.getId());
+            return;
+        }
         send(KafkaTopics.TASKS_STATE, task.getTeam().getId().toString(),
-                new TaskStateEvent(task.getId(), chatId, type, task.getTitle(),
+                new TaskStateEvent(task.getId(), recipients, type, task.getTitle(),
                         columnTitle, assigneeOf(task), task.getDeadline()));
     }
 

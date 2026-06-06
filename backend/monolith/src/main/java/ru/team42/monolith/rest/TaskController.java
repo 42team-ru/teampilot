@@ -82,7 +82,7 @@ public class TaskController {
 
         Page<TaskResponse> page;
         if (columnId != null) {
-            page = taskService.listByColumn(columnId, completed, pageable).map(TaskResponse::from);
+            page = taskService.listByColumn(columnId, assignee, completed, pageable).map(TaskResponse::from);
         } else {
             page = taskService.list(chatId, assignee, completed, pageable).map(TaskResponse::from);
         }

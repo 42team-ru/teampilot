@@ -33,6 +33,33 @@ services:
             - --kafka-addr=INTERNAL://0.0.0.0:19092,EXTERNAL://0.0.0.0:9092
             - --advertise-kafka-addr=INTERNAL://redpanda:19092,EXTERNAL://localhost:9092
 
+    redpanda-init:
+        image: redpandadata/redpanda:v25.3.7
+        depends_on:
+            - redpanda
+        entrypoint: >
+            /bin/sh -c "
+              sleep 5 &&
+              rpk topic create
+                messages.raw
+                users.events
+                audio.upload
+                files.uploaded
+                tasks.confirmed
+                tasks.rejected
+                tasks.status
+                tasks.propose
+                tasks.state
+                bots.tasks
+                bots.notifications
+                reminders.send
+                summary.send
+                llm.tasks.create
+                llm.status.change
+              --brokers redpanda:19092 || true
+            "
+        restart: "no"
+
     redpanda-console:
         image: docker.redpanda.com/redpandadata/console:v3.5.2
         environment:

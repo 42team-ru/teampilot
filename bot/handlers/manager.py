@@ -87,6 +87,14 @@ def _team_chat_id(team: dict) -> int | None:
         return None
 
 
+def _yougile_setup_keyboard(chat_id: int | str | None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if chat_id:
+        rows.append([InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="manager:teams")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def _safe_page(raw_page: str | int | None) -> int:
     try:
         return max(int(raw_page), 0)
@@ -666,26 +674,19 @@ async def _finish_update(message: Message, state: FSMContext, telegram_id: int |
         team = next((t for t in teams if t["id"] == team_id), None)
         result_text = "Название не изменено."
 
+    ctx_team_id = data.get("manager_update_ctx_team_id") or data.get("manager_update_team_id")
     chat_id = team.get("telegramChatId") if team else None
 
     if ctx_team_id:
         rows = []
         if chat_id:
             rows.append([InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")])
-        rows.append([InlineKeyboardButton(text="← Назад к команде", callback_data=f"team_ctx:manager:{team_id}")])
+        rows.append([InlineKeyboardButton(text="← Назад к команде", callback_data=f"team_ctx:manager:{ctx_team_id}")])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
     else:
         kb = _yougile_setup_keyboard(chat_id) if chat_id else manager_back_keyboard()
 
     await message.answer(result_text, reply_markup=kb)
-
-
-def _yougile_setup_keyboard(chat_id: int):
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")],
-        [InlineKeyboardButton(text="« Назад", callback_data="manager:back")],
-    ])
 
 
 @router.callback_query(F.data.startswith("manager:setup_yougile:"))

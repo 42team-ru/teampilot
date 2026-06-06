@@ -607,6 +607,7 @@ def _column_tasks_keyboard(
     *,
     column_id: str,
     back_data: str | None = None,
+    scope: str = "col",
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     page = _page_number(page_data)
@@ -621,12 +622,12 @@ def _column_tasks_keyboard(
         prev_page = max(page - 1, 0)
         next_page = min(page + 1, total_pages - 1)
         rows.append([
-            InlineKeyboardButton(text="◀️", callback_data=f"tasks:col:{column_id}:{prev_page}"),
-            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data=f"tasks:col:{column_id}:{page}"),
-            InlineKeyboardButton(text="▶️", callback_data=f"tasks:col:{column_id}:{next_page}"),
+            InlineKeyboardButton(text="◀️", callback_data=f"tasks:{scope}:{column_id}:{prev_page}"),
+            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data=f"tasks:{scope}:{column_id}:{page}"),
+            InlineKeyboardButton(text="▶️", callback_data=f"tasks:{scope}:{column_id}:{next_page}"),
         ])
 
-    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"tasks:col:{column_id}:{page}")])
+    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"tasks:{scope}:{column_id}:{page}")])
     if back_data:
         rows.append([InlineKeyboardButton(text="← Назад", callback_data=back_data)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -638,6 +639,7 @@ def _format_column_task_page(
     *,
     column_id: str,
     back_data: str | None = None,
+    scope: str = "col",
 ) -> tuple[str, InlineKeyboardMarkup]:
     tasks = page_data.get("content", [])
     total = _total_elements(page_data)
@@ -655,7 +657,7 @@ def _format_column_task_page(
         lines.extend(_format_task_row(task, start_index + offset) for offset, task in enumerate(tasks))
 
     return "\n\n".join(lines), _column_tasks_keyboard(
-        page_data, column_id=column_id, back_data=back_data,
+        page_data, column_id=column_id, back_data=back_data, scope=scope,
     )
 
 
@@ -711,6 +713,54 @@ async def _render_team_column_tasks(
         f"📌 <b>{escape(col_title)}</b> · {title}",
         column_id=column_id,
         back_data=f"tm:{back_scope}:t:{team_id}",
+    )
+
+
+async def _render_my_column_tasks(
+    telegram_id: int,
+    column_id: str,
+    *,
+    page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup] | None:
+    """My tasks in a specific kanban column (assignee + columnId filter)."""
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(telegram_id),
+        get_member_teams(telegram_id),
+    )
+    all_teams = manager_teams + member_teams
+
+    team = None
+    col_title = "Колонка"
+    for t in all_teams:
+        chat_id = _team_chat_id(t)
+        if not chat_id:
+            continue
+        cols = await get_team_columns(chat_id, telegram_id)
+        match = next((c for c in cols if str(c.get("id")) == column_id), None)
+        if match:
+            team, col_title = t, match.get("title") or col_title
+            break
+
+    if team is None:
+        return None
+
+    page_data = await _fetch_tasks_page(
+        telegram_id=telegram_id,
+        assignee=telegram_id,
+        column_id=column_id,
+        page=page,
+        size=_TASKS_PAGE_SIZE,
+    )
+    team_id = str(team.get("id"))
+    title = escape(team.get("chatTitle") or team_id)
+    back_cb = f"mytasks:t:{team_id}"
+
+    return _format_column_task_page(
+        page_data,
+        f"📌 <b>{escape(col_title)}</b> · 📥 Мои · {title}",
+        column_id=column_id,
+        back_data=back_cb,
+        scope="mc",
     )
 
 
@@ -1047,6 +1097,18 @@ async def navigate_tasks(callback: CallbackQuery) -> None:
         column_id = parts[2]
         page = _safe_page(parts[3])
         rendered = await _render_team_column_tasks(
+            callback.from_user.id,
+            column_id,
+            page=page,
+        )
+        if rendered is None:
+            await callback.answer("Колонка недоступна", show_alert=True)
+            return
+        text, keyboard = rendered
+    elif scope == "mc" and len(parts) == 4:
+        column_id = parts[2]
+        page = _safe_page(parts[3])
+        rendered = await _render_my_column_tasks(
             callback.from_user.id,
             column_id,
             page=page,

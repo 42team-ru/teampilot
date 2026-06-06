@@ -24,6 +24,8 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     Page<Task> findByColumnId(UUID columnId, Pageable pageable);
 
+    Page<Task> findByColumnIdAndAssigneeUserTelegramId(UUID columnId, Long telegramId, Pageable pageable);
+
     Page<Task> findByTeamIdAndLocalStatus(UUID teamId, TaskLocalStatus localStatus, Pageable pageable);
 
     Page<Task> findByTeamIdAndLocalStatusIn(UUID teamId, Collection<TaskLocalStatus> statuses, Pageable pageable);
@@ -69,20 +71,28 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     @Query("""
             SELECT t FROM Task t
             WHERE t.localStatus = ru.team42.monolith.entity.enums.TaskLocalStatus.ACTIVE
-              AND t.assignee IS NOT NULL
               AND NOT EXISTS (
                   SELECT h FROM TaskStatusHistory h
                   WHERE h.task = t
                     AND h.createdAt > :threshold
               )
             """)
-    List<Task> findActiveStaleTasksWithAssignee(@Param("threshold") LocalDateTime threshold);
+    List<Task> findActiveStaleTasks(@Param("threshold") LocalDateTime threshold);
 
     Page<Task> findByColumnIdAndDeletedFalse(UUID columnId, Pageable pageable);
 
+    Page<Task> findByColumnIdAndAssigneeUserTelegramIdAndDeletedFalse(
+            UUID columnId, Long telegramId, Pageable pageable);
+
     Page<Task> findByColumnIdAndCompletedFalseAndDeletedFalse(UUID columnId, Pageable pageable);
 
+    Page<Task> findByColumnIdAndAssigneeUserTelegramIdAndCompletedFalseAndDeletedFalse(
+            UUID columnId, Long telegramId, Pageable pageable);
+
     Page<Task> findByColumnIdAndCompletedTrueAndDeletedFalse(UUID columnId, Pageable pageable);
+
+    Page<Task> findByColumnIdAndAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(
+            UUID columnId, Long telegramId, Pageable pageable);
 
     Page<Task> findByTeamIdAndLocalStatusInAndCompletedFalseAndDeletedFalse(
             UUID teamId, Collection<TaskLocalStatus> statuses, Pageable pageable);
