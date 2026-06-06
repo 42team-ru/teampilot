@@ -16,15 +16,7 @@ and use the `V{number}__description.sql` naming style.
 
 <!-- How should queries be written? Batch operations? -->
 
-When a query compares audited timestamps from `AbstractEntity` with domain
-timestamps, check the Java types before writing JPQL. `createdAt` / `updatedAt`
-come from `AbstractEntity` as `LocalDateTime`, while fields such as
-`Task.deadline` are `Instant`. JPQL type comparisons across those fields are
-fragile; use a native SQL query or convert values explicitly in service code.
-
-If business logic uses `updatedAt` immediately after `repository.save(...)` as
-a completion-time proxy, flush the repository first so JPA auditing has written
-the fresh timestamp before the logic reads it.
+(To be filled by the team)
 
 ---
 

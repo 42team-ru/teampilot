@@ -15,7 +15,11 @@ export default defineConfig({
       "alarms",
       "tabs",
     ],
-    host_permissions: ["http://localhost/*", "http://localhost:8080/*"],
+    host_permissions: [
+      "http://localhost/*",
+      "http://localhost:8080/*",
+      "https://42team.ru/*",
+    ],
     side_panel: {
       default_path: "sidepanel.html",
     },

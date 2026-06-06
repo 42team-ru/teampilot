@@ -85,16 +85,6 @@ Content-Type: application/json
   "meetingUrl": "https://telemost.yandex.ru/j/1234567890",
   "primaryRecorderTelegramId": 123456789,
   "active": true,
-  "recordingBucket": null,
-  "recordingS3Key": null,
-  "recordingContentType": null,
-  "recordingSizeBytes": null,
-  "transcriptBucket": null,
-  "transcriptS3Key": null,
-  "title": null,
-  "description": null,
-  "summary": null,
-  "finalizedAt": null,
   "createdAt": "2026-06-07T12:30:00"
 }
 ```
@@ -175,16 +165,6 @@ SUBSCRIBE /topic/meetings/{meetingId}/results
   "transcript": "Так, Вова, нужно доделать авторизацию через Telegram...",
   "summary": "Обсудили доработку авторизации и задачу по WebSocket.",
   "context": "Накопленный фрагмент расшифровки, который LLM сейчас использует как контекст.",
-  "finalResult": false,
-  "title": null,
-  "description": null,
-  "recordingBucket": null,
-  "recordingS3Key": null,
-  "recordingContentType": null,
-  "recordingSizeBytes": null,
-  "transcriptBucket": null,
-  "transcriptS3Key": null,
-  "finalizedAt": null,
   "tasks": [
     {
       "title": "Доработать авторизацию через Telegram",
@@ -209,35 +189,6 @@ SUBSCRIBE /topic/meetings/{meetingId}/results
 Поля `tasks` и `statuses` могут быть пустыми. Это нормально: transcript приходит
 на каждый обработанный chunk, а extraction запускается только когда накопилось
 достаточно контекста или пришел `finalChunk=true`.
-
-На последнем чанке backend получит финальное сообщение:
-
-```json
-{
-  "meetingId": "c9cf8b63-9104-4b0b-b349-566e70cc26da",
-  "teamId": "2b0c1f91-3295-48cc-bbaf-4a67501f59a1",
-  "chunkIndex": 42,
-  "transcript": "Полная расшифровка всего митинга...",
-  "summary": "Итоговое резюме митинга.",
-  "context": "Полная расшифровка всего митинга...",
-  "finalResult": true,
-  "title": "Обсуждение WebSocket-записи митингов",
-  "description": "Команда обсудила live-запись митингов, потоковую расшифровку и создание задач.",
-  "recordingBucket": "audio",
-  "recordingS3Key": "meetings/c9cf8b63-9104-4b0b-b349-566e70cc26da/final/recording.mp3",
-  "recordingContentType": "audio/mpeg",
-  "recordingSizeBytes": 12345678,
-  "transcriptBucket": "audio",
-  "transcriptS3Key": "meetings/c9cf8b63-9104-4b0b-b349-566e70cc26da/final/transcript.txt",
-  "finalizedAt": "2026-06-07T12:45:00Z",
-  "tasks": [],
-  "statuses": []
-}
-```
-
-Spring сохраняет эти финальные поля в `Meeting`. После этого `GET /meetings/by-url`
-вернет ссылки на итоговую запись и полный transcript через `recording*` и
-`transcript*` поля.
 
 ## Куда пушить аудио
 
@@ -276,9 +227,6 @@ data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKI...
 * `chunkIndex` начинается с `0` и растет на `1`.
 * `contentType` по умолчанию считается `audio/webm`, если не передан.
 * `finalChunk=true` отправляй последним сообщением, когда запись закончилась.
-* На `finalChunk=true` worker склеит все чанки в итоговую запись
-  `meetings/{meetingId}/final/recording.mp3`. Если ffmpeg не сможет сделать mp3,
-  fallback сохранит склеенный исходный поток как `.webm`.
 * Пушить чанки может только `primaryRecorder`, то есть менеджер, который создал meeting.
 * Остальные участники могут только слушать `/topic/meetings/{meetingId}/results`.
 
@@ -305,10 +253,8 @@ STOMP chunk
   -> MinIO object meetings/{meetingId}/chunks/{chunkIndex}-...
   -> Kafka meetings.audio.chunks
   -> LLM Worker Whisper + extraction
-  -> finalChunk=true: list MinIO meetings/{meetingId}/chunks/ + final recording + final transcript
   -> Kafka llm.tasks.create / llm.status.change
   -> Kafka meetings.live.results
-  -> Spring updates Meeting final fields
   -> Spring MeetingLiveResultConsumer
   -> STOMP /topic/meetings/{meetingId}/results
 ```
@@ -321,30 +267,3 @@ meetings.live.results   LLM Worker -> Spring
 llm.tasks.create        LLM Worker -> Spring task creation
 llm.status.change       LLM Worker -> Spring task status updates
 ```
-
-LLM Worker consumer groups:
-
-```text
-messages.batches        KAFKA_GROUP_ID_BATCHES=llm-worker-batches
-audio.new               KAFKA_GROUP_ID_AUDIO=llm-worker-audio
-meetings.audio.chunks   KAFKA_GROUP_ID_MEETING_AUDIO=llm-worker-meeting-audio
-tasks.lifecycle         KAFKA_GROUP_ID_LIFECYCLE=llm-worker-lifecycle
-```
-
-Все инстансы `llm-worker` должны использовать одинаковые значения этих group id.
-Тогда Kafka раздаст partitions между инстансами внутри каждого типа consumer-а,
-а offsets для batch/audio/meeting/lifecycle не будут смешиваться. Новые топики
-создаются с `app.kafka.default-partitions=12`; если топик уже существовал с
-меньшим числом partitions, его нужно расширять отдельно через Kafka admin tool.
-
-Для финализации `finalChunk=true` worker не использует локальный `_meeting_state`.
-Он листит объекты в MinIO по prefix `meetings/{meetingId}/chunks/`, ждет до
-`MEETING_FINALIZE_WAIT_SECONDS`, пока появятся индексы `0..chunkIndex`, затем
-скачивает найденные chunks в порядке индекса и сохраняет:
-
-```text
-meetings/{meetingId}/final/recording.mp3
-meetings/{meetingId}/final/transcript.txt
-```
-
-Если ffmpeg не сможет собрать mp3, запись сохранится как fallback `.webm`.

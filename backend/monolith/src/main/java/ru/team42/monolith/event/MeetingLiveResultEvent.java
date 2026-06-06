@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 import lombok.extern.jackson.Jacksonized;
 import ru.team42.backend.kafka_common.event.BaseEvent;
 
-import java.time.Instant;
 import java.util.List;
 
 @Getter
@@ -25,16 +24,6 @@ public class MeetingLiveResultEvent extends BaseEvent {
     private String transcript;
     private String summary;
     private String context;
-    private boolean finalResult;
-    private String title;
-    private String description;
-    private String recordingBucket;
-    private String recordingS3Key;
-    private String recordingContentType;
-    private Long recordingSizeBytes;
-    private String transcriptBucket;
-    private String transcriptS3Key;
-    private Instant finalizedAt;
 
     @Builder.Default
     private List<TaskDto> tasks = List.of();

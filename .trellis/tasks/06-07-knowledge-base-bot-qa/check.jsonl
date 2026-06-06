@@ -1,5 +1,0 @@
-{"file": ".trellis/tasks/06-07-knowledge-base-bot-qa/prd.md", "reason": "Acceptance criteria: /wiki в group/private, нет результатов, нет team_id, пустой запрос"}
-{"file": "llm-worker/api.py", "reason": "Проверить: GET /knowledge/search, параметры team_id и q, возвращает list[dict]"}
-{"file": "llm-worker/main.py", "reason": "Проверить: uvicorn запускается как daemon thread при старте"}
-{"file": "bot/handlers/knowledge.py", "reason": "Проверить: оба хендлера (group + private), все граничные кейсы"}
-{"file": "bot/services/knowledge_service.py", "reason": "Проверить: вызывает llm-worker REST, обрабатывает ошибки соединения"}

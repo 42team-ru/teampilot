@@ -21,7 +21,6 @@ import ru.team42.monolith.dto.request.UpdateUserRequest;
 import ru.team42.monolith.dto.response.UserResponse;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.entity.enums.SystemRole;
-import ru.team42.monolith.service.GamificationService;
 import ru.team42.monolith.service.UserService;
 
 import java.util.List;
@@ -34,7 +33,6 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
-    private final GamificationService gamificationService;
 
     @Operation(summary = "Получить пользователя по Telegram ID")
     @GetMapping("/{telegramId}")
@@ -45,12 +43,6 @@ public class UserController {
                                 "User with Telegram ID %d not found".formatted(telegramId)
                         ))
         );
-    }
-
-    @Operation(summary = "Получить профиль и статистику пользователя")
-    @GetMapping("/{telegramId}/stats")
-    public ResponseEntity<?> getStats(@PathVariable Long telegramId) {
-        return ResponseUtils.ok(gamificationService.getUserStats(telegramId));
     }
 
     @Operation(summary = "Обновить имя и фамилию текущего пользователя")

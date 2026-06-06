@@ -8,18 +8,40 @@ import DecisionsTab from '../../components/sidepanel/DecisionsTab'
 import SummaryTab from '../../components/sidepanel/SummaryTab'
 import SettingsScreen from '../../components/popup/SettingsScreen'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs'
+import { useAuthSession } from '../../hooks/useAuthSession'
+import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false)
+  const auth = useAuthSession()
   const { state, pauseRecording, stopRecording, resumeRecording, toggleMic } = useRecordingState()
-  const { results } = useMeetingResults(
-    state.status === 'done' ? state.meetingId : undefined
-  )
+  const { results } = useMeetingResults(state.meetingId)
+
+  if (!auth.session) {
+    return (
+      <div className="flex h-screen items-center justify-center overflow-hidden">
+        <AuthRequiredScreen
+          loading={auth.loading}
+          challenge={auth.challenge}
+          error={auth.error}
+          fullHeight
+          onLogin={auth.login}
+        />
+      </div>
+    )
+  }
 
   if (showSettings) {
     return (
       <div className="flex flex-col h-screen overflow-hidden">
-        <SettingsScreen onBack={() => setShowSettings(false)} />
+        <SettingsScreen
+          onBack={() => setShowSettings(false)}
+          authSession={auth.session}
+          authLoading={auth.loading}
+          authError={auth.error}
+          onLogin={auth.login}
+          onLogout={auth.logout}
+        />
       </div>
     )
   }
@@ -52,7 +74,7 @@ export default function App() {
         </TabsContent>
 
         <TabsContent value="tasks" className="flex-1 overflow-hidden mt-0">
-          <TasksTab tasks={results?.tasks ?? []} meetingId={state.meetingId} />
+          <TasksTab tasks={results?.tasks ?? []} />
         </TabsContent>
 
         <TabsContent value="decisions" className="flex-1 overflow-hidden mt-0">

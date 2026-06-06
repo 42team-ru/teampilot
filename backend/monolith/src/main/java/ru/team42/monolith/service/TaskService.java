@@ -46,7 +46,6 @@ public class TaskService {
     private final TaskEventPublisher taskEventPublisher;
     private final LlmTaskUpdateMapper llmTaskUpdateMapper;
     private final AppProperties appProperties;
-    private final GamificationService gamificationService;
 
     @Transactional
     public Task createFromLlmEvent(LlmTaskCreateEvent event) {
@@ -429,12 +428,6 @@ public class TaskService {
         applyColumn(task, columnId, telegramIdOf(task));
         Task saved = taskRepository.save(task);
         youGileService.updateTask(team, saved);
-        taskRepository.flush();
-        try {
-            gamificationService.onTaskCompleted(saved);
-        } catch (Exception e) {
-            log.warn("Gamification failed for task {}: {}", saved.getId(), e.getMessage());
-        }
     }
 
     private void applyColumn(Task task, String columnId, Long changedByTelegramId) {
