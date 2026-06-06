@@ -1,31 +1,8 @@
 42team.ru {
 #    tls internal
-    handle /api/ws* {
-        uri strip_prefix /api
-        reverse_proxy monolith:8080 {
-            stream_timeout 24h
-            stream_close_delay 5m
-            flush_interval -1
-
-            transport http {
-                dial_timeout 5s
-                response_header_timeout 30s
-                keepalive 2m
-                keepalive_interval 30s
-            }
-        }
-    }
-
     handle /api/* {
         uri strip_prefix /api
-        reverse_proxy monolith:8080 {
-            transport http {
-                dial_timeout 5s
-                response_header_timeout 30s
-                keepalive 2m
-                keepalive_interval 30s
-            }
-        }
+        reverse_proxy api-gateway:8080
     }
 
     handle /redpanda* {
