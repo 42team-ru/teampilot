@@ -27,6 +27,7 @@ from models.events import (
 )
 
 _DISPLAY_TZ = timezone(timedelta(hours=3))
+_BATCH_WINDOW_SECS = 3
 
 
 class EventConsumer:
@@ -38,6 +39,12 @@ class EventConsumer:
         TOPIC_BOTS_TASKS,
         TOPIC_BOTS_NOTIFICATIONS,
     ]
+
+    def __init__(self) -> None:
+        self._pending_confirmations: dict[int, list[TaskConfirmationEvent]] = {}
+        self._pending_created: dict[int, list[TaskStateEvent]] = {}
+        self._confirmation_flush: dict[int, asyncio.Task] = {}
+        self._created_flush: dict[int, asyncio.Task] = {}
 
     async def start(self, bot: Bot) -> None:
         consumer = Consumer({
@@ -84,7 +91,10 @@ class EventConsumer:
 
         elif topic == TOPIC_TASKS_STATE:
             event = TaskStateEvent.model_validate_json(payload)
-            await self._send_task_state(bot, event)
+            if event.type == "CREATED":
+                await self._queue_created(bot, event)
+            else:
+                await self._send_task_state(bot, event)
 
         elif topic == TOPIC_BOTS_NOTIFICATIONS:
             event = BotNotificationEvent.model_validate_json(payload)
@@ -92,7 +102,62 @@ class EventConsumer:
 
         elif topic == TOPIC_BOTS_TASKS:
             event = TaskConfirmationEvent.model_validate_json(payload)
-            await self._send_task_confirmation(bot, event)
+            await self._queue_confirmation(bot, event)
+
+    async def _queue_confirmation(self, bot: Bot, event: TaskConfirmationEvent) -> None:
+        if event.chat_id is None:
+            logger.warning("TaskConfirmationEvent {} has no chat_id", event.task_id)
+            return
+        chat_id = event.chat_id
+        self._pending_confirmations.setdefault(chat_id, []).append(event)
+        if chat_id not in self._confirmation_flush or self._confirmation_flush[chat_id].done():
+            self._confirmation_flush[chat_id] = asyncio.create_task(
+                self._flush_confirmations(bot, chat_id)
+            )
+
+    async def _flush_confirmations(self, bot: Bot, chat_id: int) -> None:
+        await asyncio.sleep(_BATCH_WINDOW_SECS)
+        events = self._pending_confirmations.pop(chat_id, [])
+        if not events:
+            return
+        if len(events) == 1:
+            await self._send_task_confirmation(bot, events[0])
+            return
+        auto = all(e.auto_confirmed for e in events)
+        header = f"🤖 <b>Создано задач автоматически: {len(events)}</b>" if auto else f"<b>Создано задач: {len(events)}</b>"
+        lines = [header, ""]
+        for i, e in enumerate(events, 1):
+            lines.append(f"{i}. <b>{escape(e.title)}</b>")
+            if e.assignee_username:
+                lines.append(f"   👤 @{escape(e.assignee_username)}")
+            if e.deadline:
+                lines.append(f"   ⏰ {_format_deadline(e.deadline)}")
+        await bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
+
+    async def _queue_created(self, bot: Bot, event: TaskStateEvent) -> None:
+        chat_id = event.chat_id
+        self._pending_created.setdefault(chat_id, []).append(event)
+        if chat_id not in self._created_flush or self._created_flush[chat_id].done():
+            self._created_flush[chat_id] = asyncio.create_task(
+                self._flush_created(bot, chat_id)
+            )
+
+    async def _flush_created(self, bot: Bot, chat_id: int) -> None:
+        await asyncio.sleep(_BATCH_WINDOW_SECS)
+        events = self._pending_created.pop(chat_id, [])
+        if not events:
+            return
+        if len(events) == 1:
+            await self._send_task_state(bot, events[0])
+            return
+        lines = [f"✅ <b>Создано задач: {len(events)}</b>", ""]
+        for i, e in enumerate(events, 1):
+            assignee_str = f"@{e.assignee_username}" if e.assignee_username else "не указан"
+            deadline_str = e.deadline.strftime("%d.%m %H:%M") if e.deadline else "не указан"
+            col_str = e.column_title or "без колонки"
+            lines.append(f"{i}. <b>{escape(e.title)}</b>")
+            lines.append(f"   📂 {col_str}  👤 {assignee_str}  ⏰ {deadline_str}")
+        await bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
 
     async def _send_task_state(self, bot: Bot, event: TaskStateEvent) -> None:
         deadline_str = event.deadline.strftime("%d.%m %H:%M") if event.deadline else "не указан"
