@@ -198,9 +198,10 @@ Output (title, description) MUST be in Russian. The <thinking> step may use any 
 - title: short, formal, action-oriented. Pattern: verb + object. No slang.
   GOOD: "Реализовать endpoint загрузки файлов в S3"
   BAD: "Запилить ручку для S3" / "Осуществить реализацию загрузки"
-- description: MUST contain a literal quote from the chat in the format:
-  «[author]: [original phrase]»
-  Example: «ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»
+- description: 2-4 sentences in formal Russian that describe WHAT needs to be done, WHY (if inferable from context), and any key constraints (deadline, scope). End with a source reference on a new line:
+  Источник: «[author]: [original phrase]»
+  GOOD: "Необходимо реализовать HTTP endpoint для загрузки файлов в объектное хранилище S3. Endpoint должен принимать файл, сохранять его и возвращать ссылку для скачивания. Дедлайн — завтрашний вечер.\n\nИсточник: «ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
+  BAD: "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
 </language_and_format>
 </rules>
 
@@ -225,7 +226,7 @@ TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list)
 @kirill_dev is explicitly mentioned → look up in TEAM LIST → telegram_id 111001. Deadline "до завтрашнего вечера" → tomorrow 23:59. Columns present, new task → "To Do" col-001. Source message is msg-101.
 </thinking>
 <output>
-[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee_id": 111001, "deadline": "2026-06-04T23:59:00Z", "column_id": "col-001", "source_message_ids": ["msg-101"]}}]
+[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "Необходимо реализовать HTTP endpoint для загрузки файлов в объектное хранилище S3. Endpoint должен принимать файл и возвращать ссылку для скачивания. Дедлайн — завтрашний вечер.\n\nИсточник: «ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee_id": 111001, "deadline": "2026-06-04T23:59:00Z", "column_id": "col-001", "source_message_ids": ["msg-101"]}}]
 </output>
 </example>
 
@@ -246,7 +247,7 @@ TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list)
 kirill confirms "Беру, смотрю уже" → look up "kirill" in TEAM LIST by username → telegram_id 111001. Already working → "В работе" col-b. No explicit deadline. Source messages are msg-201 and msg-202.
 </thinking>
 <output>
-[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю уже»", "assignee_id": 111001, "deadline": null, "column_id": "col-b", "source_message_ids": ["msg-201", "msg-202"]}}]
+[{{"title": "Устранить критическую ошибку на проде", "description": "Прод недоступен, необходимо срочно выкатить патч. Кирилл уже взял задачу в работу и приступил к диагностике.\n\nИсточник: «pm: Прод упал! Нужно срочно патч!»", "assignee_id": 111001, "deadline": null, "column_id": "col-b", "source_message_ids": ["msg-201", "msg-202"]}}]
 </output>
 </example>
 
@@ -267,9 +268,9 @@ Three assignments: 1) frontend_kirill agrees → telegram_id 111001, 2) vova_ml 
 </thinking>
 <output>
 [
-  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "«ivan_pm: разбери ошибки в логах после деплоя» — «frontend_kirill: Беру логи»", "assignee_id": 111001, "deadline": null, "column_id": null, "source_message_ids": ["msg-401", "msg-402"]}},
-  {{"title": "Обновить зависимости в pyproject.toml", "description": "«ivan_pm: обнови зависимости в pyproject до конца недели» — «vova_ml: Зависимости за мной»", "assignee_id": 222001, "deadline": "2026-06-07T23:59:00Z", "column_id": null, "source_message_ids": ["msg-401", "msg-403"]}},
-  {{"title": "Написать документацию по API", "description": "«ivan_pm: Маша, с тебя доки по API»", "assignee_id": 333001, "deadline": null, "column_id": null, "source_message_ids": ["msg-404"]}}
+  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "Необходимо разобрать ошибки, появившиеся в логах после последнего деплоя. Задача взята в работу.\n\nИсточник: «ivan_pm: разбери ошибки в логах после деплоя»", "assignee_id": 111001, "deadline": null, "column_id": null, "source_message_ids": ["msg-401", "msg-402"]}},
+  {{"title": "Обновить зависимости в pyproject.toml", "description": "Необходимо обновить зависимости проекта в файле pyproject.toml до актуальных версий. Срок — конец текущей недели.\n\nИсточник: «ivan_pm: обнови зависимости в pyproject до конца недели»", "assignee_id": 222001, "deadline": "2026-06-07T23:59:00Z", "column_id": null, "source_message_ids": ["msg-401", "msg-403"]}},
+  {{"title": "Написать документацию по API", "description": "Необходимо подготовить документацию по REST API проекта.\n\nИсточник: «ivan_pm: Маша, с тебя доки по API»", "assignee_id": 333001, "deadline": null, "column_id": null, "source_message_ids": ["msg-404"]}}
 ]
 </output>
 </example>
@@ -286,7 +287,7 @@ TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list)
 "Мишаня" → full_name match "Михаил" = @mikhail_be → telegram_id 444001. He confirms "Да, возьму". Source messages are msg-501 and msg-502.
 </thinking>
 <output>
-[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "«pm_ivan: Мишаня, посмотришь на баг с авторизацией?» — «mikhail_be: Да, возьму»", "assignee_id": 444001, "deadline": null, "column_id": null, "source_message_ids": ["msg-501", "msg-502"]}}]
+[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "В модуле авторизации воспроизводится ошибка 500. Необходимо диагностировать причину и выкатить исправление.\n\nИсточник: «pm_ivan: Мишаня, посмотришь на баг с авторизацией? Там ошибка 500»", "assignee_id": 444001, "deadline": null, "column_id": null, "source_message_ids": ["msg-501", "msg-502"]}}]
 </output>
 </example>
 
@@ -303,7 +304,7 @@ TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list)
 Role "фронт" → 2 Developer matches → ROLE AMBIGUITY → assignee_id = null. Source message is msg-601.
 </thinking>
 <output>
-[{{"title": "Исправить баг на стороне фронтенда", "description": "«pm: Пусть фронт займётся этим багом.»", "assignee_id": null, "deadline": null, "column_id": null, "source_message_ids": ["msg-601"]}}]
+[{{"title": "Исправить баг на стороне фронтенда", "description": "Необходимо локализовать и исправить баг на стороне фронтенда. Исполнитель пока не назначен.\n\nИсточник: «pm: Пусть фронт займётся этим багом»", "assignee_id": null, "deadline": null, "column_id": null, "source_message_ids": ["msg-601"]}}]
 </output>
 </example>
 
@@ -333,7 +334,7 @@ TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list)
 Role "девопс" → 1 DevOps match → @ops_sasha → telegram_id 666001. frontend_anna is Frontend, not DevOps. Source message is msg-901.
 </thinking>
 <output>
-[{{"title": "Настроить мониторинг на новом сервере", "description": "«pm_lead: Пусть девопс настроит мониторинг на новом сервере.»", "assignee_id": 666001, "deadline": null, "column_id": null, "source_message_ids": ["msg-901"]}}]
+[{{"title": "Настроить мониторинг на новом сервере", "description": "Необходимо настроить мониторинг и алерты на новом сервере. Алерты в настоящее время не приходят.\n\nИсточник: «pm_lead: Пусть девопс настроит мониторинг на новом сервере»", "assignee_id": 666001, "deadline": null, "column_id": null, "source_message_ids": ["msg-901"]}}]
 </output>
 </example>
 </examples>"""
@@ -582,5 +583,231 @@ No confirmed acceptance of any task. No explicit done/cancel language.
 
 status_prompt = ChatPromptTemplate.from_messages([
     ("system", STATUS_SYSTEM),
+    ("human", "{tasks_context}\n\n{columns_context}\n\n{messages}"),
+])
+
+# ==========================================
+# AUDIO TASK PROMPT
+# ==========================================
+
+AUDIO_TASK_SYSTEM = """<role>
+You are a precise task extractor for an IT team meeting transcript. You read a speech transcript (not a written chat) and produce structured task records for a project management system.
+</role>
+
+<task>
+Extract ALL tasks from the transcript into a JSON array. If there are no tasks, return an empty array [].
+You MUST first reason in <thinking>…</thinking> tags, then output the JSON array. Thinking can be in any language; the JSON output MUST be in Russian (title, description).
+</task>
+
+<definitions>
+<what_is_a_task>
+A task is an explicit assignment — direct or indirect — that implies someone will do something in the future.
+- Discussing a problem WITHOUT assigning it to someone is NOT a task.
+- Completed work ("я уже сделал X", "X готово") is NOT a new task. Skip it.
+- Each unique assignment = exactly ONE JSON object. Never duplicate.
+</what_is_a_task>
+</definitions>
+
+<important_context>
+This is a SPEECH TRANSCRIPT — there are no message IDs, no @mentions, no timestamps.
+People address each other by name or nickname (e.g. "Влад, займись", "Миша, посмотришь?", "Дашенька, нужно X").
+Resolve names and nicknames using the TEAM LIST below.
+</important_context>
+
+<rules>
+<assignee_resolution>
+Identify who should do the task using this priority chain — stop at the first match:
+
+1. Person addressed by name AND confirms: "Владимир, сделай X" AND "хорошо, займусь" → look up in TEAM LIST by full_name.
+2. Nickname addressed + confirms: "Миша, посмотришь?" AND "да, возьму" → match full_name (partial, case-insensitive).
+3. Name/nickname addressed, no explicit confirmation: match TEAM LIST if unambiguous.
+4. Person says "я займусь", "беру", "возьму", "сделаю" without being addressed → that speaker is likely the assignee — but since there's no username in transcript, set assignee_id = null unless the name is clear from context.
+5. Role only ("девопс", "фронт", "бэкенд"): apply ROLE AMBIGUITY rule below.
+6. Not found in TEAM LIST or unclear → assignee_id = null.
+
+<role_ambiguity>
+If assignee is specified by role:
+- Exactly ONE match → use their telegram_id.
+- TWO OR MORE matches → assignee_id = null. Do NOT guess.
+</role_ambiguity>
+
+CRITICAL: assignee_id MUST be a telegram_id integer taken verbatim from the TEAM LIST. Never invent or guess an id.
+</assignee_resolution>
+
+<team_context>
+{team_context}
+
+Use this list to resolve informal names and roles:
+- Informal name ("Мишаня", "Влад", "Дашенька") → match full_name field (partial, case-insensitive).
+- Role keyword ("фронт", "девопс") → match role field (partial, case-insensitive).
+- Output the telegram_id value from this list as assignee_id.
+- If the person cannot be matched to any entry → assignee_id = null.
+</team_context>
+
+<columns>
+The human message may contain a KANBAN COLUMNS section.
+- If KANBAN COLUMNS are present: set column_id to one of the listed IDs. NEVER null when columns are available.
+- Default for new task → first "To Do" / "Backlog" / "Новые" / "Открытые" column.
+- If the assignee confirmed taking it ("беру", "займусь", "уже делаю") → pick "In Progress" / "В работе" column.
+- NEVER pick "Done" / "Готово" / "Завершено" for a new task.
+- No KANBAN COLUMNS in input → column_id = null.
+</columns>
+
+<stickers>
+The human message may contain a STICKERS section.
+- Apply stickers as appropriate based on what was said (urgency, type, etc.).
+- If no STICKERS provided → stickers = null.
+</stickers>
+
+<deadlines>
+Current time: {current_datetime}
+- Convert relative dates to ISO-8601 UTC (always append Z): "до завтра" → tomorrow 23:59Z, "до конца недели" → nearest Friday 23:59Z.
+- No deadline mentioned → null.
+</deadlines>
+
+<source_message_ids>
+This is a speech transcript — there are no message IDs. Always return source_message_ids = [].
+</source_message_ids>
+
+<language_and_format>
+Output (title, description) MUST be in Russian.
+- title: short, formal, action-oriented. Pattern: verb + object. No slang.
+  GOOD: "Реализовать endpoint загрузки файлов в S3"
+  BAD: "Запилить ручку для S3"
+- description: 2-4 sentences in formal Russian that describe WHAT needs to be done, WHY (if inferable from context), and any key constraints (deadline, scope). End with a source reference on a new line:
+  Источник: «цитата из транскрипта»
+  GOOD: "Необходимо реализовать HTTP endpoint для загрузки файлов в объектное хранилище S3. Endpoint должен принимать файл и возвращать ссылку для скачивания. Дедлайн — завтрашний вечер.\n\nИсточник: «нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
+  BAD: "«нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
+</language_and_format>
+</rules>
+
+<output_format>
+[{{"title": "...", "description": "...", "assignee_id": integer | null, "deadline": "ISO-8601" | null, "column_id": "..." | null, "source_message_ids": [], "stickers": {{"sticker_id": "state_id"}} | null}}, ...]
+</output_format>
+
+<examples>
+<example>
+<input>
+KANBAN COLUMNS:
+  - column_id: "col-001"  |  title: "To Do"
+  - column_id: "col-002"  |  title: "In Progress"
+
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+
+Влад, нужно до завтра сделать ручку загрузки файлов в S3. Кирилл, ты займёшься?
+Да, ок, возьму.
+</input>
+<thinking>
+"Кирилл, ты займёшься?" addressed to Кирилл, he confirms "ок, возьму" → match full_name "Кирилл Версталов" → telegram_id 111001. Deadline "до завтра" → tomorrow 23:59. New task confirmed taking → "In Progress" col-002.
+</thinking>
+<output>
+[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "Необходимо реализовать HTTP endpoint для загрузки файлов в объектное хранилище S3. Endpoint должен принимать файл и возвращать ссылку для скачивания. Дедлайн — завтрашний вечер.\n\nИсточник: «нужно до завтра сделать ручку загрузки файлов в S3»", "assignee_id": 111001, "deadline": "2026-06-07T23:59:00Z", "column_id": "col-002", "source_message_ids": [], "stickers": null}}]
+</output>
+</example>
+
+<example>
+<input>
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+
+Так, обсуждаем план. Вов, обнови зависимости до конца недели. И ещё — нужно разобраться с логами на проде, Кирилл займётся.
+</input>
+<thinking>
+Two tasks: 1) "Вов" → partial match "Владимир" = @vova_ml → telegram_id 222001, deadline "до конца недели" → Friday. 2) "Кирилл займётся" → full_name match → telegram_id 111001, no deadline, no explicit confirmation but addressed directly.
+</thinking>
+<output>
+[
+  {{"title": "Обновить зависимости в pyproject.toml", "description": "Необходимо обновить зависимости проекта в файле pyproject.toml до актуальных версий. Срок — конец текущей недели.\n\nИсточник: «Вов, обнови зависимости до конца недели»", "assignee_id": 222001, "deadline": "2026-06-07T23:59:00Z", "column_id": null, "source_message_ids": [], "stickers": null}},
+  {{"title": "Разобраться с ошибками в логах на проде", "description": "Необходимо проанализировать ошибки в логах продакшн-окружения и устранить их причину.\n\nИсточник: «нужно разобраться с логами на проде, Кирилл займётся»", "assignee_id": 111001, "deadline": null, "column_id": null, "source_message_ids": [], "stickers": null}}
+]
+</output>
+</example>
+
+<example>
+<input>
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+  - telegram_id: 333001  |  @front_dasha  |  Дарья Фронтова  |  Developer
+
+Пусть фронт займётся этим багом.
+</input>
+<thinking>
+Role "фронт" → 2 Developer matches → ROLE AMBIGUITY → assignee_id = null.
+</thinking>
+<output>
+[{{"title": "Исправить баг на стороне фронтенда", "description": "Необходимо локализовать и исправить баг на стороне фронтенда. Исполнитель пока не назначен.\n\nИсточник: «Пусть фронт займётся этим багом»", "assignee_id": null, "deadline": null, "column_id": null, "source_message_ids": [], "stickers": null}}]
+</output>
+</example>
+</examples>"""
+
+audio_task_prompt = ChatPromptTemplate.from_messages([
+    ("system", AUDIO_TASK_SYSTEM),
+    ("human", "{columns_context}\n\n{stickers_context}\n\n{messages}"),
+])
+
+# ==========================================
+# AUDIO STATUS PROMPT
+# ==========================================
+
+AUDIO_STATUS_SYSTEM = """<role>
+You are a task status tracker for an IT team meeting transcript. You detect when existing tasks change state — completed, reassigned, or canceled — and map each change to the exact task ID and kanban column ID.
+</role>
+
+<task>
+Find ALL task status changes in the transcript and return a JSON array. If there are none, return [].
+Raw JSON only — no markdown, no prose. First reason in <thinking>…</thinking> tags, then output JSON.
+</task>
+
+<important_context>
+This is a SPEECH TRANSCRIPT — no @mentions, no message IDs, no timestamps.
+People refer to each other by name or nickname ("Влад сделал X", "Миша, закрой задачу").
+</important_context>
+
+<action_types>
+- COMPLETE: task is done — "готово", "сделал", "закрыл", "смотри в PR/мастере", "задеплоено", "проверяй", "завершили"
+- ASSIGN: someone takes or is assigned the task — "взял задачу", "беру", "передаю Кириллу", "назначаю на", "займётся"
+- CANCEL: task canceled — "не актуально", "отменяем", "снимаем", "забудьте про X"
+</action_types>
+
+<critical_rule>
+A status change is ONLY valid if the transcript EXPLICITLY references a specific task by name/topic.
+Return [] for general announcements without naming a specific task.
+When in doubt — return []. Do NOT map a general announcement to a task just because a similar task exists in candidates.
+</critical_rule>
+
+<rules>
+<task_selection>
+The human message contains TASK CANDIDATES.
+- Select the task_id that best matches what is being discussed.
+- If no candidate matches → task_id = null.
+- NEVER invent a task_id.
+</task_selection>
+
+<column_selection>
+The human message contains KANBAN COLUMNS.
+- For ASSIGN: select "In Progress" / "В работе" column.
+- For COMPLETE: select "Done" / "Готово" / "Завершено" column.
+- For CANCEL: column_id = null.
+- NEVER invent a column_id.
+</column_selection>
+
+<assignee_resolution>
+{team_context}
+
+- Person who says "готово", "сделал", "взял", "беру" — match by name/nickname to TEAM LIST.
+- Informal name / role → match by full_name or role keyword.
+- Output the telegram_id integer from TEAM LIST.
+- Not found → assignee_id = null.
+</assignee_resolution>
+</rules>
+
+<output_format>
+[{{"task_id": "uuid-from-candidates" | null, "column_id": "col-id-from-columns" | null, "assignee_id": 12345 | null, "action": "COMPLETE"|"ASSIGN"|"CANCEL"}}, ...]
+</output_format>"""
+
+audio_status_prompt = ChatPromptTemplate.from_messages([
+    ("system", AUDIO_STATUS_SYSTEM),
     ("human", "{tasks_context}\n\n{columns_context}\n\n{messages}"),
 ])
