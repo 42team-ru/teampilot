@@ -3,6 +3,7 @@ package ru.team42.monolith.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.team42.backend.s3_common.service.S3Service;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.dto.request.AdminCreateTeamRequest;
 import ru.team42.monolith.dto.request.CreatePendingTeamChatRequest;
@@ -10,9 +11,11 @@ import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.response.PendingTeamChatResponse;
 import ru.team42.monolith.dto.response.TeamMemberResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
+import ru.team42.monolith.dto.response.UploadedFileResponse;
 import ru.team42.monolith.entity.PendingTeamChat;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
+import ru.team42.monolith.entity.UploadedFile;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.entity.enums.PendingTeamChatStatus;
 import ru.team42.monolith.entity.enums.SystemRole;
@@ -21,9 +24,11 @@ import ru.team42.monolith.mapper.TeamMapper;
 import ru.team42.monolith.repository.PendingTeamChatRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
+import ru.team42.monolith.repository.UploadedFileRepository;
 import ru.team42.monolith.repository.UserRepository;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +41,8 @@ public class TeamService {
     private final TeamUserRepository teamUserRepository;
     private final UserRepository userRepository;
     private final PendingTeamChatRepository pendingTeamChatRepository;
+    private final UploadedFileRepository uploadedFileRepository;
+    private final S3Service s3Service;
     private final TeamMapper teamMapper;
 
     public List<TeamResponse> getManagerTeams(Long telegramId) {
@@ -67,7 +74,15 @@ public class TeamService {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> AppException.notFound("Team with ID %s not found".formatted(teamId)));
 
-        if (req.telegramChatId() != null) team.setTelegramChatId(req.telegramChatId());
+        if (req.telegramChatId() != null) {
+            teamRepository.findByTelegramChatId(req.telegramChatId())
+                    .filter(t -> !t.getId().equals(teamId))
+                    .ifPresent(old -> {
+                        old.setTelegramChatId(null);
+                        teamRepository.saveAndFlush(old);
+                    });
+            team.setTelegramChatId(req.telegramChatId());
+        }
         if (req.chatTitle() != null) team.setChatTitle(req.chatTitle());
         if (req.kanbanId() != null) team.setKanbanId(req.kanbanId());
         if (req.kanbanApiKey() != null) team.setKanbanApiKey(req.kanbanApiKey());
@@ -148,7 +163,7 @@ public class TeamService {
     @Transactional(readOnly = true)
     public List<PendingTeamChatResponse> getMyPendingChats(Long managerTelegramId) {
         return pendingTeamChatRepository
-                .findAllByAddedByTelegramIdAndStatus(managerTelegramId, PendingTeamChatStatus.PENDING)
+                .findAllByAddedByTelegramIdAndStatusIn(managerTelegramId, PendingTeamChatStatus.PENDING, PendingTeamChatStatus.REMOVED)
                 .stream()
                 .map(PendingTeamChatResponse::from)
                 .toList();
@@ -195,6 +210,52 @@ public class TeamService {
             throw AppException.badRequest("Manager cannot remove themselves from the team");
         }
         teamUserRepository.delete(member);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UploadedFileResponse> getTeamFiles(UUID teamId, Long telegramId) {
+        requireMember(teamId, telegramId);
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> AppException.notFound("Team with ID %s not found".formatted(teamId)));
+        if (team.getTelegramChatId() == null) {
+            return List.of();
+        }
+        return uploadedFileRepository.findByTeamUser_Team_TelegramChatId(team.getTelegramChatId())
+                .stream()
+                .map(this::toFileResponse)
+                .toList();
+    }
+
+    private UploadedFileResponse toFileResponse(UploadedFile file) {
+        String downloadUrl = s3Service.presignDownload(file.getBucket(), file.getS3Key());
+        return new UploadedFileResponse(
+                file.getId(),
+                file.getOriginalFilename(),
+                file.getTitle(),
+                file.getDescription(),
+                file.getSummary(),
+                file.getContentType(),
+                file.getSizeBytes(),
+                file.getCreatedAt(),
+                downloadUrl
+        );
+    }
+
+    private void requireMember(UUID teamId, Long telegramId) {
+        if (telegramId == null) {
+            throw AppException.unauthorized(
+                    "Telegram user authentication required: provide a valid X-Telegram-Id header"
+            );
+        }
+        if (!teamRepository.existsById(teamId)) {
+            throw AppException.notFound("Team with ID %s not found".formatted(teamId));
+        }
+        boolean member = teamUserRepository.findByTeamIdAndUserTelegramId(teamId, telegramId).isPresent();
+        if (!member) {
+            throw AppException.forbidden(
+                    "Access denied: Telegram user %d is not a member of team %s".formatted(telegramId, teamId)
+            );
+        }
     }
 
     private void requireManager(UUID teamId, Long telegramId) {

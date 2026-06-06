@@ -1,0 +1,5 @@
+{"type":"spec","path":".trellis/tasks/06-06-task-priority/prd.md","description":"Acceptance criteria checklist"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/entity/Task.java","description":"Verify stickers jsonb field added"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/service/YouGileBoardSyncService.java","description":"Verify syncStickers called in syncTeam"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/kanban/YouGileService.java","description":"Verify stickers set in createTask/updateTask"}
+{"type":"spec","path":"llm-worker/llm/prompts.py","description":"Verify stickers section in extractor prompt and output format"}

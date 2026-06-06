@@ -29,10 +29,12 @@ import ru.team42.monolith.dto.response.YouGileProjectResponse;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.entity.User;
+import ru.team42.monolith.entity.YouGileCompany;
 import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 import ru.team42.monolith.repository.UserRepository;
+import ru.team42.monolith.repository.YouGileCompanyRepository;
 import ru.team42.monolith.security.JwtService;
 import ru.team42.monolith.security.TelegramOAuthVerifier;
 
@@ -47,6 +49,7 @@ public class AuthService {
     private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
     private final UserRepository userRepository;
+    private final YouGileCompanyRepository youGileCompanyRepository;
     private final TeamService teamService;
     private final DefaultApi yougileUnauthenticatedApi;
     private final TelegramOAuthVerifier telegramOAuthVerifier;
@@ -55,6 +58,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public InviteResponse createInvite(CreateInviteRequest request) {
         Team team = teamRepository.findByTelegramChatId(request.chatId())
+                .filter(Team::isActive)
                 .orElseThrow(() -> AppException.notFound("Team for chatId %d not found".formatted(request.chatId())));
         return new InviteResponse(team.getId());
     }
@@ -75,6 +79,21 @@ public class AuthService {
             teamUser.setUser(user);
             teamUser.setRole(TeamRole.USER);
             teamUser.setPosition(request.position());
+
+            if (request.yougileLogin() != null && request.yougilePassword() != null && team.getCompany() != null) {
+                try {
+                    String apiKey = fetchApiKey(request.yougileLogin(), request.yougilePassword(),
+                            team.getCompany().getYougileCompanyId());
+                    var api = YougileClientConfig.createAuthenticatedApi(apiKey);
+                    var yougileUser = api.userControllerGetMe().block();
+                    if (yougileUser != null && yougileUser.getId() != null) {
+                        teamUser.setYougileUserId(yougileUser.getId());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to fetch YouGile user for team {}: {}", teamId, e.getMessage());
+                }
+            }
+
             teamUserRepository.save(teamUser);
         }
 
@@ -151,7 +170,7 @@ public class AuthService {
     }
 
     @Transactional
-    public YouGileAuthResponse yougileAuth(YouGileAuthRequest request) {
+    public YouGileAuthResponse yougileAuth(YouGileAuthRequest request, Long managerTelegramId) {
         var companies = fetchCompanies(request.login(), request.password());
 
         String companyId = request.companyId();
@@ -167,7 +186,34 @@ public class AuthService {
         Team team = teamRepository.findByTelegramChatId(request.chatId())
                 .orElseThrow(() -> AppException.notFound("Team for chatId %d not found".formatted(request.chatId())));
         team.setKanbanApiKey(apiKey);
+
+        final String resolvedCompanyId = companyId;
+        YouGileCompany companyEntity = new YouGileCompany();
+        companyEntity.setYougileCompanyId(resolvedCompanyId);
+        companies.stream()
+                .filter(c -> resolvedCompanyId.equals(c.id()))
+                .findFirst()
+                .ifPresent(c -> companyEntity.setName(c.name()));
+        team.setCompany(youGileCompanyRepository.save(companyEntity));
+
         teamRepository.save(team);
+
+        if (managerTelegramId != null) {
+            try {
+                var api = YougileClientConfig.createAuthenticatedApi(apiKey);
+                var yougileUser = api.userControllerGetMe().block();
+                if (yougileUser != null && yougileUser.getId() != null) {
+                    final String yougileUserId = yougileUser.getId();
+                    teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), managerTelegramId)
+                            .ifPresent(tu -> {
+                                tu.setYougileUserId(yougileUserId);
+                                teamUserRepository.save(tu);
+                            });
+                }
+            } catch (Exception e) {
+                log.warn("Failed to set YouGile user ID for manager {}: {}", managerTelegramId, e.getMessage());
+            }
+        }
 
         var boards = fetchBoards(apiKey);
         return new YouGileAuthResponse(true, null, boards);

@@ -11,5 +11,5 @@ import java.util.UUID;
 public interface PendingTeamChatRepository extends JpaRepository<PendingTeamChat, UUID> {
     Optional<PendingTeamChat> findByTelegramChatId(Long telegramChatId);
 
-    List<PendingTeamChat> findAllByAddedByTelegramIdAndStatus(Long telegramId, PendingTeamChatStatus status);
+    List<PendingTeamChat> findAllByAddedByTelegramIdAndStatusIn(Long telegramId, PendingTeamChatStatus... status);
 }

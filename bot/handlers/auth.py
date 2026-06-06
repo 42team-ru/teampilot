@@ -15,7 +15,7 @@ from services.http_client import HttpRequestError, http_client
 from services.http_logging import log_http_request_error, log_http_response_error
 from services.team_service import get_my_teams, link_chat_to_team, get_team_id
 from keyboards.team import build_teams_keyboard
-from states.auth import RegistrationStates
+from states.auth import JoinTeamStates, RegistrationStates
 from states.setup import LinkTeamStates
 from storage import register_user
 
@@ -26,7 +26,44 @@ _BOT_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
 
 # ── /start join_{teamId} — вступить в команду ────────────────────────────────
 
-async def _handle_join(message: Message, team_id: str) -> None:
+async def _handle_join(message: Message, team_id: str, state: FSMContext) -> None:
+    """Entry point: save team_id and start YouGile credentials FSM."""
+    await state.update_data(join_team_id=team_id)
+    await state.set_state(JoinTeamStates.waiting_for_yougile_login)
+    await message.answer(
+        "Для вступления в команду введи <b>логин</b> от YouGile-аккаунта:",
+        parse_mode="HTML",
+    )
+
+
+@router.message(JoinTeamStates.waiting_for_yougile_login, F.text)
+async def process_join_yougile_login(message: Message, state: FSMContext) -> None:
+    login = (message.text or "").strip()
+    if not login:
+        await message.answer("Пришли логин от YouGile текстом.")
+        return
+    await state.update_data(join_yougile_login=login)
+    await state.set_state(JoinTeamStates.waiting_for_yougile_password)
+    await message.answer("Теперь введи <b>пароль</b> от YouGile:", parse_mode="HTML")
+
+
+@router.message(JoinTeamStates.waiting_for_yougile_password, F.text)
+async def process_join_yougile_password(message: Message, state: FSMContext) -> None:
+    password = (message.text or "").strip()
+    if not password:
+        await message.answer("Пришли пароль YouGile текстом.")
+        return
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    data = await state.get_data()
+    team_id: str = data["join_team_id"]
+    login: str = data["join_yougile_login"]
+    await state.clear()
+
     u = message.from_user
     path = f"/auth/invite/{team_id}"
     body = {
@@ -34,12 +71,17 @@ async def _handle_join(message: Message, team_id: str) -> None:
         "telegramLogin": u.username,
         "firstName": u.first_name,
         "lastName": u.last_name,
+        "yougileLogin": login,
+        "yougilePassword": password,
     }
     context = {
         "team_id": team_id,
         "telegram_id": u.id,
         "telegram_login": u.username,
     }
+
+    checking_msg = await message.answer("⏳ Подключаюсь...")
+
     try:
         resp = await http_client.post(
             f"{settings.BACKEND_URL}{path}",
@@ -69,14 +111,14 @@ async def _handle_join(message: Message, team_id: str) -> None:
         )
         raise BackendApiError.from_response(resp)
 
-    data = resp.json()
     register_user(u.id, u.username, u.full_name)
     logger.info(f"User {u.id} ({u.full_name}) joined team {team_id}")
-    await message.answer(
+    await checking_msg.edit_text(
         f"👋 Добро пожаловать, <b>{u.first_name}</b>! 🎉\n\n"
         "Ты добавлен в команду. Теперь ты будешь получать уведомления о задачах.\n\n"
         "Нажми кнопку, чтобы открыть главное меню:",
         reply_markup=home_keyboard(),
+        parse_mode="HTML",
     )
 
 
@@ -163,7 +205,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
     if token.startswith("join_"):
         team_id = token[len("join_"):]
-        await _handle_join(message, team_id)
+        await _handle_join(message, team_id, state)
         return
 
     if token.startswith("link_"):

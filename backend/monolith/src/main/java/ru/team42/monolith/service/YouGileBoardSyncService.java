@@ -8,6 +8,8 @@ import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.TaskColumn;
 import ru.team42.monolith.entity.TaskStatusHistory;
 import ru.team42.monolith.entity.Team;
+import ru.team42.monolith.entity.YouGileSticker;
+import ru.team42.monolith.entity.YouGileStickerState;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSource;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
@@ -16,9 +18,13 @@ import ru.team42.monolith.repository.TaskColumnRepository;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
+import ru.team42.monolith.repository.YouGileStickerRepository;
+import ru.team42.monolith.repository.YouGileStickerStateRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 
@@ -33,6 +39,8 @@ public class YouGileBoardSyncService {
     private final TaskStatusHistoryRepository historyRepository;
     private final TeamUserRepository teamUserRepository;
     private final TaskEventPublisher taskEventPublisher;
+    private final YouGileStickerRepository stickerRepository;
+    private final YouGileStickerStateRepository stickerStateRepository;
 
     @Autowired
     @Lazy
@@ -42,6 +50,7 @@ public class YouGileBoardSyncService {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return;
 
         self.syncColumns(team);
+        self.syncStickers(team);
 
         List<YouGileService.YouGileTaskResponse> remoteTasks = youGileService.fetchAllTasksForBoard(team);
         for (YouGileService.YouGileTaskResponse remote : remoteTasks) {
@@ -51,7 +60,30 @@ public class YouGileBoardSyncService {
                 log.warn("Failed to sync YouGile task {} for team {}: {}", remote.id(), team.getId(), e.getMessage());
             }
         }
+
+        Set<String> remoteIds = remoteTasks.stream()
+                .map(YouGileService.YouGileTaskResponse::id)
+                .collect(Collectors.toSet());
+        self.reconcileDeletedTasks(team, remoteIds);
+
         log.info("Board sync done for team {} — {} remote tasks processed", team.getId(), remoteTasks.size());
+    }
+
+    @Transactional
+    public void reconcileDeletedTasks(Team team, Set<String> remoteIds) {
+        List<Task> synced = taskRepository.findByTeamIdAndExternalIdIsNotNullAndLocalStatusNotIn(
+                team.getId(),
+                List.of(TaskLocalStatus.DELETED_FROM_YOUGILE));
+
+        for (Task task : synced) {
+            if (!remoteIds.contains(task.getExternalId())) {
+                task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
+                task.setDeleted(true);
+                taskRepository.save(task);
+                taskEventPublisher.publishCancelled(task);
+                log.info("Reconciled: task '{}' ({}) no longer in YouGile — marked deleted", task.getTitle(), task.getId());
+            }
+        }
     }
 
     @Transactional
@@ -59,6 +91,9 @@ public class YouGileBoardSyncService {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
 
         List<YouGileService.ColumnInfo> remote = youGileService.fetchColumns(team);
+        Set<String> remoteIds = remote.stream()
+                .map(YouGileService.ColumnInfo::id)
+                .collect(Collectors.toSet());
         List<TaskColumn> result = new java.util.ArrayList<>();
 
         for (YouGileService.ColumnInfo info : remote) {
@@ -69,11 +104,55 @@ public class YouGileBoardSyncService {
             col.setTeam(team);
             col.setTitle(info.title());
             col.setYouGileColumnId(info.id());
+            col.setDeleted(false);
 
             result.add(taskColumnRepository.save(col));
         }
 
+        taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId()).forEach(col -> {
+            if (!remoteIds.contains(col.getYouGileColumnId())) {
+                col.setDeleted(true);
+                taskColumnRepository.save(col);
+                log.info("Column '{}' ({}) no longer in YouGile — marked deleted", col.getTitle(), col.getId());
+            }
+        });
+
         log.info("Synced {} columns for team {}", result.size(), team.getId());
+        return result;
+    }
+
+    @Transactional
+    public List<YouGileSticker> syncStickers(Team team) {
+        if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
+
+        List<YouGileService.StickerInfo> remote = youGileService.fetchStickers(team);
+        List<YouGileSticker> result = new java.util.ArrayList<>();
+
+        for (YouGileService.StickerInfo info : remote) {
+            YouGileSticker sticker = stickerRepository
+                    .findByTeamIdAndYougileStickerId(team.getId(), info.id())
+                    .orElseGet(YouGileSticker::new);
+
+            sticker.setTeam(team);
+            sticker.setYougileStickerId(info.id());
+            sticker.setTitle(info.title());
+            sticker.setType(info.type());
+            sticker = stickerRepository.save(sticker);
+
+            for (YouGileService.StickerStateInfo stateInfo : info.states()) {
+                YouGileStickerState state = stickerStateRepository
+                        .findByStickerIdAndYougileStateId(sticker.getId(), stateInfo.id())
+                        .orElseGet(YouGileStickerState::new);
+                state.setSticker(sticker);
+                state.setYougileStateId(stateInfo.id());
+                state.setTitle(stateInfo.title());
+                stickerStateRepository.save(state);
+            }
+
+            result.add(sticker);
+        }
+
+        log.info("Synced {} stickers for team {}", result.size(), team.getId());
         return result;
     }
 
@@ -91,6 +170,15 @@ public class YouGileBoardSyncService {
         boolean changed = false;
         boolean columnChanged = false;
         boolean contentChanged = false;
+        boolean restored = false;
+
+        if (task.isDeleted() || task.getLocalStatus() == TaskLocalStatus.DELETED_FROM_YOUGILE) {
+            task.setDeleted(false);
+            task.setLocalStatus(TaskLocalStatus.ACTIVE);
+            changed = true;
+            restored = true;
+            log.info("Restoring task '{}' ({}) — reappeared in YouGile after deletion", task.getTitle(), task.getId());
+        }
 
         if (remote.columnId() != null) {
             Optional<TaskColumn> colOpt = taskColumnRepository
@@ -138,13 +226,22 @@ public class YouGileBoardSyncService {
             changed = true;
         }
 
+        if (remote.completed() != task.isCompleted()) {
+            task.setCompleted(remote.completed());
+            changed = true;
+        }
+
         if (changed) {
             taskRepository.save(task);
-            if (columnChanged) {
-                taskEventPublisher.publishColumnChanged(task, task.getColumn());
-            }
-            if (contentChanged) {
-                taskEventPublisher.publishUpdated(task);
+            if (restored) {
+                taskEventPublisher.publishImported(task);
+            } else {
+                if (columnChanged) {
+                    taskEventPublisher.publishColumnChanged(task, task.getColumn());
+                }
+                if (contentChanged) {
+                    taskEventPublisher.publishUpdated(task);
+                }
             }
         }
     }
@@ -159,6 +256,7 @@ public class YouGileBoardSyncService {
         task.setSyncStatus(TaskSyncStatus.SYNCED);
         task.setSource(TaskSource.YOUGILE);
         task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        task.setCompleted(remote.completed());
 
         TaskColumn column = null;
         if (remote.columnId() != null) {

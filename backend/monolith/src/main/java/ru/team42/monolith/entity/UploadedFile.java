@@ -2,6 +2,9 @@ package ru.team42.monolith.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,15 +18,16 @@ import ru.team42.backend.s3_common.entity.AbstractStoredFileEntity;
 @NoArgsConstructor
 public class UploadedFile extends AbstractStoredFileEntity {
 
-    @Column(name = "telegram_user_id")
-    private Long telegramUserId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_user_id")
+    private TeamUser teamUser;
 
-    @Column(name = "telegram_chat_id")
-    private Long telegramChatId;
+    @Column(name = "title", length = 500)
+    private String title;
 
-    @Column(name = "telegram_username", length = 255)
-    private String telegramUsername;
+    @Column(name = "description", length = 2000)
+    private String description;
 
-    @Column(name = "telegram_first_name", length = 255)
-    private String telegramFirstName;
+    @Column(name = "summary", columnDefinition = "TEXT")
+    private String summary;
 }
