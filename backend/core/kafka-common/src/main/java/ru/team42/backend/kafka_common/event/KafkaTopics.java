@@ -13,7 +13,6 @@ public final class KafkaTopics {
     public static final String FILES_UPLOADED     = "files.uploaded";
     public static final String BOTS_TASKS         = "bots.tasks";
     public static final String BOTS_NOTIFICATIONS  = "bots.notifications";
-    public static final String TRANSCRIPT_READY    = "audio.transcript.ready";
     public static final String TASKS_STATE         = "tasks.state";
     public static final String TASKS_LIFECYCLE     = "tasks.lifecycle";
 }
