@@ -14,7 +14,6 @@ from models import (
     StatusExtractionList,
     TaskCreateEvent,
     TaskExtractionList,
-    TeamMember,
     TranscriptReadyEvent,
 )
 from infra.minio import download_file
@@ -26,31 +25,34 @@ TOPIC_STATUS = "llm.status.change"
 
 def format_messages(batch: MessageBatchEvent) -> str:
     return "\n".join(
-        f"[{m.timestamp.strftime('%H:%M')}] {m.username or m.full_name}: {m.text}"
+        f"[ID: {m.message_id or ''}] [{m.timestamp.strftime('%H:%M')}] {m.username or m.full_name}: {m.text}"
         for m in batch.messages
     )
 
 
 def format_team_context(batch: MessageBatchEvent) -> str:
     if not batch.team:
-        return "TEAM LIST: not provided (use chat log usernames only)"
+        return "TEAM LIST: not provided — set assignee_id = null"
 
-    lines = ["TEAM LIST (use this to resolve names and roles to @username):"]
+    lines = ["TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):"]
     for m in batch.team:
         username = m.username if m.username.startswith("@") else f"@{m.username}"
         position_display = f"  [{m.position}]" if m.position else ""
-        lines.append(f"  - {username}  |  {m.full_name}  |  {m.role}{position_display}")
+        lines.append(f"  - telegram_id: {m.telegram_id}  |  {username}  |  {m.full_name}  |  {m.role}{position_display}")
     return "\n".join(lines)
 
 
-def resolve_assignee_id(assignee: str | None, team: list[TeamMember]) -> int | None:
-    if not assignee or not team:
-        return None
-    assignee_clean = assignee.lstrip("@").lower()
-    for member in team:
-        if member.username.lstrip("@").lower() == assignee_clean:
-            return member.telegram_id
-    return None
+def format_stickers_context(batch: MessageBatchEvent) -> str:
+    if not batch.stickers:
+        return "STICKERS: not provided — set stickers = null"
+    lines = ["STICKERS (set sticker_id → state_id for each applicable sticker; omit if not applicable):"]
+    for s in batch.stickers:
+        if s.states:
+            states_str = ", ".join(f'"{st.id}" ({st.title})' for st in s.states)
+            lines.append(f'  - sticker_id: "{s.id}"  |  name: "{s.title}"  |  states: [{states_str}]')
+        else:
+            lines.append(f'  - sticker_id: "{s.id}"  |  name: "{s.title}"  |  free-text value')
+    return "\n".join(lines)
 
 
 def build_column_map(batch: MessageBatchEvent) -> dict[str, str]:
@@ -99,12 +101,12 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
             "current_datetime": batch.occurred_at.isoformat(),
             "team_context": format_team_context(batch),
             "columns_context": columns_ctx,
+            "stickers_context": format_stickers_context(batch),
         })
         extraction_list = TaskExtractionList.model_validate(raw)
 
         events = []
         for extraction in extraction_list.tasks:
-            assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
             task_data = extraction.model_dump()
             if task_data.get("deadline") and not task_data["deadline"].endswith("Z"):
                 task_data["deadline"] = task_data["deadline"] + "Z"
@@ -115,7 +117,6 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
             events.append(TaskCreateEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
-                assignee_telegram_id=assignee_id,
                 confidence=confidence,
                 **task_data,
             ))
@@ -136,11 +137,9 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
 
         events = []
         for extraction in extraction_list.statuses:
-            assignee_id = resolve_assignee_id(extraction.assignee, batch.team)
             events.append(StatusChangeEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
-                assignee_telegram_id=assignee_id,
                 resolved_task_id=None,
                 **extraction.model_dump(),
             ))
@@ -165,8 +164,9 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
             raw = task_chain.invoke({
                 "messages": chunk,
                 "current_datetime": datetime.now(timezone.utc).isoformat(),
-                "team_context": "TEAM LIST: not provided",
+                "team_context": "TEAM LIST: not provided — set assignee_id = null",
                 "columns_context": "KANBAN COLUMNS: not provided — set column_id = null",
+                "stickers_context": "STICKERS: not provided — set stickers = null",
             })
             extraction_list = TaskExtractionList.model_validate(raw)
             for extraction in extraction_list.tasks:
@@ -177,7 +177,6 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
                 publish(TOPIC_TASKS, TaskCreateEvent(
                     team_id=event.team_id,
                     source_batch_id=event.file_id,
-                    assignee_telegram_id=None,
                     **task_data,
                 ), key=event.file_id)
                 logger.info(f"Transcript task published: {extraction.title!r} (chunk {chunk_idx})")
@@ -188,14 +187,13 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
         try:
             raw = status_chain.invoke({
                 "messages": chunk,
-                "team_context": "TEAM LIST: not provided",
+                "team_context": "TEAM LIST: not provided — set assignee_id = null",
             })
             extraction_list = StatusExtractionList.model_validate(raw)
             for extraction in extraction_list.statuses:
                 publish(TOPIC_STATUS, StatusChangeEvent(
                     team_id=event.team_id,
                     source_batch_id=event.file_id,
-                    assignee_telegram_id=None,
                     resolved_task_id=None,
                     **extraction.model_dump(),
                 ), key=event.file_id)
