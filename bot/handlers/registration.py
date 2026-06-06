@@ -275,7 +275,7 @@ async def _continue_after_registration(
         return
 
     if payload.startswith("join_"):
-        await _handle_join(message, payload[len("join_"):])
+        await _handle_join(message, payload[len("join_"):], state)
         return
 
     if payload.startswith("link_"):
