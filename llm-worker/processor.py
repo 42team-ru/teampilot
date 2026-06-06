@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import List, Union
 
@@ -6,7 +5,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from infra.kafka import publish
-from infra.qdrant import is_task_duplicate, search_tasks
+from infra.qdrant import search_tasks
 from llm.chains import classifier_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
@@ -86,18 +85,10 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
 
     logger.debug(f"Classification for batch {batch.event_id}: {clf}")
 
-    run_tasks = clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD
-    run_statuses = clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD
-
-    if run_tasks and run_statuses:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_tasks = executor.submit(_extract_tasks, batch, text, clf.confidence_task)
-            future_statuses = executor.submit(_extract_statuses, batch, text)
-            results.extend(future_tasks.result())
-            results.extend(future_statuses.result())
-    elif run_tasks:
+    if clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD:
         results.extend(_extract_tasks(batch, text, clf.confidence_task))
-    elif run_statuses:
+
+    if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
         results.extend(_extract_statuses(batch, text))
 
     return results
@@ -117,10 +108,6 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
 
         events = []
         for extraction in extraction_list.tasks:
-            if is_task_duplicate(extraction.title, extraction.description or "", batch.team_id):
-                logger.info(f"[TASK SKIP] duplicate title={extraction.title!r} team={batch.team_id}")
-                continue
-
             task_data = extraction.model_dump()
             if task_data.get("deadline") and not task_data["deadline"].endswith("Z"):
                 task_data["deadline"] = task_data["deadline"] + "Z"
@@ -128,17 +115,12 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
             short_id = str(task_data.get("column_id") or "")
             task_data["column_id"] = col_map.get(short_id)
 
-            event = TaskCreateEvent(
+            events.append(TaskCreateEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
                 confidence=confidence,
                 **task_data,
-            )
-            logger.info(
-                f"[TASK] title={event.title!r} assignee={event.assignee_id} "
-                f"deadline={event.deadline} column={event.column_id} confidence={confidence:.2f}"
-            )
-            events.append(event)
+            ))
 
         return events
     except Exception as e:
@@ -173,16 +155,11 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
             data = extraction.model_dump()
             short_id = str(data.get("column_id") or "")
             data["column_id"] = col_map.get(short_id) or data.get("column_id")
-            event = StatusChangeEvent(
+            events.append(StatusChangeEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
                 **data,
-            )
-            logger.info(
-                f"[STATUS] action={event.action} task_id={event.task_id} "
-                f"column={event.column_id} assignee={event.assignee_id}"
-            )
-            events.append(event)
+            ))
         return events
     except Exception as e:
         logger.error(f"Status extraction chain failed (batch={batch.event_id}): {e}")
