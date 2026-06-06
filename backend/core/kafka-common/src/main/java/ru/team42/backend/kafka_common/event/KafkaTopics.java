@@ -16,4 +16,6 @@ public final class KafkaTopics {
     public static final String TASKS_STATE             = "tasks.state";
     public static final String TASKS_LIFECYCLE         = "tasks.lifecycle";
     public static final String FILES_TRANSCRIPT_READY  = "files.transcript_ready";
+    public static final String MEETINGS_AUDIO_CHUNKS   = "meetings.audio.chunks";
+    public static final String MEETINGS_LIVE_RESULTS   = "meetings.live.results";
 }

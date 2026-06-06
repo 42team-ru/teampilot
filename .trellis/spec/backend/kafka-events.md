@@ -29,7 +29,7 @@ class TaskStateEvent(BaseModel):
     column_title: str | None = Field(default=None, alias="columnTitle")
 ```
 
-The exception is `KafkaConsumerConfig` on the Spring side which uses `SNAKE_CASE` strategy for **inbound** events (LLM Worker → Spring direction). That affects only `messages.batches`, `llm.tasks.create`, `llm.status.change`.
+The exception is `KafkaConsumerConfig` on the Spring side which uses `SNAKE_CASE` strategy for **inbound** events (LLM Worker → Spring direction), for example `llm.tasks.create`, `llm.status.change`, `files.transcript_ready`, and `meetings.live.results`.
 
 ---
 
@@ -42,8 +42,153 @@ The exception is `KafkaConsumerConfig` on the Spring side which uses `SNAKE_CASE
 | `bots.tasks` | Spring | Bot | Confirmed task DM notifications |
 | `bots.notifications` | Spring | Bot | Scheduled task DM notifications (deadline / stale) |
 | `messages.batches` | Spring | LLM Worker | Batches for LLM analysis |
+| `audio.new` | Spring | LLM Worker | Uploaded audio/video file transcription |
 | `llm.tasks.create` | LLM Worker | Spring | Create task from LLM |
 | `llm.status.change` | LLM Worker | Spring | Status change from LLM |
+| `files.transcript_ready` | LLM Worker | Spring | File summary after audio transcription |
+| `meetings.audio.chunks` | Spring | LLM Worker | Live meeting audio chunks stored in MinIO |
+| `meetings.live.results` | LLM Worker | Spring | Live transcript/task/status/summary payload for WebSocket broadcast |
+
+---
+
+## Scenario: Live Meeting Audio Events
+
+### 1. Scope / Trigger
+
+Triggered when a team manager creates a `Meeting` and the meeting's primary
+recorder sends audio chunks over Spring WebSocket/STOMP. Spring stores every
+accepted chunk in MinIO and emits `meetings.audio.chunks`; the LLM Worker
+transcribes the chunk, maintains an in-memory sliding transcript context per
+meeting, publishes normal `llm.tasks.create` / `llm.status.change` events for
+mutations, then publishes `meetings.live.results` so Spring can broadcast live
+updates to `/topic/meetings/{meetingId}/results`.
+
+### 2. Signatures
+
+**Java producer** (`MeetingAudioChunkPublisher`):
+```java
+public void publishChunk(
+    Meeting meeting,
+    int chunkIndex,
+    boolean finalChunk,
+    String bucket,
+    String s3Key,
+    String originalFilename,
+    String contentType,
+    long sizeBytes
+)
+```
+
+**Python consumer** (`llm-worker/models.py`):
+```python
+class MeetingAudioChunkEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    meeting_id: str = Field(alias="meetingId")
+    team_id: str = Field(alias="teamId")
+    recorder_telegram_id: int | None = Field(alias="recorderTelegramId", default=None)
+    chunk_index: int = Field(alias="chunkIndex")
+    final_chunk: bool = Field(alias="finalChunk", default=False)
+    bucket: str
+    s3_key: str = Field(alias="s3Key")
+    original_filename: str = Field(alias="originalFilename", default="meeting-chunk")
+    content_type: str = Field(alias="contentType", default="audio/webm")
+```
+
+**Python producer** (`MeetingLiveResultEvent`) → Spring consumer
+(`MeetingLiveResultConsumer`):
+```python
+class MeetingLiveResultEvent(BaseModel):
+    meeting_id: str
+    team_id: str
+    chunk_index: int
+    transcript: str
+    summary: str = ""
+    context: str = ""
+    tasks: list[MeetingTaskPreview] = Field(default_factory=list)
+    statuses: list[MeetingStatusPreview] = Field(default_factory=list)
+```
+
+### 3. Contracts
+
+`meetings.audio.chunks` is Spring → Python and therefore serializes fields as
+camelCase. Python must use Pydantic aliases for all multi-word fields.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `meetingId` | string UUID | no | Local DB meeting ID |
+| `teamId` | string UUID | no | Team scope for task extraction and Qdrant status lookup |
+| `recorderTelegramId` | long | yes | Primary recorder Telegram ID |
+| `chunkIndex` | int | no | Client-provided monotonically increasing chunk number |
+| `finalChunk` | boolean | no | Forces extraction even if context threshold is not reached |
+| `bucket` | string | no | MinIO bucket containing this chunk |
+| `s3Key` | string | no | MinIO object key, under `meetings/{meetingId}/chunks/` |
+| `originalFilename` | string | no | Used as Whisper filename hint |
+| `contentType` | string | no | Defaults to `audio/webm` at the Spring boundary |
+| `team` / `columns` / `stickers` | arrays | no | Same context shape as `audio.new` |
+
+`meetings.live.results` is Python → Spring and therefore sends snake_case JSON.
+Spring's `KafkaConsumerConfig` maps it to camelCase Java fields.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `meeting_id` | string UUID | no | Broadcast destination key |
+| `team_id` | string UUID | no | Team scope |
+| `chunk_index` | int | no | Chunk that produced this result |
+| `transcript` | string | no | Whisper text for this chunk |
+| `summary` | string | no | Empty when no extraction ran for this chunk |
+| `context` | string | no | Sliding transcript window currently used by LLM |
+| `tasks` | array | no | Preview of newly extracted task events |
+| `statuses` | array | no | Preview of newly extracted status-change events |
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| WebSocket sender is not authenticated | Reject the STOMP message |
+| Sender is not a member of the meeting team | Reject with forbidden |
+| Sender is not `Meeting.primaryRecorder` | Reject with forbidden; do not store or publish the chunk |
+| `audioBase64` is invalid or empty | Reject before S3 upload |
+| MinIO upload fails | Do not publish `meetings.audio.chunks` |
+| LLM Worker cannot download/transcribe chunk | Log error, commit Kafka message, no live result |
+| Context has not reached extraction threshold | Publish live transcript result with empty `tasks`/`statuses` |
+| `finalChunk=true` | Run extraction even below the normal threshold |
+
+### 5. Good/Base/Bad Cases
+
+- **Good**: manager creates meeting, sends chunks `0..N`, worker publishes transcript results and only new task/status previews; Spring broadcasts to all subscribers.
+- **Base**: short chunk has useful transcript but not enough context; subscribers still see transcript, task extraction waits for more context.
+- **Bad**: two participants send duplicated audio; only the primary recorder's chunks are accepted, preventing duplicate MinIO objects and repeated LLM extraction.
+
+### 6. Tests Required
+
+User explicitly requested no tests for the initial implementation. If tests are
+added later, cover:
+
+- manager-only `POST /meetings`;
+- non-primary recorder STOMP chunk rejection;
+- `meetings.audio.chunks` payload aliases in Python;
+- `meetings.live.results` snake_case deserialization in Spring;
+- final chunk forcing extraction below threshold.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```python
+class MeetingAudioChunkEvent(BaseModel):
+    meeting_id: str
+    s3_key: str
+```
+Spring sends `meetingId` and `s3Key`, so these fields parse as missing.
+
+#### Correct
+```python
+class MeetingAudioChunkEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    meeting_id: str = Field(alias="meetingId")
+    s3_key: str = Field(alias="s3Key")
+```
 
 ---
 
