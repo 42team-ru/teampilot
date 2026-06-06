@@ -21,7 +21,6 @@ public class DataSeeder implements ApplicationRunner {
         seedAdminUser(2031863132L, "eiiwoqodhkqoqo", "владмиир", "Мельник");
         seedAdminUser(713978344L, "idzey878", "Кирилл", "Пантюхин");
         seedAdminUser(1763162562L, "lagroDev", "василий", "Мельник");
-        seedAdminUser(5288131710L, "VlaDoNS1", "Влад", "Лихолетов");
     }
 
     private void seedAdminUser(Long telegramId, String login, String firstName, String lastName) {

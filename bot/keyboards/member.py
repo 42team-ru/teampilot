@@ -102,14 +102,9 @@ def team_tasks_keyboard(
     my_tasks_callback: str,
     back_callback: str,
     col_callback_prefix: str = "tasks:col",
-    pending_callback: str | None = None,
-    pending_count: int = 0,
 ) -> InlineKeyboardMarkup:
     buttons: list[list[InlineKeyboardButton]] = []
     buttons.append([InlineKeyboardButton(text="📥 Мои задачи", callback_data=my_tasks_callback)])
-    if pending_callback:
-        label = f"🆕 На подтверждение ({pending_count})" if pending_count else "🆕 На подтверждение"
-        buttons.append([InlineKeyboardButton(text=label, callback_data=pending_callback)])
     for col in columns:
         title = (col.get("title") or "Колонка")[:_MAX_TITLE]
         buttons.append([InlineKeyboardButton(

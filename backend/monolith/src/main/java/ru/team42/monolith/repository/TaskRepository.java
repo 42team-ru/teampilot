@@ -18,11 +18,6 @@ import java.util.UUID;
 
 public interface TaskRepository extends JpaRepository<Task, UUID> {
 
-    List<Task> findByAssigneeUserTelegramIdAndCompletedFalseAndDeletedFalseAndLocalStatus(
-            Long telegramId, TaskLocalStatus localStatus);
-
-    List<Task> findByDeletedFalseAndLocalStatus(TaskLocalStatus localStatus);
-
     Page<Task> findByTeamId(UUID teamId, Pageable pageable);
 
     Page<Task> findByTeamIdAndColumnId(UUID teamId, UUID columnId, Pageable pageable);

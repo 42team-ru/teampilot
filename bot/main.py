@@ -20,8 +20,6 @@ from handlers.manager import router as manager_router
 from handlers.member import router as member_router
 from handlers.registration import router as registration_router
 from handlers.setup import router as setup_router
-from handlers.sync import router as sync_router
-from handlers.sync import sync_report_router
 from handlers.tasks import router as tasks_router
 from handlers.tasks_commands import router as tasks_commands_router
 from handlers.upload import router as upload_router
@@ -150,13 +148,11 @@ async def main() -> None:
     dp.include_router(manager_router)
     dp.include_router(member_router)
     dp.include_router(auth_router)
-    dp.include_router(sync_router)
     dp.include_router(tasks_router)
     dp.include_router(tasks_commands_router)
     dp.include_router(upload_router)
     dp.include_router(files_router)
     dp.include_router(group_router)
-    dp.include_router(sync_report_router)
 
     consumer = EventConsumer()
     consumer_task = asyncio.create_task(consumer.start(bot))

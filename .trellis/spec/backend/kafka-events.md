@@ -144,11 +144,133 @@ class TaskLifecycleEvent(BaseModel):
 
 | type | Qdrant action |
 |---|---|
-| CONFIRMED | `store_task(task_id, title, description, team_id)` — upsert |
-| UPDATED | same as CONFIRMED — upsert replaces embedding |
-| CANCELLED | `delete_task(task_id)` |
+| CONFIRMED | `store_task(task_id, title, description, team_id)` — upsert searchable task points |
+| UPDATED | same as CONFIRMED — upsert replaces searchable task points |
+| CANCELLED | `delete_task(task_id)` — removes old single-point IDs and all searchable task points |
 
-`store_task` uses Qdrant's `add()` which is an **upsert by point ID**. Calling it again with the same `task_id` but updated text replaces the embedding.
+`store_task` does not write one Qdrant point per task anymore. It writes
+multiple stable point IDs for different searchable representations of the same
+task, then `search_tasks(...)` aggregates Qdrant hits back to unique task
+candidates.
+
+### 4. LLM Worker Task Search Index Contract
+
+#### Scope / Trigger
+
+Triggered by Spring `tasks.lifecycle` events. The LLM Worker uses this index
+for duplicate detection and for status-change candidate retrieval before asking
+the LLM to choose a `task_id`.
+
+#### Signatures
+
+```python
+store_task(task_id: str, title: str, description: str, team_id: str) -> None
+delete_task(task_id: str) -> None
+search_tasks(
+    query: str,
+    team_id: str,
+    limit: int = 5,
+    score_threshold: float | None = None,
+) -> list[dict]
+is_task_duplicate(title: str, description: str, team_id: str) -> bool
+```
+
+#### Contracts
+
+Task points are written to `settings.QDRANT_COLLECTION_TASKS` with:
+
+| Payload field | Type | Notes |
+|---|---|---|
+| `task_id` | string | Local DB task UUID from Spring |
+| `team_id` | string | Required filter for every query |
+| `title` | string | Normalized task title |
+| `description` | string | Normalized description; service confidence lines are removed |
+| `kind` | string | One of `summary`, `title`, `description`, `status` |
+| `text` | string | Exact text embedded for this representation |
+
+Point IDs are deterministic UUIDv5 values derived from `task_id + kind`. Keep
+the old raw `task_id` in the delete selector so cancellations clean up points
+written by the previous single-vector implementation.
+
+`search_tasks(...)` must:
+- embed the normalized query;
+- filter by `team_id`;
+- query more Qdrant points than the requested candidate limit;
+- apply `settings.STATUS_HINT_THRESHOLD` when no explicit score threshold is
+  provided;
+- aggregate multiple hits for the same `task_id`;
+- return unique task candidates with `task_id`, `title`, `description`, `score`,
+  `matched_kind`, `matched_text`, and `matches`.
+
+Before status-change extraction calls `search_tasks(...)`, it must build
+focused search queries from status-like chat messages or transcript snippets.
+Do not embed the entire formatted message batch as the status lookup query; it
+mixes unrelated lunch/noise/new-task text into the vector and makes Qdrant return
+weak candidates.
+
+`is_task_duplicate(...)` must use `settings.DEDUP_THRESHOLD`, not
+`STATUS_HINT_THRESHOLD`.
+
+#### Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| Empty query | Return `[]` without calling Qdrant |
+| Embedding provider fails | Log `warning`, return safe fallback (`[]` / `False`) |
+| Qdrant query/upsert/delete fails | Log `warning`, do not crash Kafka consumer |
+| Missing payload `task_id` in a Qdrant hit | Ignore that hit |
+| Multiple hits for same task | Aggregate to one candidate and keep match metadata |
+| No status-like query can be extracted | Return no task candidates; the LLM may still output `task_id = null` |
+
+#### Good/Base/Bad Cases
+
+- Good: query `"qdrant готов"` matches a task title plus status representation
+  and returns one candidate with two matches.
+- Good: formatted batch with lunch/noise plus `"авторизацию закрыл"` searches
+  Qdrant using `"авторизацию закрыл"`, not the full batch.
+- Base: an old single-point task still has only `task_id`, `title`, `team_id`;
+  aggregation still returns a usable candidate.
+- Bad: a low-score unrelated task should be filtered out by
+  `STATUS_HINT_THRESHOLD` instead of being shown to the status prompt.
+
+#### Tests Required
+
+- `store_task` writes multiple points with stable UUID point IDs and cleaned
+  descriptions.
+- `search_tasks` aggregates multiple points for the same task and preserves
+  match metadata.
+- `delete_task` includes both old raw task ID and all derived point IDs.
+- `is_task_duplicate` passes `DEDUP_THRESHOLD`.
+- Status prompt formatting includes retrieval context, not only task title.
+- Status candidate lookup calls Qdrant once per focused status query and does
+  not use unrelated batch messages as vector query input.
+
+#### Wrong vs Correct
+
+Wrong:
+```python
+PointStruct(
+    id=task_id,
+    vector=embed(f"{title}\n{description}"),
+    payload={"task_id": task_id, "title": title, "team_id": team_id},
+)
+```
+
+Correct:
+```python
+PointStruct(
+    id=uuid5(namespace, f"{task_id}:{kind}"),
+    vector=embed(representation_text),
+    payload={
+        "task_id": task_id,
+        "team_id": team_id,
+        "title": title,
+        "description": description,
+        "kind": kind,
+        "text": representation_text,
+    },
+)
+```
 
 ---
 

@@ -201,10 +201,7 @@ async def team_manager_tasks_menu(callback: CallbackQuery) -> None:
         await callback.answer("Сначала привяжите Telegram-чат к команде.", show_alert=True)
         return
 
-    columns, pending_count = await asyncio.gather(
-        get_team_columns(int(chat_id), callback.from_user.id),
-        _pending_tasks_count(chat_id, callback.from_user.id),
-    )
+    columns = await get_team_columns(int(chat_id), callback.from_user.id)
     note = "Выберите колонку или раздел:" if columns else "⚠️ Канбан-доска не настроена.\nДоступны только личные задачи."
     await callback.message.edit_text(
         f"📋 <b>Задачи: {escape(team.get('chatTitle') or team_id)}</b>\n\n{note}",
@@ -213,8 +210,6 @@ async def team_manager_tasks_menu(callback: CallbackQuery) -> None:
             columns,
             my_tasks_callback=f"tasks:team_my:{team_id}:active:0",
             back_callback=f"team_ctx:manager:{team_id}",
-            pending_callback=f"mgr:pending:{team_id}:0",
-            pending_count=pending_count,
         ),
     )
     await callback.answer()
@@ -438,11 +433,11 @@ async def team_ctx_files_list(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("fd:"))
-async def file_detail_by_index(callback: CallbackQuery) -> None:
+@router.callback_query(F.data.startswith("team_ctx:file_detail:"))
+async def team_ctx_file_detail(callback: CallbackQuery) -> None:
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    parts = callback.data.split(":", 2)
-    team_id, idx_str = parts[1], parts[2]
+    parts = callback.data.split(":", 3)
+    team_id, file_id = parts[2], parts[3]
 
     try:
         files = await get_team_files(team_id, callback.from_user.id)
@@ -450,17 +445,7 @@ async def file_detail_by_index(callback: CallbackQuery) -> None:
         await callback.answer("Не удалось загрузить файл.", show_alert=True)
         return
 
-    try:
-        f = files[int(idx_str)]
-    except (IndexError, ValueError):
-        f = None
-
-    await _show_file_detail(callback, team_id, f)
-
-
-async def _show_file_detail(callback, team_id: str, f) -> None:
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
+    f = next((x for x in files if str(x.get("id")) == file_id), None)
     if f is None:
         await callback.answer("Файл не найден.", show_alert=True)
         return
@@ -590,7 +575,7 @@ async def _pending_tasks_count(chat_id: int | str, telegram_id: int) -> int:
     page = await get_tasks_page(
         chat_id=int(chat_id),
         telegram_id=telegram_id,
-        pending_approval=True,
+        completed=False,
         page=0,
         size=1,
     )
