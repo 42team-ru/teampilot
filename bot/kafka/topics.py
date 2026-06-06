@@ -8,9 +8,6 @@ TOPIC_TASK_REJECTED  = "tasks.rejected"
 TOPIC_STATUS_CHANGED = "tasks.status"
 
 # Backend → Bot (consumer)
-TOPIC_TASK_PROPOSE  = "tasks.propose"
-TOPIC_REMINDER_SEND = "reminders.send"
-TOPIC_SUMMARY_SEND  = "summary.send"
 TOPIC_TASKS_STATE        = "tasks.state"
 TOPIC_BOTS_TASKS         = "bots.tasks"
 TOPIC_BOTS_NOTIFICATIONS = "bots.notifications"

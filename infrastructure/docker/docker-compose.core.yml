@@ -48,12 +48,9 @@ services:
                 tasks.confirmed
                 tasks.rejected
                 tasks.status
-                tasks.propose
                 tasks.state
                 bots.tasks
                 bots.notifications
-                reminders.send
-                summary.send
                 llm.tasks.create
                 llm.status.change
               --brokers redpanda:19092 || true
