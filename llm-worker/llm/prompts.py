@@ -811,3 +811,37 @@ audio_status_prompt = ChatPromptTemplate.from_messages([
     ("system", AUDIO_STATUS_SYSTEM),
     ("human", "{tasks_context}\n\n{columns_context}\n\n{messages}"),
 ])
+
+# ==========================================
+# FILE SUMMARY PROMPT
+# ==========================================
+
+FILE_SUMMARY_SYSTEM = """<role>
+You are an AI assistant that generates structured metadata for an IT team meeting recording based on its transcript.
+</role>
+
+<task>
+Given a speech transcript of a team meeting, generate:
+- title: a concise meeting title (max 100 characters), in Russian
+- description: 2-4 formal sentences describing what the meeting was about, in Russian
+- summary: a 5-10 sentence executive summary of the meeting, covering key decisions and action items, in Russian
+
+Output ONLY a JSON object with exactly these three keys. No markdown, no prose, no thinking tags.
+</task>
+
+<rules>
+- title: short, formal, descriptive. Pattern: topic noun phrase. E.g. "Встреча по архитектуре бэкенда", "Планирование спринта Q3"
+- description: formal Russian. What was discussed, who participated (if inferrable), key context.
+- summary: formal Russian. Key decisions, tasks assigned (if any), conclusions, next steps.
+- If the transcript is too short or unclear, still produce the best possible output.
+- All output fields MUST be in Russian.
+</rules>
+
+<output_format>
+{{"title": "...", "description": "...", "summary": "..."}}
+</output_format>"""
+
+file_summary_prompt = ChatPromptTemplate.from_messages([
+    ("system", FILE_SUMMARY_SYSTEM),
+    ("human", "{transcript}"),
+])

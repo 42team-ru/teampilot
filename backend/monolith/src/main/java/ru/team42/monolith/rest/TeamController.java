@@ -16,6 +16,7 @@ import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.response.PendingTeamChatResponse;
 import ru.team42.monolith.dto.response.TeamMemberResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
+import ru.team42.monolith.dto.response.UploadedFileResponse;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.service.TeamService;
 
@@ -88,6 +89,16 @@ public class TeamController {
             @PathVariable UUID teamId
     ) {
         return ResponseUtils.ok(teamService.getTeamMembers(teamId, requireTelegramId(currentUser, servletRequest)));
+    }
+
+    @Operation(summary = "Получить список файлов команды с presigned URL для скачивания")
+    @GetMapping("/{teamId}/files")
+    public ResponseEntity<List<UploadedFileResponse>> getTeamFiles(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest,
+            @PathVariable UUID teamId
+    ) {
+        return ResponseUtils.ok(teamService.getTeamFiles(teamId, requireTelegramId(currentUser, servletRequest)));
     }
 
     @Operation(summary = "Удалить участника из команды")

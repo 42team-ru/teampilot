@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 
-from llm.prompts import audio_status_prompt, audio_task_prompt, classifier_prompt, status_prompt, task_prompt
+from llm.prompts import audio_status_prompt, audio_task_prompt, classifier_prompt, file_summary_prompt, status_prompt, task_prompt
 from llm.safe_parser import SafeJsonOutputParser
 from settings import settings
 
@@ -32,3 +32,4 @@ task_chain = task_prompt | _expensive | _safe_json
 status_chain = status_prompt | _expensive | _safe_json
 audio_task_chain = audio_task_prompt | _expensive | _safe_json
 audio_status_chain = audio_status_prompt | _expensive | _safe_json
+file_summary_chain = file_summary_prompt | _expensive | _safe_json

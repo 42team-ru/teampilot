@@ -146,6 +146,14 @@ def proto_to_batch_event(proto_event: Any) -> MessageBatchEvent:
 
 # ── Kafka: LLM Worker → Spring ──────────────────────────────────────────────
 
+class FileSummaryEvent(BaseModel):
+    file_id: str
+    team_id: str | None
+    title: str
+    description: str
+    summary: str
+
+
 class TaskCreateEvent(BaseModel):
     team_id: str
     title: str
