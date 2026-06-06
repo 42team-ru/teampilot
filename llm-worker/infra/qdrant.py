@@ -14,6 +14,7 @@ def _embedder() -> OpenAIEmbeddings:
         model=settings.EMBEDDINGS_MODEL,
         base_url=settings.EMBEDDINGS_API_BASE,
         api_key=settings.EMBEDDINGS_API_KEY,
+        check_embedding_ctx_length=False,
     )
 
 
@@ -45,7 +46,7 @@ def store_task(task_id: str, title: str, description: str, team_id: str) -> None
             )],
         )
     except Exception as e:
-        logger.warning(f"store_task failed (task_id={task_id}): {e}")
+        logger.opt(exception=True).warning(f"store_task failed (task_id={task_id}): {e}")
 
 
 def delete_task(task_id: str) -> None:
@@ -56,7 +57,7 @@ def delete_task(task_id: str) -> None:
         )
         logger.debug(f"Deleted task {task_id} from Qdrant")
     except Exception as e:
-        logger.warning(f"delete_task failed (task_id={task_id}): {e}")
+        logger.opt(exception=True).warning(f"delete_task failed (task_id={task_id}): {e}")
 
 
 def is_task_duplicate(title: str, description: str, team_id: str) -> bool:
@@ -75,5 +76,5 @@ def is_task_duplicate(title: str, description: str, team_id: str) -> bool:
             logger.debug(f"Duplicate found for {title!r}, score={results[0].score:.3f}")
         return bool(results)
     except Exception as e:
-        logger.warning(f"is_task_duplicate failed for {title!r}: {e}")
+        logger.opt(exception=True).warning(f"is_task_duplicate failed for {title!r}: {e}")
         return False
