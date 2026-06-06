@@ -1,0 +1,12 @@
+{"type":"spec","path":".trellis/tasks/06-06-task-priority/prd.md","description":"Full PRD with requirements, flow, file list"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/entity/TaskColumn.java","description":"Entity pattern to mirror for YouGileSticker"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/service/YouGileBoardSyncService.java","description":"syncColumns pattern to mirror for syncStickers"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/kanban/YouGileService.java","description":"fetchColumns pattern + createTask/updateTask to extend with stickers"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/entity/Task.java","description":"Task entity — add stickers jsonb field"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/event/LlmTaskCreateEvent.java","description":"Add stickers: Map<String,String>"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/service/TaskService.java","description":"createFromLlmEvent — set task.stickers"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/service/ChatMessageBatchingService.java","description":"Load stickers from DB and pass to publisher"}
+{"type":"spec","path":"backend/monolith/src/main/java/ru/team42/monolith/service/ChatMessageBatchPublisher.java","description":"Add stickers to proto batch"}
+{"type":"spec","path":"backend/core/kafka-proto-common/src/main/proto/ru/team42/events/message_batch.proto","description":"Add StickerDef + StickerStateDef messages, field 9"}
+{"type":"spec","path":"llm-worker/llm/prompts.py","description":"Extractor prompt — add STICKER LIST section and stickers output field"}
+{"type":"spec","path":"llm-worker/processor.py","description":"Parse stickers from batch, pass to LLM, publish in event"}
