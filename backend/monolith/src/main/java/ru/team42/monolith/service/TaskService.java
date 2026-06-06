@@ -16,6 +16,7 @@ import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.event.LlmUpdateTaskEvent;
 import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.mapper.LlmTaskUpdateMapper;
+import ru.team42.monolith.repository.ChatMessageRepository;
 import ru.team42.monolith.repository.TaskColumnRepository;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TaskStatusHistoryRepository;
@@ -38,6 +39,7 @@ public class TaskService {
     private final TaskStatusHistoryRepository historyRepository;
     private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final YouGileService youGileService;
     private final TaskEventPublisher taskEventPublisher;
     private final LlmTaskUpdateMapper llmTaskUpdateMapper;
@@ -72,6 +74,10 @@ public class TaskService {
         }
         if (event.getAuthorTelegramId() != null) {
             resolveTeamUser(team, event.getAuthorTelegramId()).ifPresent(task::setAuthor);
+        }
+
+        if (event.getSourceMessageIds() != null && !event.getSourceMessageIds().isEmpty()) {
+            task.setSourceMessages(chatMessageRepository.findAllById(event.getSourceMessageIds()));
         }
 
         boolean autoConfirm = event.getConfidence() >= appProperties.getLlm().getAutoConfirmThreshold();

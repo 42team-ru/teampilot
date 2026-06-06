@@ -6,6 +6,8 @@ import lombok.extern.jackson.Jacksonized;
 import ru.team42.backend.kafka_common.event.BaseEvent;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Входящее кфка событие от воркера
@@ -33,4 +35,6 @@ public class LlmTaskCreateEvent extends BaseEvent {
     private Instant deadline;
 
     private float confidence;
+
+    private List<UUID> sourceMessageIds;
 }
