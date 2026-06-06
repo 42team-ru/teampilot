@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import os
+import re
 from typing import List, Union
 
 from loguru import logger
@@ -29,6 +30,41 @@ from settings import settings
 TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
 TOPIC_FILE_SUMMARY = "files.transcript_ready"
+_MAX_STATUS_SEARCH_QUERIES = 6
+_STATUS_SEARCH_MARKERS = (
+    "готов",
+    "сделал",
+    "сделала",
+    "сделали",
+    "доделал",
+    "доделала",
+    "закрыл",
+    "закрыла",
+    "закрыли",
+    "закончил",
+    "закончила",
+    "завершил",
+    "завершила",
+    "смотри в",
+    "проверяй",
+    "в мастере",
+    "в pr",
+    "в pull request",
+    "задепло",
+    "беру",
+    "взял",
+    "взяла",
+    "приступил",
+    "приступила",
+    "начал",
+    "начала",
+    "отменяем",
+    "отменить",
+    "снимаем",
+    "не актуально",
+    "неактуально",
+    "отбой",
+)
 
 
 def format_messages(batch: MessageBatchEvent) -> str:
@@ -77,6 +113,118 @@ def format_columns_context(batch: MessageBatchEvent) -> tuple[str, dict[str, str
         short = real_to_short[col.id]
         lines.append(f"  - column_id: \"{short}\"  |  title: \"{col.title}\"")
     return "\n".join(lines), col_map
+
+
+def _status_marker_index(text: str) -> int:
+    lower = text.lower()
+    indexes = [
+        lower.find(marker)
+        for marker in _STATUS_SEARCH_MARKERS
+        if marker in lower
+    ]
+    return min(indexes) if indexes else -1
+
+
+def _looks_like_status_query(text: str) -> bool:
+    return _status_marker_index(text) >= 0
+
+
+def _clean_status_search_query(text: str, limit: int = 320) -> str:
+    # Strip formatter metadata like "[ID: ...] [10:00] username:" when the
+    # fallback input is the already formatted batch text.
+    cleaned = re.sub(r"^(?:\[[^\]]*]\s*)+", "", text).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    if ": " in cleaned:
+        prefix, rest = cleaned.split(": ", 1)
+        if len(prefix) <= 80:
+            cleaned = rest
+
+    if len(cleaned) <= limit:
+        return cleaned
+
+    marker_idx = _status_marker_index(cleaned)
+    if marker_idx < 0:
+        return cleaned[:limit].rstrip()
+
+    start = max(0, marker_idx - 120)
+    end = min(len(cleaned), start + limit)
+    return cleaned[start:end].strip()
+
+
+def _dedupe_status_queries(queries: list[str]) -> list[str]:
+    result = []
+    seen = set()
+    for query in queries:
+        cleaned = _clean_status_search_query(query)
+        key = cleaned.lower()
+        if not cleaned or key in seen:
+            continue
+        seen.add(key)
+        result.append(cleaned)
+        if len(result) >= _MAX_STATUS_SEARCH_QUERIES:
+            break
+    return result
+
+
+def _status_queries_from_batch(batch: MessageBatchEvent) -> list[str]:
+    return _dedupe_status_queries([
+        message.text
+        for message in batch.messages
+        if _looks_like_status_query(message.text)
+    ])
+
+
+def _status_queries_from_text(text: str) -> list[str]:
+    pieces = re.split(r"[\n\r]+|(?<=[.!?])\s+", text)
+    status_pieces = [piece for piece in pieces if _looks_like_status_query(piece)]
+    return _dedupe_status_queries(status_pieces)
+
+
+def _merge_status_candidates(
+    merged: dict[str, dict],
+    candidate: dict,
+    query: str,
+) -> None:
+    task_id = candidate.get("task_id")
+    if not task_id:
+        return
+
+    score = float(candidate.get("rank_score") or candidate.get("score") or 0.0)
+    existing = merged.setdefault(task_id, {**candidate, "matched_queries": []})
+
+    existing_score = float(
+        existing.get("rank_score") or existing.get("score") or 0.0
+    )
+    if score > existing_score:
+        existing.update(candidate)
+
+    matched_queries = existing.setdefault("matched_queries", [])
+    if query not in matched_queries:
+        matched_queries.append(query)
+
+
+def _search_status_task_candidates(
+    team_id: str | None,
+    queries: list[str],
+    limit: int = 5,
+) -> list[dict]:
+    if not team_id or not queries:
+        return []
+
+    merged: dict[str, dict] = {}
+    for query in queries:
+        for candidate in search_tasks(query, team_id, limit=limit):
+            _merge_status_candidates(merged, candidate, query)
+
+    return sorted(
+        merged.values(),
+        key=lambda candidate: (
+            float(candidate.get("rank_score") or candidate.get("score") or 0.0),
+            len(candidate.get("matched_queries") or []),
+        ),
+        reverse=True,
+    )[:limit]
 
 
 def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
@@ -162,13 +310,30 @@ def format_task_candidates(candidates: list[dict]) -> str:
         return "TASK CANDIDATES: (none — Qdrant returned no matches)"
     lines = ["TASK CANDIDATES (select task_id ONLY from this list):"]
     for c in candidates:
-        lines.append(f'  - task_id: "{c["task_id"]}"  |  title: "{c["title"]}"')
+        parts = [
+            f'task_id: "{c["task_id"]}"',
+            f'title: "{c["title"]}"',
+        ]
+        if c.get("description"):
+            parts.append(f'description: "{c["description"]}"')
+        if c.get("score") is not None:
+            parts.append(f'score: {c["score"]:.3f}')
+        if c.get("matched_kind"):
+            parts.append(f'matched: {c["matched_kind"]}')
+        if c.get("matched_queries"):
+            queries = "; ".join(c["matched_queries"][:2])
+            parts.append(f'query: "{queries}"')
+        lines.append("  - " + "  |  ".join(parts))
     return "\n".join(lines)
 
 
 def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeEvent]:
     try:
-        candidates = search_tasks(text, batch.team_id, limit=5)
+        candidates = _search_status_task_candidates(
+            batch.team_id,
+            _status_queries_from_batch(batch),
+            limit=5,
+        )
         columns_ctx, col_map = format_columns_context(batch)
 
         raw = status_chain.invoke({
@@ -290,7 +455,11 @@ def _process_transcript_chunk(
 
     if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
         try:
-            candidates = search_tasks(chunk, team_id, limit=5) if team_id else []
+            candidates = _search_status_task_candidates(
+                team_id,
+                _status_queries_from_text(chunk),
+                limit=5,
+            )
             raw = audio_status_chain.invoke({
                 "messages": chunk,
                 "team_context": team_ctx,
