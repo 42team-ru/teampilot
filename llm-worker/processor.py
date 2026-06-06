@@ -7,19 +7,16 @@ from pydantic import ValidationError
 
 from infra.kafka import publish
 from infra.qdrant import is_task_duplicate, search_tasks
-from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, status_chain, task_chain
+from llm.chains import classifier_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
-    AudioNewEvent,
-    AudioColumnInfo,
-    AudioTeamMember,
-    AudioStickerInfo,
     ClassificationResult,
     MessageBatchEvent,
     StatusChangeEvent,
     StatusExtractionList,
     TaskCreateEvent,
     TaskExtractionList,
+    TranscriptReadyEvent,
 )
 from infra.minio import download_file
 from settings import settings
@@ -131,11 +128,6 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
             short_id = str(task_data.get("column_id") or "")
             task_data["column_id"] = col_map.get(short_id)
 
-            if confidence > 0:
-                task_data["description"] = (
-                    task_data["description"] + f"\n\nУверенность ИИ: {confidence:.0%}"
-                )
-
             event = TaskCreateEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
@@ -197,159 +189,69 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
         return []
 
 
-def format_audio_team_context(members: list[AudioTeamMember]) -> str:
-    if not members:
-        return "TEAM LIST: not provided — set assignee_id = null"
-    lines = ["TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):"]
-    for m in members:
-        username = m.username if m.username.startswith("@") else f"@{m.username}" if m.username else "(no username)"
-        position_display = f"  [{m.position}]" if m.position else ""
-        lines.append(f"  - telegram_id: {m.telegram_id}  |  {username}  |  {m.full_name}  |  {m.role}{position_display}")
-    return "\n".join(lines)
-
-
-def format_audio_columns_context(columns: list[AudioColumnInfo]) -> tuple[str, dict[str, str]]:
-    if not columns:
-        return "KANBAN COLUMNS: not provided — set column_id = null", {}
-    col_map = {str(i + 1): col.id for i, col in enumerate(columns)}
-    real_to_short = {v: k for k, v in col_map.items()}
-    lines = ["KANBAN COLUMNS (use the short id as column_id):"]
-    for col in columns:
-        short = real_to_short[col.id]
-        lines.append(f"  - column_id: \"{short}\"  |  title: \"{col.title}\"")
-    return "\n".join(lines), col_map
-
-
-def format_audio_stickers_context(stickers: list[AudioStickerInfo]) -> str:
-    if not stickers:
-        return "STICKERS: not provided — set stickers = null"
-    lines = ["STICKERS (set sticker_id → state_id for each applicable sticker; omit if not applicable):"]
-    for s in stickers:
-        if s.states:
-            states_str = ", ".join(f'"{st.id}" ({st.title})' for st in s.states)
-            lines.append(f'  - sticker_id: "{s.id}"  |  name: "{s.title}"  |  states: [{states_str}]')
-        else:
-            lines.append(f'  - sticker_id: "{s.id}"  |  name: "{s.title}"  |  free-text value')
-    return "\n".join(lines)
-
-
-def _process_transcript_chunk(
-    chunk: str,
-    chunk_idx: int,
-    file_id: str,
-    team_id: str | None,
-    team_members: list[AudioTeamMember],
-    columns: list[AudioColumnInfo],
-    stickers: list[AudioStickerInfo],
-) -> None:
+def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReadyEvent) -> None:
     try:
         clf_output = classifier_chain.invoke({"messages": chunk})
         clf = ClassificationResult.model_validate(clf_output)
     except Exception as e:
-        logger.error(f"Classifier failed for transcript {file_id} chunk {chunk_idx}: {e}")
+        logger.error(f"Classifier failed for transcript {event.file_id} chunk {chunk_idx}: {e}")
         return
 
-    logger.debug(f"Transcript {file_id} chunk {chunk_idx} classification: {clf}")
-
-    team_ctx = format_audio_team_context(team_members)
-    columns_ctx, col_map = format_audio_columns_context(columns)
-    stickers_ctx = format_audio_stickers_context(stickers)
+    logger.debug(f"Transcript {event.file_id} chunk {chunk_idx} classification: {clf}")
 
     if clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD:
         try:
-            raw = audio_task_chain.invoke({
+            raw = task_chain.invoke({
                 "messages": chunk,
                 "current_datetime": datetime.now(timezone.utc).isoformat(),
-                "team_context": team_ctx,
-                "columns_context": columns_ctx,
-                "stickers_context": stickers_ctx,
+                "team_context": "TEAM LIST: not provided — set assignee_id = null",
+                "columns_context": "KANBAN COLUMNS: not provided — set column_id = null",
+                "stickers_context": "STICKERS: not provided — set stickers = null",
             })
             extraction_list = TaskExtractionList.model_validate(raw)
             for extraction in extraction_list.tasks:
                 task_data = extraction.model_dump()
-                short_id = str(task_data.get("column_id") or "")
-                task_data["column_id"] = col_map.get(short_id)
+                task_data["column_id"] = None
                 if task_data.get("deadline") and not task_data["deadline"].endswith("Z"):
                     task_data["deadline"] = task_data["deadline"] + "Z"
-                audio_confidence = clf.confidence_task
-                if audio_confidence > 0:
-                    task_data["description"] = (
-                        task_data["description"] + f"\n\nУверенность ИИ: {audio_confidence:.0%}"
-                    )
                 publish(TOPIC_TASKS, TaskCreateEvent(
-                    team_id=team_id,
-                    source_batch_id=file_id,
+                    team_id=event.team_id,
+                    source_batch_id=event.file_id,
                     **task_data,
-                ), key=file_id)
+                ), key=event.file_id)
                 logger.info(f"Transcript task published: {extraction.title!r} (chunk {chunk_idx})")
         except Exception as e:
-            logger.error(f"Task extraction failed for transcript {file_id} chunk {chunk_idx}: {e}")
+            logger.error(f"Task extraction failed for transcript {event.file_id} chunk {chunk_idx}: {e}")
 
     if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
         try:
-            candidates = search_tasks(chunk, team_id, limit=5) if team_id else []
-            raw = audio_status_chain.invoke({
+            raw = status_chain.invoke({
                 "messages": chunk,
-                "team_context": team_ctx,
-                "tasks_context": format_task_candidates(candidates),
-                "columns_context": columns_ctx,
+                "team_context": "TEAM LIST: not provided — set assignee_id = null",
             })
             extraction_list = StatusExtractionList.model_validate(raw)
             for extraction in extraction_list.statuses:
-                data = extraction.model_dump()
-                short_id = str(data.get("column_id") or "")
-                data["column_id"] = col_map.get(short_id) or data.get("column_id")
                 publish(TOPIC_STATUS, StatusChangeEvent(
-                    team_id=team_id,
-                    source_batch_id=file_id,
-                    **data,
-                ), key=file_id)
+                    team_id=event.team_id,
+                    source_batch_id=event.file_id,
+                    **extraction.model_dump(),
+                ), key=event.file_id)
                 logger.info(f"Transcript status published: {extraction.action} (chunk {chunk_idx})")
         except Exception as e:
-            logger.error(f"Status extraction failed for transcript {file_id} chunk {chunk_idx}: {e}")
+            logger.error(f"Status extraction failed for transcript {event.file_id} chunk {chunk_idx}: {e}")
 
 
-def process_transcript_text(
-    text: str,
-    file_id: str,
-    team_id: str | None,
-    team_members: list[AudioTeamMember] | None = None,
-    columns: list[AudioColumnInfo] | None = None,
-    stickers: list[AudioStickerInfo] | None = None,
-) -> None:
+def process_transcript(event: TranscriptReadyEvent) -> None:
+    logger.info(f"Processing transcript file_id={event.file_id} from {event.bucket}/{event.s3_key}")
+
+    try:
+        text = download_file(event.bucket, event.s3_key).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Failed to download transcript {event.s3_key}: {e}")
+        return
+
     chunks = chunk_text(text)
-    logger.info(f"Transcript {file_id}: {len(text)} chars → {len(chunks)} chunk(s)")
+    logger.info(f"Transcript {event.file_id}: {len(text)} chars → {len(chunks)} chunk(s)")
+
     for idx, chunk in enumerate(chunks):
-        _process_transcript_chunk(
-            chunk, idx, file_id, team_id,
-            team_members or [], columns or [], stickers or [],
-        )
-
-
-def process_audio(event: AudioNewEvent) -> None:
-    from infra.audio import to_whisper_wav
-    from infra.whisper import transcribe
-
-    logger.info(f"Processing audio file_id={event.file_id} from {event.bucket}/{event.s3_key}")
-
-    try:
-        audio_bytes = download_file(event.bucket, event.s3_key)
-    except Exception as e:
-        logger.error(f"Failed to download audio {event.s3_key}: {e}")
-        return
-
-    try:
-        wav_bytes = to_whisper_wav(audio_bytes)
-        filename = event.original_filename if event.original_filename.endswith(".wav") else event.original_filename + ".wav"
-        text = transcribe(wav_bytes, filename)
-    except Exception as e:
-        logger.error(f"Whisper transcription failed for file_id={event.file_id}: {e}")
-        return
-
-    logger.info(f"Transcribed file_id={event.file_id}: {len(text)} chars")
-    process_transcript_text(
-        text, event.file_id, event.team_id,
-        team_members=event.team,
-        columns=event.columns,
-        stickers=event.stickers,
-    )
+        _process_transcript_chunk(chunk, idx, event)

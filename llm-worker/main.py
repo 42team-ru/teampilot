@@ -9,21 +9,21 @@ from loguru import logger
 from infra.kafka import BatchConsumer, flush, publish
 from infra.qdrant import delete_task, init_collections, store_task
 from models import (
-    AudioNewEvent,
     MessageBatchEvent,
     StatusChangeEvent,
     TaskCreateEvent,
     TaskLifecycleEvent,
+    TranscriptReadyEvent,
     proto_to_batch_event,
 )
-from processor import process_audio, process_batch
+from processor import process_batch, process_transcript
 from proto_generated.ru.team42.events import message_batch_pb2
 from settings import settings
 
 TOPIC_IN = "messages.batches"
 TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
-TOPIC_AUDIO = "audio.new"
+TOPIC_TRANSCRIPT = "audio.transcript.ready"
 TOPIC_LIFECYCLE = "tasks.lifecycle"
 
 
@@ -66,18 +66,18 @@ def run_lifecycle_consumer(stop_event: threading.Event) -> None:
         consumer.close()
 
 
-def run_audio_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_AUDIO)
+def run_transcript_consumer(stop_event: threading.Event) -> None:
+    consumer = BatchConsumer(TOPIC_TRANSCRIPT)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
-    with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="llm-audio") as executor:
+    with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="llm-transcript") as executor:
         try:
             while not stop_event.is_set():
                 while pending and pending[0][0].done():
                     fut, msg = pending.popleft()
                     if fut.exception():
-                        logger.error(f"Audio processing failed: {fut.exception()}")
+                        logger.error(f"Transcript processing failed: {fut.exception()}")
                     consumer.commit(msg)
 
                 if len(pending) >= concurrency:
@@ -88,18 +88,18 @@ def run_audio_consumer(stop_event: threading.Event) -> None:
                 if msg is None:
                     continue
                 try:
-                    event = AudioNewEvent.model_validate_json(msg.value().decode())
-                    fut = executor.submit(process_audio, event)
+                    event = TranscriptReadyEvent.model_validate_json(msg.value().decode())
+                    fut = executor.submit(process_transcript, event)
                     pending.append((fut, msg))
                 except Exception as e:
-                    logger.error(f"Error parsing audio.new event: {e}")
+                    logger.error(f"Error parsing transcript event: {e}")
                     consumer.commit(msg)
         finally:
             for fut, msg in pending:
                 try:
                     fut.result(timeout=120)
                 except Exception as e:
-                    logger.error(f"Pending audio failed at shutdown: {e}")
+                    logger.error(f"Pending transcript failed at shutdown: {e}")
                 consumer.commit(msg)
             consumer.close()
 
@@ -109,13 +109,13 @@ def main() -> None:
     init_collections()
 
     stop_event = threading.Event()
-    audio_thread = threading.Thread(
-        target=run_audio_consumer,
+    transcript_thread = threading.Thread(
+        target=run_transcript_consumer,
         args=(stop_event,),
         daemon=True,
-        name="audio-consumer",
+        name="transcript-consumer",
     )
-    audio_thread.start()
+    transcript_thread.start()
 
     lifecycle_thread = threading.Thread(
         target=run_lifecycle_consumer,
@@ -172,7 +172,7 @@ def main() -> None:
                 consumer.commit(msg)
             consumer.close()
             flush()
-            audio_thread.join(timeout=5)
+            transcript_thread.join(timeout=5)
             lifecycle_thread.join(timeout=5)
 
 

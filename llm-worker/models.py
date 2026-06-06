@@ -8,46 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ── Kafka: Spring → LLM Worker ─────────────────────────────────────────────
 
-class AudioTeamMember(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    telegram_id: int = Field(alias="telegramId")
-    username: str = ""
-    full_name: str = Field(alias="fullName", default="")
-    role: str = ""
-    position: str | None = None
-
-
-class AudioColumnInfo(BaseModel):
-    id: str
-    title: str
-
-
-class AudioStickerState(BaseModel):
-    id: str
-    title: str
-
-
-class AudioStickerInfo(BaseModel):
-    id: str
-    title: str
-    type: str
-    states: list[AudioStickerState] = Field(default_factory=list)
-
-
-class AudioNewEvent(BaseModel):
-    """Incoming event from audio.new — Spring sends camelCase JSON."""
+class TranscriptReadyEvent(BaseModel):
+    """Incoming event from audio.transcript.ready — Spring sends camelCase JSON."""
     model_config = ConfigDict(populate_by_name=True)
 
     file_id: str = Field(alias="fileId")
-    team_id: str | None = Field(alias="teamId", default=None)
-    team_chat_id: int | None = Field(alias="teamChatId", default=None)
+    team_id: str = Field(alias="teamId")
     bucket: str
     s3_key: str = Field(alias="s3Key")
-    original_filename: str = Field(alias="originalFilename", default="audio")
-    content_type: str = Field(alias="contentType", default="audio/ogg")
-    team: list[AudioTeamMember] = Field(default_factory=list)
-    columns: list[AudioColumnInfo] = Field(default_factory=list)
-    stickers: list[AudioStickerInfo] = Field(default_factory=list)
 
 
 class MessageDto(BaseModel):
