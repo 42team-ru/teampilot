@@ -91,6 +91,9 @@ public class YouGileBoardSyncService {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
 
         List<YouGileService.ColumnInfo> remote = youGileService.fetchColumns(team);
+        Set<String> remoteIds = remote.stream()
+                .map(YouGileService.ColumnInfo::id)
+                .collect(Collectors.toSet());
         List<TaskColumn> result = new java.util.ArrayList<>();
 
         for (YouGileService.ColumnInfo info : remote) {
@@ -101,9 +104,18 @@ public class YouGileBoardSyncService {
             col.setTeam(team);
             col.setTitle(info.title());
             col.setYouGileColumnId(info.id());
+            col.setDeleted(false);
 
             result.add(taskColumnRepository.save(col));
         }
+
+        taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId()).forEach(col -> {
+            if (!remoteIds.contains(col.getYouGileColumnId())) {
+                col.setDeleted(true);
+                taskColumnRepository.save(col);
+                log.info("Column '{}' ({}) no longer in YouGile — marked deleted", col.getTitle(), col.getId());
+            }
+        });
 
         log.info("Synced {} columns for team {}", result.size(), team.getId());
         return result;
@@ -212,6 +224,11 @@ public class YouGileBoardSyncService {
             changed = true;
         }
 
+        if (remote.completed() != task.isCompleted()) {
+            task.setCompleted(remote.completed());
+            changed = true;
+        }
+
         if (changed) {
             taskRepository.save(task);
             if (restored) {
@@ -237,6 +254,7 @@ public class YouGileBoardSyncService {
         task.setSyncStatus(TaskSyncStatus.SYNCED);
         task.setSource(TaskSource.YOUGILE);
         task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        task.setCompleted(remote.completed());
 
         TaskColumn column = null;
         if (remote.columnId() != null) {

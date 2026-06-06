@@ -26,7 +26,6 @@ import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -237,18 +236,23 @@ public class TaskService {
             }
         }
 
+        if (remote.completed() != task.isCompleted()) {
+            task.setCompleted(remote.completed());
+            changed = true;
+        }
+
         if (remote.title() != null && !remote.title().equals(task.getTitle())) {
             task.setTitle(remote.title());
             changed = true;
         }
 
         if (remote.responsible() != null) {
-            teamUserRepository.findByTeamIdAndYougileUserId(team.getId(), remote.responsible())
-                    .ifPresent(tu -> {
-                        if (!tu.equals(task.getAssignee())) {
-                            task.setAssignee(tu);
-                        }
-                    });
+            Optional<TeamUser> tuOpt = teamUserRepository.findByTeamIdAndYougileUserId(
+                    team.getId(), remote.responsible());
+            if (tuOpt.isPresent() && !tuOpt.get().equals(task.getAssignee())) {
+                task.setAssignee(tuOpt.get());
+                changed = true;
+            }
         }
 
         if (changed) {
@@ -260,8 +264,7 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Task> list(Long chatId, Long assigneeTelegramId, String rawLocalStatus, Pageable pageable) {
-        Collection<TaskLocalStatus> statuses = resolveLocalStatusFilter(rawLocalStatus);
+    public Page<Task> list(Long chatId, Long assigneeTelegramId, Boolean completed, Pageable pageable) {
         UUID teamId = null;
         if (chatId != null) {
             Team team = teamRepository.findByTelegramChatId(chatId)
@@ -274,23 +277,37 @@ public class TaskService {
             throw AppException.badRequest("chatId or assignee is required");
         }
 
-        if (teamId != null && assigneeTelegramId != null) {
-            if (statuses != null) {
-                return taskRepository.findByTeamIdAndAssigneeUserTelegramIdAndLocalStatusIn(
-                        teamId, assigneeTelegramId, statuses, pageable);
+        if (Boolean.TRUE.equals(completed)) {
+            if (teamId != null && assigneeTelegramId != null) {
+                return taskRepository.findByTeamIdAndAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(
+                        teamId, assigneeTelegramId, pageable);
             }
+            if (teamId != null) {
+                return taskRepository.findByTeamIdAndCompletedTrueAndDeletedFalse(teamId, pageable);
+            }
+            return taskRepository.findByAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(
+                    assigneeTelegramId, pageable);
+        }
+
+        if (Boolean.FALSE.equals(completed)) {
+            Collection<TaskLocalStatus> active = List.of(TaskLocalStatus.ACTIVE);
+            if (teamId != null && assigneeTelegramId != null) {
+                return taskRepository.findByTeamIdAndAssigneeUserTelegramIdAndLocalStatusInAndCompletedFalseAndDeletedFalse(
+                        teamId, assigneeTelegramId, active, pageable);
+            }
+            if (teamId != null) {
+                return taskRepository.findByTeamIdAndLocalStatusInAndCompletedFalseAndDeletedFalse(teamId, active, pageable);
+            }
+            return taskRepository.findByAssigneeUserTelegramIdAndLocalStatusInAndCompletedFalseAndDeletedFalse(
+                    assigneeTelegramId, active, pageable);
+        }
+
+        // completed=null → все задачи без фильтра
+        if (teamId != null && assigneeTelegramId != null) {
             return taskRepository.findByTeamIdAndAssigneeUserTelegramId(teamId, assigneeTelegramId, pageable);
         }
-
         if (teamId != null) {
-            if (statuses != null) {
-                return taskRepository.findByTeamIdAndLocalStatusIn(teamId, statuses, pageable);
-            }
             return taskRepository.findByTeamId(teamId, pageable);
-        }
-
-        if (statuses != null) {
-            return taskRepository.findByAssigneeUserTelegramIdAndLocalStatusIn(assigneeTelegramId, statuses, pageable);
         }
         return taskRepository.findByAssigneeUserTelegramId(assigneeTelegramId, pageable);
     }
@@ -299,12 +316,18 @@ public class TaskService {
     public List<TaskColumn> listColumns(Long chatId) {
         Team team = teamRepository.findByTelegramChatId(chatId)
                 .orElseThrow(() -> AppException.notFound("Team not found for chatId %d".formatted(chatId)));
-        return taskColumnRepository.findByTeamId(team.getId());
+        return taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId());
     }
 
     @Transactional(readOnly = true)
-    public Page<Task> listByColumn(UUID columnId, Pageable pageable) {
-        return taskRepository.findByColumnId(columnId, pageable);
+    public Page<Task> listByColumn(UUID columnId, Boolean completed, Pageable pageable) {
+        if (Boolean.TRUE.equals(completed)) {
+            return taskRepository.findByColumnIdAndCompletedTrueAndDeletedFalse(columnId, pageable);
+        }
+        if (Boolean.FALSE.equals(completed)) {
+            return taskRepository.findByColumnIdAndCompletedFalseAndDeletedFalse(columnId, pageable);
+        }
+        return taskRepository.findByColumnIdAndDeletedFalse(columnId, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -393,16 +416,6 @@ public class TaskService {
 
     private Optional<TeamUser> resolveTeamUser(Team team, Long telegramId) {
         return teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), telegramId);
-    }
-
-    private Collection<TaskLocalStatus> resolveLocalStatusFilter(String raw) {
-        if (raw == null || raw.isBlank()) return null;
-        String normalized = raw.trim().toUpperCase(Locale.ROOT);
-        try {
-            return List.of(TaskLocalStatus.valueOf(normalized));
-        } catch (IllegalArgumentException e) {
-            throw AppException.badRequest("Unknown localStatus: " + raw);
-        }
     }
 
     private void recordHistory(Task task, TaskColumn from, TaskColumn to, Long telegramId) {

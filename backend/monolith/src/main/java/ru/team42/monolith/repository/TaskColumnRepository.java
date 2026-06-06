@@ -13,4 +13,5 @@ public interface TaskColumnRepository extends JpaRepository<TaskColumn, UUID> {
 
     List<TaskColumn> findByTeamId(UUID teamId);
 
+    List<TaskColumn> findByTeamIdAndDeletedFalse(UUID id);
 }
