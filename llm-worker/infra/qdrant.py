@@ -14,7 +14,6 @@ def _embedder() -> OpenAIEmbeddings:
         model=settings.EMBEDDINGS_MODEL,
         base_url=settings.EMBEDDINGS_API_BASE,
         api_key=settings.EMBEDDINGS_API_KEY,
-        check_embedding_ctx_length=False,
     )
 
 
@@ -46,7 +45,7 @@ def store_task(task_id: str, title: str, description: str, team_id: str) -> None
             )],
         )
     except Exception as e:
-        logger.opt(exception=True).warning(f"store_task failed (task_id={task_id}): {e}")
+        logger.warning(f"store_task failed (task_id={task_id}): {e}")
 
 
 def delete_task(task_id: str) -> None:
@@ -57,43 +56,24 @@ def delete_task(task_id: str) -> None:
         )
         logger.debug(f"Deleted task {task_id} from Qdrant")
     except Exception as e:
-        logger.opt(exception=True).warning(f"delete_task failed (task_id={task_id}): {e}")
-
-
-def search_tasks(query: str, team_id: str, limit: int = 5) -> list[dict]:
-    """Return top-N active tasks for a team ranked by semantic similarity to query."""
-    try:
-        vector = _embedder().embed_query(query)
-        response = get_qdrant_client().query_points(
-            collection_name=settings.QDRANT_COLLECTION_TASKS,
-            query=vector,
-            limit=limit,
-            query_filter=Filter(
-                must=[FieldCondition(key="team_id", match=MatchValue(value=team_id))]
-            ),
-        )
-        return [{"task_id": p.payload["task_id"], "title": p.payload["title"], "score": p.score}
-                for p in response.points]
-    except Exception as e:
-        logger.opt(exception=True).warning(f"search_tasks failed for team {team_id}: {e}")
-        return []
+        logger.warning(f"delete_task failed (task_id={task_id}): {e}")
 
 
 def is_task_duplicate(title: str, description: str, team_id: str) -> bool:
     try:
         vector = _embedder().embed_query(f"{title}\n{description}")
-        response = get_qdrant_client().query_points(
+        results = get_qdrant_client().search(
             collection_name=settings.QDRANT_COLLECTION_TASKS,
-            query=vector,
+            query_vector=vector,
             limit=1,
             score_threshold=settings.DEDUP_THRESHOLD,
             query_filter=Filter(
                 must=[FieldCondition(key="team_id", match=MatchValue(value=team_id))]
             ),
         )
-        if response.points:
-            logger.debug(f"Duplicate found for {title!r}, score={response.points[0].score:.3f}")
-        return bool(response.points)
+        if results:
+            logger.debug(f"Duplicate found for {title!r}, score={results[0].score:.3f}")
+        return bool(results)
     except Exception as e:
-        logger.opt(exception=True).warning(f"is_task_duplicate failed for {title!r}: {e}")
+        logger.warning(f"is_task_duplicate failed for {title!r}: {e}")
         return False
