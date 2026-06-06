@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend guidelines entry point for checking the task notification change."}
+{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Validate Kafka field aliases and Spring/Python event compatibility."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "General backend quality checklist."}

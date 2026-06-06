@@ -37,9 +37,10 @@ The exception is `KafkaConsumerConfig` on the Spring side which uses `SNAKE_CASE
 
 | Topic | Producer | Consumers | Purpose |
 |---|---|---|---|
-| `tasks.state` | Spring | Bot | UI notifications (CREATED / COLUMN_CHANGED / CANCELLED) |
+| `tasks.state` | Spring | Bot | Task DM notifications (CREATED / UPDATED / COLUMN_CHANGED / CANCELLED) |
 | `tasks.lifecycle` | Spring | LLM Worker | Qdrant sync (CONFIRMED / UPDATED / CANCELLED) |
-| `bots.tasks` | Spring | Bot | Task proposal confirmation buttons |
+| `bots.tasks` | Spring | Bot | Confirmed task DM notifications |
+| `bots.notifications` | Spring | Bot | Scheduled task DM notifications (deadline / stale) |
 | `messages.batches` | Spring | LLM Worker | Batches for LLM analysis |
 | `llm.tasks.create` | LLM Worker | Spring | Create task from LLM |
 | `llm.status.change` | LLM Worker | Spring | Status change from LLM |
@@ -50,7 +51,13 @@ The exception is `KafkaConsumerConfig` on the Spring side which uses `SNAKE_CASE
 
 ### 1. Scope / Trigger
 
-Sent by Spring at every task mutation visible to the group chat.
+Sent by Spring at task mutations that should be visible to users in bot direct messages. Task notifications must not be posted into team group chats.
+
+Recipient routing is resolved on the Spring side:
+- managers receive every task notification for their teams
+- if a task has an assignee, the assignee also receives the notification
+- if a task has no assignee, all team members receive the notification
+- duplicate Telegram IDs are removed before publishing
 
 ### 2. Signatures
 
@@ -59,7 +66,7 @@ Sent by Spring at every task mutation visible to the group chat.
 public void publishCreated(Task task)       // → CREATED + CONFIRMED (lifecycle)
 public void publishCancelled(Task task)     // → CANCELLED + CANCELLED (lifecycle)
 public void publishColumnChanged(Task task, TaskColumn newColumn)  // → COLUMN_CHANGED
-public void publishUpdated(Task task)       // → UPDATED (lifecycle only, silent in bot)
+public void publishUpdated(Task task)       // → UPDATED + UPDATED (lifecycle)
 ```
 
 **Python consumer** (`bot/models/events.py`):
@@ -69,8 +76,8 @@ class TaskStateEvent(BaseModel):
     event_id: str = Field(alias="eventId")
     occurred_at: datetime = Field(alias="occurredAt")
     task_id: str = Field(alias="taskId")
-    chat_id: int = Field(alias="chatId")
-    type: Literal["CREATED", "CANCELLED", "COLUMN_CHANGED"]
+    recipient_telegram_ids: list[int] = Field(alias="recipientTelegramIds")
+    type: Literal["CREATED", "UPDATED", "CANCELLED", "COLUMN_CHANGED"]
     title: str
     column_title: str | None = Field(default=None, alias="columnTitle")
     assignee_username: str | None = Field(default=None, alias="assigneeUsername")
@@ -84,8 +91,8 @@ All events extend `BaseEvent` which adds `eventId: UUID` and `occurredAt: Instan
 | Field | Type | Nullable | Notes |
 |---|---|---|---|
 | `taskId` | UUID | no | Local DB task ID |
-| `chatId` | long | no | Telegram chat ID — event skipped if null on team |
-| `type` | enum | no | CREATED / COLUMN_CHANGED / CANCELLED |
+| `recipientTelegramIds` | long[] | no | DM recipients; resolved from managers + assignee/all-members rule |
+| `type` | enum | no | CREATED / UPDATED / COLUMN_CHANGED / CANCELLED |
 | `title` | String | no | |
 | `columnTitle` | String | yes | null for CANCELLED |
 | `assigneeUsername` | String | yes | Telegram @username |
@@ -99,16 +106,17 @@ All events extend `BaseEvent` which adds `eventId: UUID` and `occurredAt: Instan
 | `TaskService.approve()` | CREATED + CONFIRMED |
 | `TaskService.cancel()` | CANCELLED + CANCELLED |
 | `TaskService.updateFromLlmEvent()` deleted=true | CANCELLED + CANCELLED |
+| `TaskService.updateFromLlmEvent()` details changed | UPDATED |
 | `TaskService.updateFromLlmEvent()` column changed | COLUMN_CHANGED |
 | `YouGileBoardSyncService.importTask()` | CREATED + CONFIRMED |
 | `YouGileBoardSyncService.updateTask()` column changed | COLUMN_CHANGED |
-| `YouGileBoardSyncService.updateTask()` title/desc changed | UPDATED (lifecycle only) |
+| `YouGileBoardSyncService.updateTask()` title/desc/deadline/assignee changed | UPDATED |
 
 ### 5. Good/Base/Bad Cases
 
-- **Good**: task created with assignee and deadline → bot shows ✅ with all fields
-- **Base**: task created, no assignee/deadline → bot shows ✅ with "не указан"
-- **Bad**: team has no `telegramChatId` → `sendState()` returns early, no event sent
+- **Good**: task created with assignee and deadline → managers and assignee receive a DM with all fields
+- **Base**: task created, no assignee/deadline → all team members receive a DM with "не указан"
+- **Bad**: no team members have Telegram IDs → notification is skipped and logged; group chat fallback is forbidden
 
 ---
 

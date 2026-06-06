@@ -119,6 +119,7 @@ public class YouGileBoardSyncService {
         if (remote.deadline() != null && !remote.deadline().equals(task.getDeadline())) {
             task.setDeadline(remote.deadline());
             changed = true;
+            contentChanged = true;
         }
 
         if (remote.responsible() != null) {
@@ -127,6 +128,7 @@ public class YouGileBoardSyncService {
             if (assigneeOpt.isPresent() && !assigneeOpt.get().equals(task.getAssignee())) {
                 task.setAssignee(assigneeOpt.get());
                 changed = true;
+                contentChanged = true;
             }
         }
 

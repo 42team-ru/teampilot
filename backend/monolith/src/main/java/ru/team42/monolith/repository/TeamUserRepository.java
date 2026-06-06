@@ -1,6 +1,8 @@
 package ru.team42.monolith.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.entity.enums.TeamRole;
 
@@ -19,4 +21,11 @@ public interface TeamUserRepository extends JpaRepository<TeamUser, UUID> {
     Optional<TeamUser> findByTeamIdAndYougileUserId(UUID teamId, String yougileUserId);
 
     List<TeamUser> findByTeamId(UUID teamId);
+
+    @Query("""
+            SELECT tu FROM TeamUser tu
+            JOIN FETCH tu.user
+            WHERE tu.team.id = :teamId
+            """)
+    List<TeamUser> findByTeamIdWithUser(@Param("teamId") UUID teamId);
 }

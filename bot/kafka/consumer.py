@@ -75,7 +75,7 @@ class EventConsumer:
 
         elif topic == TOPIC_REMINDER_SEND:
             event = ReminderSendEvent.model_validate_json(payload)
-            target = event.chat_id if event.chat_id is not None else event.user_id
+            target = event.user_id if event.task_id is not None else event.chat_id or event.user_id
             await bot.send_message(chat_id=target, text=event.text)
 
         elif topic == TOPIC_SUMMARY_SEND:
@@ -114,10 +114,24 @@ class EventConsumer:
                 f"<b>{event.title}</b>\n"
                 f"📂 Новая колонка: {column_str}"
             )
+        elif event.type == "UPDATED":
+            text = (
+                f"✏️ <b>Задача обновлена</b>\n\n"
+                f"<b>{event.title}</b>\n"
+                f"👤 Ответственный: {assignee_str}\n"
+                f"⏰ Дедлайн: {deadline_str}"
+            )
         else:  # CANCELLED
             text = f"❌ <b>Задача отменена</b>\n\n<b>{event.title}</b>"
 
-        await bot.send_message(chat_id=event.chat_id, text=text, parse_mode="HTML")
+        await self._send_to_recipients(
+            bot,
+            recipient_ids=event.recipient_telegram_ids,
+            text=text,
+            parse_mode="HTML",
+            event_name="TaskStateEvent",
+            event_id=event.task_id,
+        )
 
     async def _send_task_proposal(self, bot: Bot, event: TaskProposeEvent) -> None:
         kb = build_task_keyboard(event.proposal_id)
@@ -128,11 +142,14 @@ class EventConsumer:
             f"👤 Ответственный: {event.assignee_name or 'не указан'}\n"
             f"⏰ Дедлайн: {deadline_str}"
         )
-        await bot.send_message(
-            chat_id=event.chat_id,
+        await self._send_to_recipients(
+            bot,
+            recipient_ids=event.recipient_telegram_ids,
             text=text,
             reply_markup=kb,
             parse_mode="HTML",
+            event_name="TaskProposeEvent",
+            event_id=event.proposal_id,
         )
 
     async def _send_bot_notification(self, bot: Bot, event: BotNotificationEvent) -> None:
@@ -158,18 +175,20 @@ class EventConsumer:
                 f"{task_ref}"
             )
 
-        await self._send_with_fallback(
+        recipient_ids = event.recipient_telegram_ids
+        if not recipient_ids and event.telegram_id is not None:
+            recipient_ids = [event.telegram_id]
+
+        await self._send_to_recipients(
             bot,
-            primary_chat_id=event.telegram_id,
-            fallback_chat_id=event.chat_id,
+            recipient_ids=recipient_ids,
             text=text,
+            parse_mode="HTML",
+            event_name="BotNotificationEvent",
+            event_id=event.task_id,
         )
 
     async def _send_task_confirmation(self, bot: Bot, event: TaskConfirmationEvent) -> None:
-        if event.chat_id is None:
-            logger.warning("TaskConfirmationEvent {} has no chat_id", event.task_id)
-            return
-
         prefix = "🤖 <b>Задача создана автоматически</b>" if event.auto_confirmed else "✅ <b>Задача создана</b>"
         lines = [
             prefix,
@@ -185,43 +204,52 @@ class EventConsumer:
             lines.extend(["", escape(_clip(event.description, 500))])
 
         lines.extend(["", f"ID: <code>{escape(event.task_id)}</code>"])
-        await bot.send_message(chat_id=event.chat_id, text="\n".join(lines))
+        await self._send_to_recipients(
+            bot,
+            recipient_ids=event.recipient_telegram_ids,
+            text="\n".join(lines),
+            parse_mode="HTML",
+            event_name="TaskConfirmationEvent",
+            event_id=event.task_id,
+        )
 
-    async def _send_with_fallback(
+    async def _send_to_recipients(
         self,
         bot: Bot,
         *,
-        primary_chat_id: int | None,
-        fallback_chat_id: int | None,
+        recipient_ids: list[int],
         text: str,
+        parse_mode: str | None = None,
+        reply_markup: object | None = None,
+        event_name: str,
+        event_id: str | None,
     ) -> None:
-        if primary_chat_id is not None:
+        seen: set[int] = set()
+        delivered = 0
+        send_kwargs = {"parse_mode": parse_mode} if parse_mode is not None else {}
+        if reply_markup is not None:
+            send_kwargs["reply_markup"] = reply_markup
+
+        for recipient_id in recipient_ids:
+            if recipient_id in seen:
+                continue
+            seen.add(recipient_id)
             try:
-                await bot.send_message(chat_id=primary_chat_id, text=text)
-                return
+                await bot.send_message(chat_id=recipient_id, text=text, **send_kwargs)
+                delivered += 1
             except TelegramAPIError as error:
                 logger.warning(
-                    "Failed to send Kafka notification to primary chat {}: {}",
-                    primary_chat_id,
+                    "Failed to send {} {} to DM recipient {}: {}",
+                    event_name,
+                    event_id,
+                    recipient_id,
                     error,
                 )
 
-        if fallback_chat_id is not None and fallback_chat_id != primary_chat_id:
-            try:
-                await bot.send_message(chat_id=fallback_chat_id, text=text)
-                return
-            except TelegramAPIError as error:
-                logger.warning(
-                    "Failed to send Kafka notification to fallback chat {}: {}",
-                    fallback_chat_id,
-                    error,
-                )
-
-        logger.warning(
-            "Kafka notification was not delivered: primary_chat_id={} fallback_chat_id={}",
-            primary_chat_id,
-            fallback_chat_id,
-        )
+        if not seen:
+            logger.warning("{} {} has no DM recipients", event_name, event_id)
+        elif delivered == 0:
+            logger.warning("{} {} was not delivered to any DM recipient", event_name, event_id)
 
 
 def _format_deadline(value: datetime) -> str:

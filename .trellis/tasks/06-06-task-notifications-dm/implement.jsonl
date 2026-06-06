@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend guidelines entry point for Spring and bot-facing Kafka work."}
+{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Kafka event serialization and cross-layer contract rules for Spring to Python bot events."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "General backend quality guidance for implementation."}
