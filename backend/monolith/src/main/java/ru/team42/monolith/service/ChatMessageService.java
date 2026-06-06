@@ -1,16 +1,21 @@
 package ru.team42.monolith.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.event.ChatMessageEvent;
+import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.mapper.ChatMessageMapper;
 import ru.team42.monolith.repository.ChatMessageRepository;
+import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.UserRepository;
 
 import java.util.List;
+import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatMessageService {
@@ -18,18 +23,22 @@ public class ChatMessageService {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatMessageMapper chatMessageMapper;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
 
     @Transactional
     public void saveAll(List<ChatMessageEvent> events) {
-        var entities = events.stream()
-                .map(event -> chatMessageMapper.toEntity(event, findOrCreateUser(event)))
-                .toList();
-        chatMessageRepository.saveAll(entities);
+        events.forEach(this::save);
     }
 
     @Transactional
     public void save(ChatMessageEvent event) {
-        chatMessageRepository.save(chatMessageMapper.toEntity(event, findOrCreateUser(event)));
+        Optional<Team> teamOpt = teamRepository.findByTelegramChatId(event.getChatId());
+        if (teamOpt.isEmpty()) {
+            log.warn("No team found for chatId={}, dropping message", event.getChatId());
+            return;
+        }
+        User user = findOrCreateUser(event);
+        chatMessageRepository.save(chatMessageMapper.toEntity(event, user, teamOpt.get()));
     }
 
     private User findOrCreateUser(ChatMessageEvent event) {

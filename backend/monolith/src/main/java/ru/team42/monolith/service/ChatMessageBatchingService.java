@@ -11,7 +11,6 @@ import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.repository.ChatMessageRepository;
 import ru.team42.monolith.repository.TaskColumnRepository;
-import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.time.Duration;
@@ -28,20 +27,19 @@ public class ChatMessageBatchingService {
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatMessageBatchPublisher batchPublisher;
-    private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
     private final TaskColumnRepository taskColumnRepository;
 
     @Scheduled(fixedDelay = 5_000)
     @Transactional
     public void flushBatches() {
-        List<Long> chatIds = chatMessageRepository.findDistinctChatIdsWithUnprocessedMessages();
-        if (chatIds.isEmpty()) return;
+        List<Team> teams = chatMessageRepository.findDistinctTeamsWithUnprocessedMessages();
+        if (teams.isEmpty()) return;
 
         Instant now = Instant.now();
 
-        for (Long chatId : chatIds) {
-            List<ChatMessage> messages = chatMessageRepository.findUnprocessedByChatId(chatId);
+        for (Team team : teams) {
+            List<ChatMessage> messages = chatMessageRepository.findUnprocessedByTeam(team);
             if (messages.isEmpty()) continue;
 
             Instant oldestMessageTime = messages.getFirst().getMessageTimestamp();
@@ -50,12 +48,6 @@ public class ChatMessageBatchingService {
 
             if (!sizeThresholdReached && !timeThresholdReached) continue;
 
-            Team team = teamRepository.findByTelegramChatId(chatId).orElse(null);
-            if (team == null) {
-                log.warn("No team found for chatId={}, skipping batch", chatId);
-                continue;
-            }
-
             List<TeamUser> teamMembers = teamUserRepository.findByTeamId(team.getId());
             List<TaskColumn> columns = taskColumnRepository.findByTeamId(team.getId());
 
@@ -63,11 +55,10 @@ public class ChatMessageBatchingService {
             messages.forEach(m -> m.setSentToLlmAt(now));
             chatMessageRepository.saveAll(messages);
 
-            log.info("Flushed batch: teamId={} chatId={} size={} reason={} teamSize={} columns={}",
-                    team.getId(), chatId, messages.size(),
+            log.info("Flushed batch: teamId={} size={} reason={} teamSize={} columns={}",
+                    team.getId(), messages.size(),
                     sizeThresholdReached ? "size" : "timeout",
                     teamMembers.size(), columns.size());
         }
     }
-
 }
