@@ -22,6 +22,7 @@ public class TaskEventPublisher extends AbstractEventPublisher {
 
     public void publishConfirmation(Task task, boolean autoConfirmed) {
         String assigneeUsername = assigneeOf(task);
+        String columnTitle = task.getColumn() != null ? task.getColumn().getTitle() : null;
         List<Long> recipients = recipientResolver.resolveRecipients(task);
         if (recipients.isEmpty()) {
             log.warn("Skipping task confirmation notification for task {}: no DM recipients", task.getId());
@@ -36,7 +37,8 @@ public class TaskEventPublisher extends AbstractEventPublisher {
                         task.getDescription(),
                         assigneeUsername,
                         task.getDeadline(),
-                        autoConfirmed
+                        autoConfirmed,
+                        columnTitle
                 ));
     }
 

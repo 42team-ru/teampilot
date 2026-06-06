@@ -26,7 +26,7 @@ from keyboards.member import (
 from services.task_service import get_team_columns
 from services.admin_service import get_user_by_telegram_id
 from services.task_service import get_tasks_page
-from services.team_service import get_member_teams, get_my_teams
+from services.team_service import get_member_teams, get_my_teams, get_team_files
 
 router = Router()
 
@@ -394,6 +394,95 @@ async def member_mytasks(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("team_ctx:files_list:"))
+async def team_ctx_files_list(callback: CallbackQuery) -> None:
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    team_id = callback.data.split(":", 2)[2]
+
+    try:
+        files = await get_team_files(team_id, callback.from_user.id)
+    except Exception:
+        await callback.answer("Не удалось загрузить список файлов.", show_alert=True)
+        return
+
+    back_button = [InlineKeyboardButton(text="← Назад", callback_data="member:back")]
+
+    if not files:
+        await callback.message.edit_text(
+            "📂 <b>Файлы команды</b>\n\nФайлов пока нет.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[back_button]),
+        )
+        await callback.answer()
+        return
+
+    rows = []
+    for idx, f in enumerate(files):
+        label = f.get("title") or f.get("originalFilename") or "Файл"
+        icon = "🎙" if (f.get("contentType") or "").startswith("audio") else "🎬"
+        # callback_data limit = 64 bytes; use index instead of UUID
+        rows.append([InlineKeyboardButton(
+            text=f"{icon} {escape(label[:40])}",
+            callback_data=f"fd:{team_id}:{idx}",
+        )])
+    rows.append(back_button)
+
+    await callback.message.edit_text(
+        "📂 <b>Файлы команды</b>\n\nВыберите файл для просмотра подробной информации:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("team_ctx:file_detail:"))
+async def team_ctx_file_detail(callback: CallbackQuery) -> None:
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    parts = callback.data.split(":", 3)
+    team_id, file_id = parts[2], parts[3]
+
+    try:
+        files = await get_team_files(team_id, callback.from_user.id)
+    except Exception:
+        await callback.answer("Не удалось загрузить файл.", show_alert=True)
+        return
+
+    f = next((x for x in files if str(x.get("id")) == file_id), None)
+    if f is None:
+        await callback.answer("Файл не найден.", show_alert=True)
+        return
+
+    title = f.get("title") or f.get("originalFilename") or "Без названия"
+    description = f.get("description") or ""
+    summary = f.get("summary") or ""
+    download_url = f.get("downloadUrl") or ""
+    content_type = f.get("contentType") or ""
+    size_bytes = f.get("sizeBytes")
+
+    lines = [f"📄 <b>{escape(title)}</b>"]
+    if f.get("originalFilename") and f.get("title"):
+        lines.append(f"<i>Файл: {escape(f['originalFilename'])}</i>")
+    if content_type:
+        lines.append(f"Тип: <code>{escape(content_type)}</code>")
+    if size_bytes:
+        lines.append(f"Размер: {size_bytes // 1024} КБ")
+    if description:
+        lines.append(f"\n📝 <b>Описание</b>\n{escape(description)}")
+    if summary:
+        lines.append(f"\n📋 <b>Резюме встречи</b>\n{escape(summary)}")
+    if not description and not summary:
+        lines.append("\n<i>AI-анализ ещё не готов — обработка аудио занимает время.</i>")
+    if download_url:
+        lines.append(f"\n⬇️ <a href=\"{download_url}\">Скачать файл</a>")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← К списку файлов", callback_data=f"team_ctx:files_list:{team_id}")],
+        ]),
+        disable_web_page_preview=True,
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("team_ctx:upload:"))
 async def team_ctx_upload(callback: CallbackQuery, state: FSMContext) -> None:
     from states.upload import FileUploadStates
@@ -486,7 +575,7 @@ async def _pending_tasks_count(chat_id: int | str, telegram_id: int) -> int:
     page = await get_tasks_page(
         chat_id=int(chat_id),
         telegram_id=telegram_id,
-        status="PENDING_APPROVAL",
+        completed=False,
         page=0,
         size=1,
     )

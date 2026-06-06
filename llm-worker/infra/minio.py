@@ -1,3 +1,4 @@
+import io
 from minio import Minio
 
 from settings import settings
@@ -25,3 +26,14 @@ def file_exists(bucket: str, key: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def upload_file(bucket: str, key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+    _client.put_object(
+        bucket,
+        key,
+        io.BytesIO(data),
+        len(data),
+        content_type=content_type,
+    )
+

@@ -7,6 +7,7 @@ import ru.team42.backend.kafka_common.event.BaseEvent;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -26,9 +27,7 @@ public class LlmTaskCreateEvent extends BaseEvent {
 
     private String description;
 
-    private Long assigneeTelegramId;
-
-    private Long authorTelegramId;
+    private Long assigneeId;
 
     private String columnId;
 
@@ -37,4 +36,6 @@ public class LlmTaskCreateEvent extends BaseEvent {
     private float confidence;
 
     private List<UUID> sourceMessageIds;
+
+    private Map<String, String> stickers;
 }

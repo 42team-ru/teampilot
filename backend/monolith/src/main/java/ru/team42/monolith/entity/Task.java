@@ -13,9 +13,12 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import ru.team42.backend.common_data.entity.AbstractEntity;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSource;
@@ -82,6 +85,10 @@ public class Task extends AbstractEntity {
 
     @Column(name = "deadline_notified_at")
     private Instant deadlineNotifiedAt;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "stickers", columnDefinition = "jsonb")
+    private Map<String, String> stickers;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

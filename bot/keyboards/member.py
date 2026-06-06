@@ -120,6 +120,7 @@ def team_tasks_keyboard(
 def team_context_manager_files_keyboard(team_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Загрузить файл", callback_data=f"team_ctx:upload:{team_id}")],
+        [InlineKeyboardButton(text="📋 Список файлов", callback_data=f"team_ctx:files_list:{team_id}")],
         [InlineKeyboardButton(text="← К команде", callback_data=f"team_ctx:manager:{team_id}")],
     ])
 
@@ -156,6 +157,7 @@ def team_context_member_keyboard(team_id: str = "", has_chat: bool = True, has_k
 def team_context_member_files_keyboard(team_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Загрузить файл", callback_data=f"team_ctx:upload:{team_id}")],
+        [InlineKeyboardButton(text="📋 Список файлов", callback_data=f"team_ctx:files_list:{team_id}")],
         [InlineKeyboardButton(text="← К команде", callback_data=f"team_ctx:member:{team_id}")],
     ])
 

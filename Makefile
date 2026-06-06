@@ -21,6 +21,7 @@ COMPOSE := docker compose --project-directory $(PROJECT_DIR) --env-file $(ENV_FI
 CORE_CFG     := -f $(DOCKER_DIR)/docker-compose.core.yml
 OBS_CFG      := -f $(DOCKER_DIR)/docker-compose.observability.yml
 SERVICES_CFG := -f $(DOCKER_DIR)/docker-compose.services.yml
+AI_CFG       := -f $(DOCKER_DIR)/docker-compose.ai.yml
 
 # ============================================================
 # Help
@@ -62,6 +63,11 @@ help:
 	@echo "    make frontend-build   — собрать Docker-образ frontend локально"
 	@echo "    make frontend-push    — запушить образ frontend в $(REGISTRY)"
 	@echo "    make frontend-release — собрать и запушить frontend"
+	@echo ""
+	@echo "  AI (Whisper ASR)"
+	@echo "    make whisper-up       — поднять Whisper ASR (faster-whisper-server, порт 8002)"
+	@echo "    make whisper-down     — остановить Whisper"
+	@echo "    make whisper-logs     — логи Whisper"
 	@echo ""
 	@echo "  Other"
 	@echo "    make seed             — заполнить БД тестовыми данными (DataFaker)"
@@ -113,6 +119,21 @@ services-down:
 
 services-logs:
 	$(COMPOSE) $(SERVICES_CFG) logs -f
+
+# ============================================================
+# AI (Whisper ASR)
+# ============================================================
+
+.PHONY: whisper-up whisper-down whisper-logs
+
+whisper-up:
+	$(COMPOSE) $(AI_CFG) up -d
+
+whisper-down:
+	$(COMPOSE) $(AI_CFG) down
+
+whisper-logs:
+	$(COMPOSE) $(AI_CFG) logs -f
 
 # ============================================================
 # Dev (core + services)

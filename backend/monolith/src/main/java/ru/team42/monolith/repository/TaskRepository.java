@@ -53,6 +53,15 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     Optional<Task> findByTeamIdAndExternalId(UUID teamId, String externalId);
 
+    boolean existsByTeamIdAndTitleIgnoreCaseAndLocalStatusIn(
+            UUID teamId, String title, Collection<TaskLocalStatus> statuses);
+
+    Optional<Task> findFirstByTeamIdAndTitleIgnoreCaseAndLocalStatusIn(
+            UUID teamId, String title, Collection<TaskLocalStatus> statuses);
+
+    List<Task> findByTeamIdAndExternalIdIsNotNullAndLocalStatusNotIn(
+            UUID teamId, Collection<TaskLocalStatus> excludedStatuses);
+
     List<Task> findByLocalStatusAndDeadlineBetweenAndDeadlineNotifiedAtIsNull(
             TaskLocalStatus localStatus,
             Instant from,
@@ -69,4 +78,35 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
               )
             """)
     List<Task> findActiveStaleTasks(@Param("threshold") LocalDateTime threshold);
+
+    Page<Task> findByColumnIdAndDeletedFalse(UUID columnId, Pageable pageable);
+
+    Page<Task> findByColumnIdAndAssigneeUserTelegramIdAndDeletedFalse(
+            UUID columnId, Long telegramId, Pageable pageable);
+
+    Page<Task> findByColumnIdAndCompletedFalseAndDeletedFalse(UUID columnId, Pageable pageable);
+
+    Page<Task> findByColumnIdAndAssigneeUserTelegramIdAndCompletedFalseAndDeletedFalse(
+            UUID columnId, Long telegramId, Pageable pageable);
+
+    Page<Task> findByColumnIdAndCompletedTrueAndDeletedFalse(UUID columnId, Pageable pageable);
+
+    Page<Task> findByColumnIdAndAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(
+            UUID columnId, Long telegramId, Pageable pageable);
+
+    Page<Task> findByTeamIdAndLocalStatusInAndCompletedFalseAndDeletedFalse(
+            UUID teamId, Collection<TaskLocalStatus> statuses, Pageable pageable);
+
+    Page<Task> findByTeamIdAndAssigneeUserTelegramIdAndLocalStatusInAndCompletedFalseAndDeletedFalse(
+            UUID teamId, Long telegramId, Collection<TaskLocalStatus> statuses, Pageable pageable);
+
+    Page<Task> findByAssigneeUserTelegramIdAndLocalStatusInAndCompletedFalseAndDeletedFalse(
+            Long telegramId, Collection<TaskLocalStatus> statuses, Pageable pageable);
+
+    Page<Task> findByTeamIdAndCompletedTrueAndDeletedFalse(UUID teamId, Pageable pageable);
+
+    Page<Task> findByTeamIdAndAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(
+            UUID teamId, Long telegramId, Pageable pageable);
+
+    Page<Task> findByAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(Long telegramId, Pageable pageable);
 }

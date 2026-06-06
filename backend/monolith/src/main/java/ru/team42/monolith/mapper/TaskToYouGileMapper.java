@@ -21,7 +21,7 @@ public interface TaskToYouGileMapper {
     @Mapping(target = "subtasks", ignore = true)
     @Mapping(target = "timeTracking", ignore = true)
     @Mapping(target = "checklists", ignore = true)
-    @Mapping(target = "stickers", ignore = true)
+    @Mapping(target = "stickers", source = "stickers")
     @Mapping(target = "color", ignore = true)
     @Mapping(target = "idTaskCommon", ignore = true)
     @Mapping(target = "idTaskProject", ignore = true)
