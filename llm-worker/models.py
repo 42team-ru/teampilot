@@ -217,16 +217,6 @@ class MeetingLiveResultEvent(BaseModel):
     transcript: str
     summary: str = ""
     context: str = ""
-    final_result: bool = False
-    title: str | None = None
-    description: str | None = None
-    recording_bucket: str | None = None
-    recording_s3_key: str | None = None
-    recording_content_type: str | None = None
-    recording_size_bytes: int | None = None
-    transcript_bucket: str | None = None
-    transcript_s3_key: str | None = None
-    finalized_at: datetime | None = None
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
 
@@ -238,8 +228,6 @@ class ClassificationResult(BaseModel):
     confidence_task: float = 0.0
     has_status_change: bool = False
     confidence_status: float = 0.0
-    has_decision: bool = False
-    confidence_decision: float = 0.0
 
 
 class TaskExtraction(BaseModel):
@@ -281,21 +269,6 @@ class TaskLifecycleEvent(BaseModel):
     type: Literal["CONFIRMED", "UPDATED", "CANCELLED"]
     title: str
     description: str | None = None
-
-
-class DecisionExtraction(BaseModel):
-    text: str
-
-
-class DecisionExtractionList(BaseModel):
-    decisions: list[DecisionExtraction] = Field(default_factory=list)
-
-    @model_validator(mode="before")
-    @classmethod
-    def coerce_from_raw_list(cls, data: Any) -> dict:
-        if isinstance(data, list):
-            return {"decisions": data}
-        return data
 
 
 class StatusExtractionList(BaseModel):

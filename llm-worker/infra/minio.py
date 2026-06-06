@@ -28,15 +28,6 @@ def file_exists(bucket: str, key: str) -> bool:
         return False
 
 
-def list_object_keys(bucket: str, prefix: str) -> list[str]:
-    objects = _client.list_objects(bucket, prefix=prefix, recursive=True)
-    return sorted(
-        obj.object_name
-        for obj in objects
-        if obj.object_name
-    )
-
-
 def upload_file(bucket: str, key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
     _client.put_object(
         bucket,
@@ -45,3 +36,4 @@ def upload_file(bucket: str, key: str, data: bytes, content_type: str = "applica
         len(data),
         content_type=content_type,
     )
+

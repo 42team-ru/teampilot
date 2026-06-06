@@ -7,7 +7,7 @@ from typing import Any
 from loguru import logger
 
 from infra.kafka import BatchConsumer, flush, publish
-from infra.qdrant import delete_knowledge, delete_task, ensure_collections, store_knowledge, store_task
+from infra.qdrant import delete_task, init_collections, store_task
 from models import (
     AudioNewEvent,
     MeetingAudioChunkEvent,
@@ -47,7 +47,7 @@ def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
 
 
 def run_lifecycle_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_LIFECYCLE, settings.KAFKA_GROUP_ID_LIFECYCLE)
+    consumer = BatchConsumer(TOPIC_LIFECYCLE)
     try:
         while not stop_event.is_set():
             msg = consumer.poll(timeout=1.0)
@@ -57,17 +57,9 @@ def run_lifecycle_consumer(stop_event: threading.Event) -> None:
                 event = TaskLifecycleEvent.model_validate_json(msg.value().decode())
                 if event.type in ("CONFIRMED", "UPDATED"):
                     store_task(event.task_id, event.title, event.description or "", event.team_id)
-                    store_knowledge(
-                        source_id=f"task:{event.task_id}",
-                        team_id=event.team_id,
-                        knowledge_type="task_archive",
-                        content=f"{event.title}. {event.description or ''}".strip(". "),
-                        title=event.title,
-                    )
                     logger.info(f"Stored/updated task {event.task_id!r} in Qdrant")
                 elif event.type == "CANCELLED":
                     delete_task(event.task_id)
-                    delete_knowledge(f"task:{event.task_id}")
             except Exception as e:
                 logger.error(f"Error processing lifecycle event: {e}")
             finally:
@@ -77,7 +69,7 @@ def run_lifecycle_consumer(stop_event: threading.Event) -> None:
 
 
 def run_audio_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_AUDIO, settings.KAFKA_GROUP_ID_AUDIO)
+    consumer = BatchConsumer(TOPIC_AUDIO)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
@@ -115,7 +107,7 @@ def run_audio_consumer(stop_event: threading.Event) -> None:
 
 
 def run_meeting_audio_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_MEETING_AUDIO, settings.KAFKA_GROUP_ID_MEETING_AUDIO)
+    consumer = BatchConsumer(TOPIC_MEETING_AUDIO)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
@@ -152,19 +144,9 @@ def run_meeting_audio_consumer(stop_event: threading.Event) -> None:
             consumer.close()
 
 
-def _run_http_server() -> None:
-    import uvicorn
-    from api import app
-    uvicorn.run(app, host="0.0.0.0", port=settings.HTTP_PORT, log_level="warning")
-
-
 def main() -> None:
     logger.info("LLM Worker starting in Kafka Consumer mode...")
-    ensure_collections()
-
-    http_thread = threading.Thread(target=_run_http_server, daemon=True, name="http-server")
-    http_thread.start()
-    logger.info("HTTP API started on port {}", settings.HTTP_PORT)
+    init_collections()
 
     stop_event = threading.Event()
     audio_thread = threading.Thread(
@@ -191,7 +173,7 @@ def main() -> None:
     )
     lifecycle_thread.start()
 
-    consumer = BatchConsumer(TOPIC_IN, settings.KAFKA_GROUP_ID_BATCHES)
+    consumer = BatchConsumer(TOPIC_IN)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
