@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Kafka event conventions — AudioNewEvent structure and publishing patterns"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Entity conventions — UploadedFile refactor with TeamUser FK"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException usage in FileUploadConsumer and service layer"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Spring code quality conventions for new and modified classes"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer consistency — Spring publishes, LLM Worker consumes audio.new"}

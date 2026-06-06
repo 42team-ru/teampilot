@@ -4,14 +4,12 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.extern.jackson.Jacksonized;
 import ru.team42.backend.kafka_common.event.BaseEvent;
 
 import java.time.Instant;
 
 @Getter
 @Builder
-@Jacksonized
 public class FileUploadedEvent extends BaseEvent {
 
     private final Long userId;
@@ -20,14 +18,11 @@ public class FileUploadedEvent extends BaseEvent {
     private final String firstName;
     private final String originalFilename;
     private final String contentType;
-
     private final String bucket;
     private final String s3Key;
-
     private final Long fileSize;
     private final Instant uploadedAt;
 
-    @Builder
     @JsonCreator
     public FileUploadedEvent(
             @JsonProperty("user_id") Long userId,
