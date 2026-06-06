@@ -38,4 +38,7 @@ public class TeamUser extends AbstractEntity {
 
     @Column(name = "yougile_user_id")
     private String yougileUserId;
+
+    @Column(name = "yougile_user_api_key")
+    private String yougileUserApiKey;
 }

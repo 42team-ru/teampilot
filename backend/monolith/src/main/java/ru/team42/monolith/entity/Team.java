@@ -8,7 +8,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -18,16 +17,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(
-        name = "teams",
-        uniqueConstraints = @UniqueConstraint(name = "uq_teams_telegram_chat_id", columnNames = "telegram_chat_id")
-)
+@Table(name = "teams")
 @Getter
 @Setter
 @NoArgsConstructor
 public class Team extends AbstractEntity {
 
-    @Column(name = "telegram_chat_id", nullable = true, unique = true)
+    @Column(name = "telegram_chat_id", nullable = true)
     private Long telegramChatId;
 
     @Column(name = "chat_title")

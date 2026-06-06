@@ -75,7 +75,7 @@ public class TeamService {
                 .orElseThrow(() -> AppException.notFound("Team with ID %s not found".formatted(teamId)));
 
         if (req.telegramChatId() != null) {
-            teamRepository.findByTelegramChatId(req.telegramChatId())
+            teamRepository.findByTelegramChatIdAndActiveTrue(req.telegramChatId())
                     .filter(t -> !t.getId().equals(teamId))
                     .ifPresent(old -> {
                         old.setTelegramChatId(null);
@@ -97,7 +97,7 @@ public class TeamService {
     @Transactional
     public TeamResponse createWithAdmin(AdminCreateTeamRequest req) {
         Team team = req.telegramChatId() != null
-                ? teamRepository.findByTelegramChatId(req.telegramChatId()).orElseGet(Team::new)
+                ? teamRepository.findByTelegramChatIdAndActiveTrue(req.telegramChatId()).orElseGet(Team::new)
                 : new Team();
         team.setTelegramChatId(req.telegramChatId());
         team.setChatTitle(req.chatTitle());
@@ -127,12 +127,12 @@ public class TeamService {
     }
 
     public Optional<TeamResponse> findByTelegramChatId(Long telegramChatId) {
-        return teamRepository.findByTelegramChatId(telegramChatId).map(teamMapper::toResponse);
+        return teamRepository.findByTelegramChatIdAndActiveTrue(telegramChatId).map(teamMapper::toResponse);
     }
 
     @Transactional
     public void deactivate(Long telegramChatId) {
-        teamRepository.findByTelegramChatId(telegramChatId).ifPresent(team -> {
+        teamRepository.findByTelegramChatIdAndActiveTrue(telegramChatId).ifPresent(team -> {
             team.setActive(false);
             teamRepository.save(team);
         });
