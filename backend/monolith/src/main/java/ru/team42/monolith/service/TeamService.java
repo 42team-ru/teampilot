@@ -74,7 +74,15 @@ public class TeamService {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> AppException.notFound("Team with ID %s not found".formatted(teamId)));
 
-        if (req.telegramChatId() != null) team.setTelegramChatId(req.telegramChatId());
+        if (req.telegramChatId() != null) {
+            teamRepository.findByTelegramChatId(req.telegramChatId())
+                    .filter(t -> !t.getId().equals(teamId))
+                    .ifPresent(old -> {
+                        old.setTelegramChatId(null);
+                        teamRepository.saveAndFlush(old);
+                    });
+            team.setTelegramChatId(req.telegramChatId());
+        }
         if (req.chatTitle() != null) team.setChatTitle(req.chatTitle());
         if (req.kanbanId() != null) team.setKanbanId(req.kanbanId());
         if (req.kanbanApiKey() != null) team.setKanbanApiKey(req.kanbanApiKey());
@@ -155,7 +163,7 @@ public class TeamService {
     @Transactional(readOnly = true)
     public List<PendingTeamChatResponse> getMyPendingChats(Long managerTelegramId) {
         return pendingTeamChatRepository
-                .findAllByAddedByTelegramIdAndStatus(managerTelegramId, PendingTeamChatStatus.PENDING)
+                .findAllByAddedByTelegramIdAndStatusIn(managerTelegramId, PendingTeamChatStatus.PENDING, PendingTeamChatStatus.REMOVED)
                 .stream()
                 .map(PendingTeamChatResponse::from)
                 .toList();

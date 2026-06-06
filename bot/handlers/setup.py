@@ -102,7 +102,11 @@ async def bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
             pass
         return
 
-    await create_pending_team_chat(chat.id, chat_title, telegram_id=adder.id)
+    try:
+        await create_pending_team_chat(chat.id, chat_title, telegram_id=adder.id)
+    except Exception as exc:
+        logger.warning(f"Failed to register pending chat {chat.id} (adder {adder.id}): {exc}")
+
     try:
         await bot.send_message(
             chat_id=chat.id,

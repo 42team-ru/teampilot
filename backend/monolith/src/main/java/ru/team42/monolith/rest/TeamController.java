@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +29,7 @@ import static ru.team42.monolith.security.RestSecurityErrorHandler.AUTH_FAILURE_
 @RestController
 @RequestMapping("/teams")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Team Manager", description = "Управление командами: доступно менеджеру команды")
 public class TeamController {
 
@@ -67,7 +69,10 @@ public class TeamController {
             @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
             HttpServletRequest servletRequest
     ) {
-        return ResponseUtils.ok(teamService.getMyPendingChats(requireTelegramId(currentUser, servletRequest)));
+        log.info("Start handling getMyPendingChats for user {}, servletRequest {}", currentUser != null ? currentUser.getId() : null, servletRequest);
+        var res = (teamService.getMyPendingChats(requireTelegramId(currentUser, servletRequest)));
+        log.info("End handling getMyPendingChats for user {}, res {}", currentUser != null ? currentUser.getId() : null, res);
+        return ResponseUtils.ok(res);
     }
 
     @Operation(summary = "Обновить настройки команды (kanban, chatTitle, telegramChatId)")
@@ -134,5 +139,17 @@ public class TeamController {
             );
         }
         return currentUser.getTelegramId();
+    }
+
+    private Long parseTelegramIdHeader(HttpServletRequest servletRequest) {
+        String header = servletRequest.getHeader("X-Telegram-Id");
+        if (header == null || header.isBlank()) {
+            throw AppException.unauthorized("Telegram user authentication required: provide a valid X-Telegram-Id header");
+        }
+        try {
+            return Long.parseLong(header);
+        } catch (NumberFormatException e) {
+            throw AppException.unauthorized("Invalid X-Telegram-Id header: expected an integer");
+        }
     }
 }
