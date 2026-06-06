@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Проверка соответствия паттернам контроллеров и DTO"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Проверка обработки ошибок в новых эндпоинтах"}
+{"file": ".trellis/tasks/06-06-filter-tasks-by-kanban-column/prd.md", "reason": "Acceptance criteria для проверки"}

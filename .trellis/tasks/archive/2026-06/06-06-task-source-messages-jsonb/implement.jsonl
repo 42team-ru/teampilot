@@ -1,5 +1,0 @@
-{"file": ".trellis/tasks/06-06-task-source-messages-jsonb/prd.md", "reason": "Full requirements: ChatMessage→Team refactor, protobuf message_id, Task.sourceMessages ManyToMany, LlmTaskCreateEvent.sourceMessageIds"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "JPA entity conventions, ManyToMany mapping patterns"}
-{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Kafka event conventions, BaseEvent, protobuf event patterns"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException usage when dropping messages (warn vs throw)"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer changes: proto → publisher → event → service → entity"}

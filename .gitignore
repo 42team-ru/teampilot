@@ -211,4 +211,3 @@ htmlcov/
 
 # LLM Worker test results
 llm-worker/tests/results/
-/qdrant_data/

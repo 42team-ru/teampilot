@@ -6,16 +6,11 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-
-import java.util.ArrayList;
-import java.util.List;
 import ru.team42.backend.common_data.entity.AbstractEntity;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSource;
@@ -82,12 +77,4 @@ public class Task extends AbstractEntity {
 
     @Column(name = "deadline_notified_at")
     private Instant deadlineNotifiedAt;
-
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-            name = "task_source_messages",
-            joinColumns = @JoinColumn(name = "task_id"),
-            inverseJoinColumns = @JoinColumn(name = "message_id")
-    )
-    private List<ChatMessage> sourceMessages = new ArrayList<>();
 }

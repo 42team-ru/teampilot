@@ -48,7 +48,6 @@ public class ChatMessageBatchPublisher {
                 .setFullName(buildFullName(m.getUser().getFirstName(), m.getUser().getLastName()))
                 .setText(m.getText())
                 .setTimestamp(toTimestamp(m.getMessageTimestamp()))
-                .setMessageId(m.getId().toString())
                 .build();
     }
 
