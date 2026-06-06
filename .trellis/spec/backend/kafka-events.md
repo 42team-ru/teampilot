@@ -61,7 +61,9 @@ accepted chunk in MinIO and emits `meetings.audio.chunks`; the LLM Worker
 transcribes the chunk, maintains an in-memory sliding transcript context per
 meeting, publishes normal `llm.tasks.create` / `llm.status.change` events for
 mutations, then publishes `meetings.live.results` so Spring can broadcast live
-updates to `/topic/meetings/{meetingId}/results`.
+updates to `/topic/meetings/{meetingId}/results`. When `finalChunk=true`, the
+LLM Worker also uploads a final recording and full transcript to MinIO and sends
+their object fields in the same `meetings.live.results` event.
 
 ### 2. Signatures
 
@@ -105,6 +107,16 @@ class MeetingLiveResultEvent(BaseModel):
     transcript: str
     summary: str = ""
     context: str = ""
+    final_result: bool = False
+    title: str | None = None
+    description: str | None = None
+    recording_bucket: str | None = None
+    recording_s3_key: str | None = None
+    recording_content_type: str | None = None
+    recording_size_bytes: int | None = None
+    transcript_bucket: str | None = None
+    transcript_s3_key: str | None = None
+    finalized_at: datetime | None = None
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
 ```
@@ -129,6 +141,12 @@ camelCase. Python must use Pydantic aliases for all multi-word fields.
 
 `meetings.live.results` is Python → Spring and therefore sends snake_case JSON.
 Spring's `KafkaConsumerConfig` maps it to camelCase Java fields.
+The LLM Worker may process different meetings in parallel. Live transcript
+context is in-memory and best-effort, but `finalChunk=true` recording
+finalization must use durable MinIO state, not `_meeting_state`. List objects
+under `meetings/{meetingId}/chunks/`, wait up to `MEETING_FINALIZE_WAIT_SECONDS`
+for chunk indexes `0..chunkIndex`, then finalize with available chunks rather
+than blocking all meetings globally.
 
 | Field | Type | Nullable | Notes |
 |---|---|---|---|
@@ -138,6 +156,16 @@ Spring's `KafkaConsumerConfig` maps it to camelCase Java fields.
 | `transcript` | string | no | Whisper text for this chunk |
 | `summary` | string | no | Empty when no extraction ran for this chunk |
 | `context` | string | no | Sliding transcript window currently used by LLM |
+| `final_result` | boolean | no | True only for successfully finalized meeting output |
+| `title` | string | yes | Final meeting title from full transcript |
+| `description` | string | yes | Final meeting description from full transcript |
+| `recording_bucket` | string | yes | MinIO bucket for final recording |
+| `recording_s3_key` | string | yes | `meetings/{meetingId}/final/recording.mp3` or fallback `.webm` |
+| `recording_content_type` | string | yes | Usually `audio/mpeg`, fallback `audio/webm` |
+| `recording_size_bytes` | int | yes | Final recording object size |
+| `transcript_bucket` | string | yes | MinIO bucket for final transcript |
+| `transcript_s3_key` | string | yes | `meetings/{meetingId}/final/transcript.txt` |
+| `finalized_at` | ISO-8601 datetime | yes | When final recording/transcript were produced |
 | `tasks` | array | no | Preview of newly extracted task events |
 | `statuses` | array | no | Preview of newly extracted status-change events |
 
@@ -152,11 +180,12 @@ Spring's `KafkaConsumerConfig` maps it to camelCase Java fields.
 | MinIO upload fails | Do not publish `meetings.audio.chunks` |
 | LLM Worker cannot download/transcribe chunk | Log error, commit Kafka message, no live result |
 | Context has not reached extraction threshold | Publish live transcript result with empty `tasks`/`statuses` |
-| `finalChunk=true` | Run extraction even below the normal threshold |
+| `finalChunk=true` | Run extraction even below the normal threshold; merge chunks; upload final recording and transcript; update `Meeting` final fields in Spring |
 
 ### 5. Good/Base/Bad Cases
 
 - **Good**: manager creates meeting, sends chunks `0..N`, worker publishes transcript results and only new task/status previews; Spring broadcasts to all subscribers.
+- **Good**: final chunk uploads `recording.mp3` and `transcript.txt`, then `GET /meetings/by-url` exposes final `recording*`, `transcript*`, `title`, `description`, `summary`.
 - **Base**: short chunk has useful transcript but not enough context; subscribers still see transcript, task extraction waits for more context.
 - **Bad**: two participants send duplicated audio; only the primary recorder's chunks are accepted, preventing duplicate MinIO objects and repeated LLM extraction.
 
@@ -170,6 +199,7 @@ added later, cover:
 - `meetings.audio.chunks` payload aliases in Python;
 - `meetings.live.results` snake_case deserialization in Spring;
 - final chunk forcing extraction below threshold.
+- final chunk storing final recording/transcript keys and summary fields on `Meeting`.
 
 ### 7. Wrong vs Correct
 
