@@ -10,14 +10,13 @@ from infra.kafka import BatchConsumer, flush, publish
 from infra.qdrant import delete_task, init_collections, store_task
 from models import (
     AudioNewEvent,
-    MeetingAudioChunkEvent,
     MessageBatchEvent,
     StatusChangeEvent,
     TaskCreateEvent,
     TaskLifecycleEvent,
     proto_to_batch_event,
 )
-from processor import process_audio, process_batch, process_meeting_audio
+from processor import process_audio, process_batch
 from proto_generated.ru.team42.events import message_batch_pb2
 from settings import settings
 
@@ -26,7 +25,6 @@ TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
 TOPIC_AUDIO = "audio.new"
 TOPIC_LIFECYCLE = "tasks.lifecycle"
-TOPIC_MEETING_AUDIO = "meetings.audio.chunks"
 
 
 def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
@@ -47,7 +45,7 @@ def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
 
 
 def run_lifecycle_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_LIFECYCLE, settings.KAFKA_GROUP_ID_LIFECYCLE)
+    consumer = BatchConsumer(TOPIC_LIFECYCLE)
     try:
         while not stop_event.is_set():
             msg = consumer.poll(timeout=1.0)
@@ -69,7 +67,7 @@ def run_lifecycle_consumer(stop_event: threading.Event) -> None:
 
 
 def run_audio_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_AUDIO, settings.KAFKA_GROUP_ID_AUDIO)
+    consumer = BatchConsumer(TOPIC_AUDIO)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
@@ -106,44 +104,6 @@ def run_audio_consumer(stop_event: threading.Event) -> None:
             consumer.close()
 
 
-def run_meeting_audio_consumer(stop_event: threading.Event) -> None:
-    consumer = BatchConsumer(TOPIC_MEETING_AUDIO, settings.KAFKA_GROUP_ID_MEETING_AUDIO)
-    pending: deque[tuple[Future, Any]] = deque()
-    concurrency = settings.LLM_WORKER_CONCURRENCY
-
-    with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="llm-meeting-audio") as executor:
-        try:
-            while not stop_event.is_set():
-                while pending and pending[0][0].done():
-                    fut, msg = pending.popleft()
-                    if fut.exception():
-                        logger.error(f"Meeting audio processing failed: {fut.exception()}")
-                    consumer.commit(msg)
-
-                if len(pending) >= concurrency:
-                    time.sleep(0.05)
-                    continue
-
-                msg = consumer.poll(timeout=1.0)
-                if msg is None:
-                    continue
-                try:
-                    event = MeetingAudioChunkEvent.model_validate_json(msg.value().decode())
-                    fut = executor.submit(process_meeting_audio, event)
-                    pending.append((fut, msg))
-                except Exception as e:
-                    logger.error(f"Error parsing meetings.audio.chunks event: {e}")
-                    consumer.commit(msg)
-        finally:
-            for fut, msg in pending:
-                try:
-                    fut.result(timeout=120)
-                except Exception as e:
-                    logger.error(f"Pending meeting audio failed at shutdown: {e}")
-                consumer.commit(msg)
-            consumer.close()
-
-
 def main() -> None:
     logger.info("LLM Worker starting in Kafka Consumer mode...")
     init_collections()
@@ -157,14 +117,6 @@ def main() -> None:
     )
     audio_thread.start()
 
-    meeting_audio_thread = threading.Thread(
-        target=run_meeting_audio_consumer,
-        args=(stop_event,),
-        daemon=True,
-        name="meeting-audio-consumer",
-    )
-    meeting_audio_thread.start()
-
     lifecycle_thread = threading.Thread(
         target=run_lifecycle_consumer,
         args=(stop_event,),
@@ -173,7 +125,7 @@ def main() -> None:
     )
     lifecycle_thread.start()
 
-    consumer = BatchConsumer(TOPIC_IN, settings.KAFKA_GROUP_ID_BATCHES)
+    consumer = BatchConsumer(TOPIC_IN)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
 
@@ -221,7 +173,6 @@ def main() -> None:
             consumer.close()
             flush()
             audio_thread.join(timeout=5)
-            meeting_audio_thread.join(timeout=5)
             lifecycle_thread.join(timeout=5)
 
 
