@@ -5,6 +5,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from infra.kafka import publish
+from infra.qdrant import search_tasks
 from llm.chains import classifier_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
@@ -127,21 +128,37 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
         return []
 
 
+def format_task_candidates(candidates: list[dict]) -> str:
+    if not candidates:
+        return "TASK CANDIDATES: (none — Qdrant returned no matches)"
+    lines = ["TASK CANDIDATES (select task_id ONLY from this list):"]
+    for c in candidates:
+        lines.append(f'  - task_id: "{c["task_id"]}"  |  title: "{c["title"]}"')
+    return "\n".join(lines)
+
+
 def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeEvent]:
     try:
+        candidates = search_tasks(text, batch.team_id, limit=5)
+        columns_ctx, col_map = format_columns_context(batch)
+
         raw = status_chain.invoke({
             "messages": text,
             "team_context": format_team_context(batch),
+            "tasks_context": format_task_candidates(candidates),
+            "columns_context": columns_ctx,
         })
         extraction_list = StatusExtractionList.model_validate(raw)
 
         events = []
         for extraction in extraction_list.statuses:
+            data = extraction.model_dump()
+            short_id = str(data.get("column_id") or "")
+            data["column_id"] = col_map.get(short_id) or data.get("column_id")
             events.append(StatusChangeEvent(
                 team_id=batch.team_id,
                 source_batch_id=batch.event_id,
-                resolved_task_id=None,
-                **extraction.model_dump(),
+                **data,
             ))
         return events
     except Exception as e:
@@ -194,7 +211,6 @@ def _process_transcript_chunk(chunk: str, chunk_idx: int, event: TranscriptReady
                 publish(TOPIC_STATUS, StatusChangeEvent(
                     team_id=event.team_id,
                     source_batch_id=event.file_id,
-                    resolved_task_id=None,
                     **extraction.model_dump(),
                 ), key=event.file_id)
                 logger.info(f"Transcript status published: {extraction.action} (chunk {chunk_idx})")

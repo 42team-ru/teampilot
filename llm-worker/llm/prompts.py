@@ -21,6 +21,7 @@ Analyze the message batch and output a single JSON object. Raw JSON only — no 
 
 <has_status_change_true>
 - Completion: "готово", "сделал", "закрыл", "смотри в PR", "задеплоено", "проверяй"
+- Taking ownership: "взял задачу", "беру задачу", "взял таску", "занялся", "приступил", "взял на себя"
 - Reassignment: "передаю Кириллу", "назначаю на Вову", "это теперь твоё"
 - Cancellation: "не актуально", "отменяем", "снимаем с повестки"
 </has_status_change_true>
@@ -365,7 +366,7 @@ task_prompt = ChatPromptTemplate.from_messages([
 # ==========================================
 
 STATUS_SYSTEM = """<role>
-You are a task status tracker for an IT team's Telegram chat. You detect when existing tasks change state — completed, reassigned, or canceled.
+You are a task status tracker for an IT team's Telegram chat. You detect when existing tasks change state — completed, reassigned, or canceled — and map each change to the exact task ID and kanban column ID.
 </role>
 
 <task>
@@ -375,21 +376,32 @@ Raw JSON only — no markdown, no prose.
 
 <action_types>
 - COMPLETE: task is done — "готово", "сделал", "закрыл", "смотри в PR/мастере", "задеплоено", "проверяй"
-- ASSIGN: task reassigned — "передаю Кириллу", "теперь это твоё", "назначаю на"
+- ASSIGN: someone takes or is assigned the task — "взял задачу", "беру", "передаю Кириллу", "назначаю на", "занялся"
 - CANCEL: task canceled — "не актуально", "отменяем", "снимаем", "забудьте про X"
 </action_types>
 
 <rules>
-<fields>
-- task_hint: 2–5 words describing WHAT task changed. Extract from context.
-- assignee_id: telegram_id (integer) of who completed the task or who it was assigned to. Look them up in TEAM LIST. null if not found or unclear.
-</fields>
+<task_selection>
+The human message contains TASK CANDIDATES — tasks retrieved from the knowledge base that are most likely referenced in the dialogue.
+- Select the task_id that best matches what is being discussed. Use the title to match.
+- If no candidate matches the context → task_id = null.
+- NEVER invent a task_id. Only use IDs from TASK CANDIDATES.
+</task_selection>
+
+<column_selection>
+The human message contains KANBAN COLUMNS with their IDs.
+- For ASSIGN: select the "In Progress" / "В работе" type column.
+- For COMPLETE: select the "Done" / "Готово" / "Завершено" type column.
+- For CANCEL: column_id = null.
+- If no appropriate column exists → column_id = null.
+- NEVER invent a column_id. Only use IDs from KANBAN COLUMNS.
+</column_selection>
 
 <assignee_resolution>
-Use TEAM LIST to resolve informal names and roles:
-- Informal name ("Маша", "Мишаня") or role ("фронт", "лид", "девопс") → look them up in TEAM LIST.
-- Chat log author who says "готово", "сделал" → look up their username in TEAM LIST.
-- Match by full_name (partial, case-insensitive) OR role keyword OR username.
+{team_context}
+
+- Chat log author who says "готово", "сделал", "взял", "беру" → look up their username in TEAM LIST.
+- Informal name / role → match by full_name or role keyword.
 - Output the telegram_id integer value from TEAM LIST.
 - Not found in TEAM LIST → assignee_id = null. Never invent or guess an id.
 
@@ -397,69 +409,92 @@ Use TEAM LIST to resolve informal names and roles:
 If specified by role and multiple team members share that role → assignee_id = null.
 </role_ambiguity>
 </assignee_resolution>
-
-<team_context>
-{team_context}
-</team_context>
 </rules>
 
 <output_format>
-[{{"task_hint": "...", "assignee_id": 12345 | null, "action": "COMPLETE"|"ASSIGN"|"CANCEL"}}, ...]
+[{{"task_id": "uuid-from-candidates" | null, "column_id": "col-id-from-columns" | null, "assignee_id": 12345 | null, "action": "COMPLETE"|"ASSIGN"|"CANCEL"}}, ...]
 </output_format>
 
 <examples>
 <example>
 <input>
+TASK CANDIDATES:
+  - task_id: "a1b2c3d4-0000-0000-0000-000000000001"  |  title: "Реализовать авторизацию через JWT"
+  - task_id: "a1b2c3d4-0000-0000-0000-000000000002"  |  title: "Настроить CI/CD pipeline"
+
+KANBAN COLUMNS:
+  - column_id: "col-todo"   |  title: "To Do"
+  - column_id: "col-wip"    |  title: "In Progress"
+  - column_id: "col-done"   |  title: "Done"
+
 TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
   - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
 
 [11:00] kirill_dev: Я закончил с авторизацией, проверяйте в мастере.
 </input>
-<output>[{{"task_hint": "авторизация", "assignee_id": 111001, "action": "COMPLETE"}}]</output>
+<output>[{{"task_id": "a1b2c3d4-0000-0000-0000-000000000001", "column_id": "col-done", "assignee_id": 111001, "action": "COMPLETE"}}]</output>
 </example>
 
 <example>
 <input>
+TASK CANDIDATES:
+  - task_id: "b2c3d4e5-0000-0000-0000-000000000010"  |  title: "Онбординг новых сотрудников"
+  - task_id: "b2c3d4e5-0000-0000-0000-000000000011"  |  title: "Документация по API"
+
+KANBAN COLUMNS:
+  - column_id: "col-a"  |  title: "Backlog"
+  - column_id: "col-b"  |  title: "В работе"
+  - column_id: "col-c"  |  title: "Готово"
+
 TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
   - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
   - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
 
 [16:00] pm: Передаю задачу по онбордингу Вове, у Кирилла другой приоритет.
 </input>
-<output>[{{"task_hint": "онбординг", "assignee_id": 222001, "action": "ASSIGN"}}]</output>
+<output>[{{"task_id": "b2c3d4e5-0000-0000-0000-000000000010", "column_id": "col-b", "assignee_id": 222001, "action": "ASSIGN"}}]</output>
 </example>
 
 <example>
 <input>
+TASK CANDIDATES:
+  - task_id: "c3d4e5f6-0000-0000-0000-000000000020"  |  title: "Рефакторинг базы данных"
+  - task_id: "c3d4e5f6-0000-0000-0000-000000000021"  |  title: "Онбординг новых сотрудников"
+
+KANBAN COLUMNS:
+  - column_id: "col-a"  |  title: "Backlog"
+  - column_id: "col-b"  |  title: "В работе"
+
 [17:00] pm: Ладно, таску с рефакторингом базы снимаем — не успеем до дедлайна.
 [17:01] pm: И онбординг тоже отменяем — не актуально.
 </input>
 <output>
 [
-  {{"task_hint": "рефакторинг базы", "assignee_id": null, "action": "CANCEL"}},
-  {{"task_hint": "онбординг", "assignee_id": null, "action": "CANCEL"}}
+  {{"task_id": "c3d4e5f6-0000-0000-0000-000000000020", "column_id": null, "assignee_id": null, "action": "CANCEL"}},
+  {{"task_id": "c3d4e5f6-0000-0000-0000-000000000021", "column_id": null, "assignee_id": null, "action": "CANCEL"}}
 ]
 </output>
 </example>
 
 <example>
 <input>
+TASK CANDIDATES: (none — Qdrant returned no matches)
+
+KANBAN COLUMNS:
+  - column_id: "col-wip"   |  title: "В работе"
+  - column_id: "col-done"  |  title: "Готово"
+
 TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
   - telegram_id: 999001  |  @ivan  |  Иван Иванов  |  PM
   - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
 
-[10:00] ivan: Смотрите: деплой готов, и я назначаю мониторинг на Вову.
+[10:00] ivan: Деплой готов.
 </input>
-<output>
-[
-  {{"task_hint": "деплой", "assignee_id": 999001, "action": "COMPLETE"}},
-  {{"task_hint": "мониторинг", "assignee_id": 222001, "action": "ASSIGN"}}
-]
-</output>
+<output>[{{"task_id": null, "column_id": "col-done", "assignee_id": 999001, "action": "COMPLETE"}}]</output>
 </example>
 </examples>"""
 
 status_prompt = ChatPromptTemplate.from_messages([
     ("system", STATUS_SYSTEM),
-    ("human", "{messages}"),
+    ("human", "{tasks_context}\n\n{columns_context}\n\n{messages}"),
 ])

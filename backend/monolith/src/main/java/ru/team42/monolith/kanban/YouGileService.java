@@ -94,6 +94,7 @@ public class YouGileService {
 
         try {
             var dto = taskToYouGileMapper.toUpdateDto(task);
+            dto.setCompleted(task.isCompleted());
             api.taskControllerUpdate(task.getExternalId(), dto).block();
             log.info("Updated YouGile task {} for local task {}", task.getExternalId(), task.getId());
         } catch (Exception e) {

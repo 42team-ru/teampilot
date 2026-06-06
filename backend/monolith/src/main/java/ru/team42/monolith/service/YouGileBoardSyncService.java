@@ -23,6 +23,8 @@ import ru.team42.monolith.repository.YouGileStickerStateRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 
@@ -58,7 +60,30 @@ public class YouGileBoardSyncService {
                 log.warn("Failed to sync YouGile task {} for team {}: {}", remote.id(), team.getId(), e.getMessage());
             }
         }
+
+        Set<String> remoteIds = remoteTasks.stream()
+                .map(YouGileService.YouGileTaskResponse::id)
+                .collect(Collectors.toSet());
+        self.reconcileDeletedTasks(team, remoteIds);
+
         log.info("Board sync done for team {} — {} remote tasks processed", team.getId(), remoteTasks.size());
+    }
+
+    @Transactional
+    public void reconcileDeletedTasks(Team team, Set<String> remoteIds) {
+        List<Task> synced = taskRepository.findByTeamIdAndExternalIdIsNotNullAndLocalStatusNotIn(
+                team.getId(),
+                List.of(TaskLocalStatus.DELETED_FROM_YOUGILE));
+
+        for (Task task : synced) {
+            if (!remoteIds.contains(task.getExternalId())) {
+                task.setLocalStatus(TaskLocalStatus.DELETED_FROM_YOUGILE);
+                task.setDeleted(true);
+                taskRepository.save(task);
+                taskEventPublisher.publishCancelled(task);
+                log.info("Reconciled: task '{}' ({}) no longer in YouGile — marked deleted", task.getTitle(), task.getId());
+            }
+        }
     }
 
     @Transactional

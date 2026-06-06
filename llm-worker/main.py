@@ -22,7 +22,7 @@ from settings import settings
 
 TOPIC_IN = "messages.batches"
 TOPIC_TASKS = "llm.tasks.create"
-TOPIC_STATUS = ""
+TOPIC_STATUS = "llm.status.change"
 TOPIC_TRANSCRIPT = "audio.transcript.ready"
 TOPIC_LIFECYCLE = "tasks.lifecycle"
 
