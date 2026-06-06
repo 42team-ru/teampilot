@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend package overview for service/entity/controller conventions"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "New JPA entities, repositories, and Flyway migration"}
+{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Spring-to-Python Kafka event aliases and bots.notifications contract"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend implementation quality guardrails"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Feature spans DB, service, REST, Kafka, and bot rendering"}

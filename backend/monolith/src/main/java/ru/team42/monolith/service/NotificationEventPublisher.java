@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component;
 import ru.team42.backend.kafka_common.AbstractEventPublisher;
 import ru.team42.backend.kafka_common.event.KafkaTopics;
 import ru.team42.monolith.entity.Task;
+import ru.team42.monolith.entity.User;
+import ru.team42.monolith.entity.enums.AchievementType;
 import ru.team42.monolith.event.BotNotificationEvent;
 
 import java.util.List;
@@ -49,6 +51,38 @@ public class NotificationEventPublisher extends AbstractEventPublisher {
                         BotNotificationEvent.TYPE_STALE,
                         task.getId(),
                         task.getTitle()
+                )
+        );
+    }
+
+    public void publishAchievement(User user, AchievementType achievement, long newTotalXp) {
+        if (user.getTelegramId() == null) {
+            log.warn("Skipping achievement notification for user {}: no Telegram ID", user.getId());
+            return;
+        }
+        send(
+                KafkaTopics.BOTS_NOTIFICATIONS,
+                user.getTelegramId().toString(),
+                BotNotificationEvent.achievement(
+                        List.of(user.getTelegramId()),
+                        achievement,
+                        newTotalXp
+                )
+        );
+    }
+
+    public void publishLevelUp(User user, String newLevelName, long newTotalXp) {
+        if (user.getTelegramId() == null) {
+            log.warn("Skipping level-up notification for user {}: no Telegram ID", user.getId());
+            return;
+        }
+        send(
+                KafkaTopics.BOTS_NOTIFICATIONS,
+                user.getTelegramId().toString(),
+                BotNotificationEvent.levelUp(
+                        List.of(user.getTelegramId()),
+                        newLevelName,
+                        newTotalXp
                 )
         );
     }
