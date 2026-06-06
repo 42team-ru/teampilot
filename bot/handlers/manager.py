@@ -158,7 +158,7 @@ async def _fetch_pending_tasks_page(
     page_data = await get_tasks_page(
         chat_id=chat_id,
         telegram_id=telegram_id,
-        completed=False,
+        pending_approval=True,
         page=requested_page,
         size=_PENDING_TASKS_PAGE_SIZE,
     )
@@ -168,7 +168,7 @@ async def _fetch_pending_tasks_page(
         page_data = await get_tasks_page(
             chat_id=chat_id,
             telegram_id=telegram_id,
-            completed=False,
+            pending_approval=True,
             page=total_pages - 1,
             size=_PENDING_TASKS_PAGE_SIZE,
         )
