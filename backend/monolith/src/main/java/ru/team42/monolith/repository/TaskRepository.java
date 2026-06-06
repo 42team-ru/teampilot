@@ -62,12 +62,11 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     @Query("""
             SELECT t FROM Task t
             WHERE t.localStatus = ru.team42.monolith.entity.enums.TaskLocalStatus.ACTIVE
-              AND t.assignee IS NOT NULL
               AND NOT EXISTS (
                   SELECT h FROM TaskStatusHistory h
                   WHERE h.task = t
                     AND h.createdAt > :threshold
               )
             """)
-    List<Task> findActiveStaleTasksWithAssignee(@Param("threshold") LocalDateTime threshold);
+    List<Task> findActiveStaleTasks(@Param("threshold") LocalDateTime threshold);
 }

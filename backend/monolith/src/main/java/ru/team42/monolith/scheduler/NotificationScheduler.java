@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.repository.TaskRepository;
@@ -22,6 +23,7 @@ public class NotificationScheduler {
     private final TaskRepository taskRepository;
     private final NotificationEventPublisher notificationEventPublisher;
 
+    @Transactional
     @Scheduled(fixedDelay = 300_000)
     public void sendDeadlineReminders() {
         Instant now = Instant.now();
@@ -36,9 +38,6 @@ public class NotificationScheduler {
 
         for (Task task : tasks) {
             try {
-                if (task.getAssignee() == null) {
-                    continue;
-                }
                 task.setDeadlineNotifiedAt(Instant.now());
                 taskRepository.save(task);
                 notificationEventPublisher.publishDeadlineReminder(task);
@@ -49,11 +48,12 @@ public class NotificationScheduler {
         }
     }
 
+    @Transactional(readOnly = true)
     @Scheduled(cron = "0 0 * * * *")
     public void sendStaleAlerts() {
         LocalDateTime threshold = LocalDateTime.now().minus(24, ChronoUnit.HOURS);
 
-        List<Task> staleTasks = taskRepository.findActiveStaleTasksWithAssignee(threshold);
+        List<Task> staleTasks = taskRepository.findActiveStaleTasks(threshold);
 
         log.info("Stale alert check: found {} stale task(s)", staleTasks.size());
 

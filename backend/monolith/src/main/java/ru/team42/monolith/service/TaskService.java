@@ -23,9 +23,11 @@ import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -152,6 +154,11 @@ public class TaskService {
         Task task = taskRepository.findById(event.getTaskId())
                 .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(event.getTaskId())));
 
+        String previousTitle = task.getTitle();
+        String previousDescription = task.getDescription();
+        Instant previousDeadline = task.getDeadline();
+        UUID previousAssigneeId = task.getAssignee() != null ? task.getAssignee().getId() : null;
+
         llmTaskUpdateMapper.updateTaskFromEvent(event, task);
 
         TaskColumn newColumn = null;
@@ -184,13 +191,24 @@ public class TaskService {
                     .ifPresent(task::setAssignee);
         }
 
+        UUID currentAssigneeId = task.getAssignee() != null ? task.getAssignee().getId() : null;
+        boolean taskDetailsChanged = !Objects.equals(previousTitle, task.getTitle())
+                || !Objects.equals(previousDescription, task.getDescription())
+                || !Objects.equals(previousDeadline, task.getDeadline())
+                || !Objects.equals(previousAssigneeId, currentAssigneeId);
+
         task = taskRepository.save(task);
         youGileService.updateTask(task.getTeam(), task);
 
         if (deleted) {
             taskEventPublisher.publishCancelled(task);
-        } else if (newColumn != null) {
-            taskEventPublisher.publishColumnChanged(task, newColumn);
+        } else {
+            if (newColumn != null) {
+                taskEventPublisher.publishColumnChanged(task, newColumn);
+            }
+            if (taskDetailsChanged) {
+                taskEventPublisher.publishUpdated(task);
+            }
         }
     }
 

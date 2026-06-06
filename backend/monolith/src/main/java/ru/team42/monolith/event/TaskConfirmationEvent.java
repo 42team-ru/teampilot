@@ -4,24 +4,25 @@ import lombok.Getter;
 import ru.team42.backend.kafka_common.event.BaseEvent;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
 public class TaskConfirmationEvent extends BaseEvent {
 
     private final UUID taskId;
-    private final Long chatId;
+    private final List<Long> recipientTelegramIds;
     private final String title;
     private final String description;
     private final String assigneeUsername;
     private final Instant deadline;
     private final boolean autoConfirmed;
 
-    public TaskConfirmationEvent(UUID taskId, Long chatId, String title,
+    public TaskConfirmationEvent(UUID taskId, List<Long> recipientTelegramIds, String title,
                                  String description, String assigneeUsername,
                                  Instant deadline, boolean autoConfirmed) {
         this.taskId = taskId;
-        this.chatId = chatId;
+        this.recipientTelegramIds = recipientTelegramIds;
         this.title = title;
         this.description = description;
         this.assigneeUsername = assigneeUsername;
