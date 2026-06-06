@@ -282,7 +282,7 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Task> list(Long chatId, Long assigneeTelegramId, Boolean completed, Pageable pageable) {
+    public Page<Task> list(Long chatId, Long assigneeTelegramId, Boolean completed, Boolean pendingApproval, Pageable pageable) {
         UUID teamId = null;
         if (chatId != null) {
             Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
@@ -293,6 +293,14 @@ public class TaskService {
 
         if (teamId == null && assigneeTelegramId == null) {
             throw AppException.badRequest("chatId or assignee is required");
+        }
+
+        if (Boolean.TRUE.equals(pendingApproval)) {
+            final UUID resolvedTeamId = teamId;
+            if (resolvedTeamId == null) {
+                throw AppException.badRequest("chatId is required for pendingApproval filter");
+            }
+            return taskRepository.findByTeamIdAndLocalStatus(resolvedTeamId, TaskLocalStatus.PENDING_APPROVAL, pageable);
         }
 
         if (Boolean.TRUE.equals(completed)) {

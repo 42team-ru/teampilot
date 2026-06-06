@@ -65,6 +65,7 @@ async def get_tasks_page(
     column_id: str | None = None,
     page: int = 0,
     size: int = 10,
+    pending_approval: bool = False,
 ) -> dict:
     """GET /tasks?chatId=...&assignee=...&completed=...&columnId=...&page=...&size=..."""
     path = "/tasks"
@@ -77,6 +78,8 @@ async def get_tasks_page(
         params["columnId"] = column_id
     if completed is not None:
         params["completed"] = "true" if completed else "false"
+    if pending_approval:
+        params["pendingApproval"] = "true"
 
     context = {
         "chat_id": chat_id,
@@ -86,6 +89,7 @@ async def get_tasks_page(
         "column_id": column_id,
         "page": page,
         "size": size,
+        "pending_approval": pending_approval,
     }
     try:
         resp = await http_client.get(
