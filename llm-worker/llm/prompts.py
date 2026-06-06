@@ -110,22 +110,24 @@ A task is an explicit assignment — direct or indirect — that implies someone
 
 <rules>
 <assignee_resolution>
-Resolve the assignee using this priority chain — stop at the first match:
+Identify who should do the task using this priority chain — stop at the first match:
 
-1. @mention in text → use that @username directly.
-2. Chat log username agrees: the person (before ":") writes "беру", "сделаю", "ок займусь", "возьму" → use their log username.
-3. Person is addressed by name AND confirms: PM says "Кирилл, сделай X" AND `frontend_kirill` replies "сделаю" → use `frontend_kirill`.
-4. Person addressed by nickname + found in TEAM LIST + confirms: PM says "Мишаня, посмотришь?" AND `mikhail_be` (full_name=Михаил) replies "да, гляну" → use `@mikhail_be`.
+1. @mention in text → look them up in TEAM LIST by username.
+2. Chat log author agrees: the person (before ":") writes "беру", "сделаю", "ок займусь", "возьму" → look up their log username in TEAM LIST.
+3. Person addressed by name AND confirms: PM says "Кирилл, сделай X" AND that person replies "сделаю" → look up in TEAM LIST by full_name.
+4. Nickname addressed + found in TEAM LIST + confirms: PM says "Мишаня, посмотришь?" AND `mikhail_be` (full_name=Михаил) replies "да, гляну" → use their telegram_id.
 5. Name/nickname addressed, no reply: use TEAM LIST match only if the intended assignee is unambiguous.
 6. Role only ("девопс", "фронт", "бэк"): apply ROLE AMBIGUITY rule below.
-7. Unclear → null.
+7. Not found in TEAM LIST or unclear → assignee_id = null.
 
 <role_ambiguity>
 If assignee is specified by role (e.g. "пусть фронт займётся"):
 - Count team members with that role in TEAM LIST.
-- Exactly ONE match → assign to them (@username).
-- TWO OR MORE matches → assignee = null. Do NOT guess. The backend routes it manually.
+- Exactly ONE match → use their telegram_id.
+- TWO OR MORE matches → assignee_id = null. Do NOT guess.
 </role_ambiguity>
+
+CRITICAL: assignee_id MUST be a telegram_id integer taken verbatim from the TEAM LIST. Never invent or guess an id. If the person cannot be matched to TEAM LIST → null.
 </assignee_resolution>
 
 <team_context>
@@ -134,8 +136,8 @@ If assignee is specified by role (e.g. "пусть фронт займётся")
 Use this list to resolve informal names and roles:
 - Informal name ("Мишаня") → match full_name field (partial, case-insensitive).
 - Role keyword ("фронт", "девопс") → match role field (partial, case-insensitive).
-- Return @username from TEAM LIST when identified.
-- If not found in TEAM LIST and no chat username available → use the exact name from the text.
+- Output the telegram_id value from this list as assignee_id.
+- If the person cannot be matched to any entry → assignee_id = null.
 </team_context>
 
 <columns>
@@ -147,11 +149,30 @@ The human message may contain a KANBAN COLUMNS section.
 - No KANBAN COLUMNS in input → column_id = null.
 </columns>
 
+<stickers>
+The human message may contain a STICKERS section with available stickers and their states.
+- For each sticker, decide whether it applies to the task based on the chat context.
+- If applicable, add an entry to "stickers": {{sticker_id: state_id}}.
+- For free-text stickers (no states listed): set the value to an appropriate string.
+- If a sticker does not apply — omit it entirely (do NOT include it with null/empty value).
+- If no STICKERS provided → stickers = null.
+
+Examples of sticker application:
+- Sticker "Приоритет" with states critical/major/normal/low: "срочно", "прод упал", "критично" → critical; "до конца недели" → normal; "когда будет время" → low.
+- Sticker "Тип задачи" with states bug/feature/chore: "баг", "ошибка", "не работает" → bug; "добавить", "реализовать", "сделать" → feature.
+</stickers>
+
 <deadlines>
 Current time: {current_datetime}
 - Convert relative dates to ISO-8601 UTC (always append Z): "до завтра" → tomorrow 23:59Z, "сегодня" → today 23:59Z, "до конца недели" → nearest Friday 23:59Z.
 - No deadline mentioned → null.
 </deadlines>
+
+<source_message_ids>
+Каждое сообщение в диалоге начинается с префикса `[ID: <идентификатор>]`.
+Для каждой выделенной задачи вы должны определить список идентификаторов сообщений (`source_message_ids`), которые непосредственно содержат информацию об этой задаче (постановка задачи, обсуждение деталей, согласие исполнителя).
+Если идентификаторы сообщений отсутствуют в логе (например, пустая строка или отсутствуют префиксы), верните пустой список `[]`.
+</source_message_ids>
 
 <language_and_format>
 Always reply in Russian.
@@ -165,7 +186,7 @@ Always reply in Russian.
 </rules>
 
 <output_format>
-[{{"title": "...", "description": "...", "assignee": "..." | null, "deadline": "ISO-8601" | null, "column_id": "..." | null}}, ...]
+[{{"title": "...", "description": "...", "assignee_id": 12345 | null, "deadline": "ISO-8601" | null, "column_id": "..." | null, "source_message_ids": ["msg_id_1", "msg_id_2"], "stickers": {{"sticker_id": "state_id"}} | null}}, ...]
 </output_format>
 
 <examples>
@@ -176,13 +197,16 @@ KANBAN COLUMNS:
   - id: "col-002"  |  title: "In Progress"
   - id: "col-003"  |  title: "Done"
 
-[10:00] ivan_pm: @kirill_dev Кирилл, нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+
+[ID: msg-101] [10:00] ivan_pm: @kirill_dev Кирилл, нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3.
 </input>
 <thinking>
-@kirill_dev is explicitly mentioned → assignee. Deadline "до завтрашнего вечера" → tomorrow 23:59. Deadline < 24h → HIGH. Columns present, new task → "To Do" col-001.
+@kirill_dev is explicitly mentioned → look up in TEAM LIST → telegram_id 111001. Deadline "до завтрашнего вечера" → tomorrow 23:59. Columns present, new task → "To Do" col-001. Source message is msg-101.
 </thinking>
 <output>
-[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee": "@kirill_dev", "deadline": "2026-06-04T23:59:00Z", "column_id": "col-001"}}]
+[{{"title": "Реализовать endpoint загрузки файлов в S3", "description": "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»", "assignee_id": 111001, "deadline": "2026-06-04T23:59:00Z", "column_id": "col-001", "source_message_ids": ["msg-101"]}}]
 </output>
 </example>
 
@@ -193,87 +217,99 @@ KANBAN COLUMNS:
   - id: "col-b"  |  title: "В работе"
   - id: "col-c"  |  title: "Готово"
 
-[09:00] pm: Прод упал! Нужно срочно патч!
-[09:01] kirill: Беру, смотрю уже.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @kirill  |  Кирилл Версталов  |  Developer
+
+[ID: msg-201] [09:00] pm: Прод упал! Нужно срочно патч!
+[ID: msg-202] [09:01] kirill: Беру, смотрю уже.
 </input>
 <thinking>
-"прод упал" + "срочно" → HIGH. kirill confirms "Беру, смотрю уже" → он уже работает → "В работе" col-b. Assignee = kirill (from chat log). No explicit deadline.
+kirill confirms "Беру, смотрю уже" → look up "kirill" in TEAM LIST by username → telegram_id 111001. Already working → "В работе" col-b. No explicit deadline. Source messages are msg-201 and msg-202.
 </thinking>
 <output>
-[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю уже»", "assignee": "kirill", "deadline": null, "column_id": "col-b"}}]
+[{{"title": "Устранить критическую ошибку на проде", "description": "«pm: Прод упал! Нужно срочно патч!» — «kirill: Беру, смотрю уже»", "assignee_id": 111001, "deadline": null, "column_id": "col-b", "source_message_ids": ["msg-201", "msg-202"]}}]
 </output>
 </example>
 
 <example>
 <input>
-[12:00] vova_ml: Блин, в qdrant эмбеддинги поплыли. Надо пересоздать коллекцию с правильным размером вектора.
-[12:01] kirill_dev: Вов, возьмёшь на себя? Я на фронте зашиваюсь.
-[12:02] vova_ml: Ок, сегодня поковыряю.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+
+[ID: msg-301] [12:00] vova_ml: Блин, в qdrant эмбеддинги поплыли. Надо пересоздать коллекцию с правильным размером вектора.
+[ID: msg-302] [12:01] kirill_dev: Вов, возьмёшь на себя? Я на фронте зашиваюсь.
+[ID: msg-303] [12:02] vova_ml: Ок, сегодня поковыряю.
 </input>
 <thinking>
-vova_ml explicitly agrees ("Ок, сегодня поковыряю") → assignee = vova_ml. "сегодня" → today 23:59. No KANBAN COLUMNS → column_id = null.
+vova_ml explicitly agrees ("Ок, сегодня поковыряю") → look up in TEAM LIST → telegram_id 222001. "сегодня" → today 23:59. No KANBAN COLUMNS → column_id = null. Source messages are msg-301, msg-302, msg-303.
 </thinking>
 <output>
-[{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee": "vova_ml", "deadline": "2026-06-03T23:59:00Z", "column_id": null}}]
+[{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee_id": 222001, "deadline": "2026-06-03T23:59:00Z", "column_id": null, "source_message_ids": ["msg-301", "msg-302", "msg-303"]}}]
 </output>
 </example>
 
 <example>
 <input>
-[14:00] ivan_pm: Ребята, два момента: Кирилл — разбери ошибки в логах после деплоя, Вова — обнови зависимости в pyproject до конца недели.
-[14:01] frontend_kirill: Беру логи.
-[14:02] vova_ml: Зависимости за мной.
-[14:03] ivan_pm: Маша, с тебя доки по API.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @frontend_kirill  |  Кирилл Версталов  |  Developer
+  - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
+  - telegram_id: 333001  |  @qa_masha  |  Мария Тестова  |  QA
+
+[ID: msg-401] [14:00] ivan_pm: Ребята, два момента: Кирилл — разбери ошибки в логах после деплоя, Вова — обнови зависимости в pyproject до конца недели.
+[ID: msg-402] [14:01] frontend_kirill: Беру логи.
+[ID: msg-403] [14:02] vova_ml: Зависимости за мной.
+[ID: msg-404] [14:03] ivan_pm: Маша, с тебя доки по API.
 </input>
 <thinking>
-Three assignments: 1) frontend_kirill agrees to logs, 2) vova_ml agrees to deps with "до конца недели" → Friday, 3) Маша = @qa_masha from team list. All MEDIUM (no urgency keywords, no short deadlines). No KANBAN COLUMNS.
+Three assignments: 1) frontend_kirill agrees → telegram_id 111001, 2) vova_ml agrees, "до конца недели" → Friday → telegram_id 222001, 3) Маша → full_name match "Мария" = @qa_masha → telegram_id 333001. No KANBAN COLUMNS.
 </thinking>
 <output>
 [
-  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "«ivan_pm: разбери ошибки в логах после деплоя» — «frontend_kirill: Беру логи»", "assignee": "frontend_kirill", "deadline": null, "column_id": null}},
-  {{"title": "Обновить зависимости в pyproject.toml", "description": "«ivan_pm: обнови зависимости в pyproject до конца недели» — «vova_ml: Зависимости за мной»", "assignee": "vova_ml", "deadline": "2026-06-07T23:59:00Z", "column_id": null}},
-  {{"title": "Написать документацию по API", "description": "«ivan_pm: Маша, с тебя доки по API»", "assignee": "@qa_masha", "deadline": null, "column_id": null}}
+  {{"title": "Проанализировать ошибки в логах после деплоя", "description": "«ivan_pm: разбери ошибки в логах после деплоя» — «frontend_kirill: Беру логи»", "assignee_id": 111001, "deadline": null, "column_id": null, "source_message_ids": ["msg-401", "msg-402"]}},
+  {{"title": "Обновить зависимости в pyproject.toml", "description": "«ivan_pm: обнови зависимости в pyproject до конца недели» — «vova_ml: Зависимости за мной»", "assignee_id": 222001, "deadline": "2026-06-07T23:59:00Z", "column_id": null, "source_message_ids": ["msg-401", "msg-403"]}},
+  {{"title": "Написать документацию по API", "description": "«ivan_pm: Маша, с тебя доки по API»", "assignee_id": 333001, "deadline": null, "column_id": null, "source_message_ids": ["msg-404"]}}
 ]
 </output>
 </example>
 
 <example>
 <input>
-[09:00] pm_ivan: Мишаня, посмотришь на баг с авторизацией? Там ошибка 500.
-[09:01] mikhail_be: Да, возьму. Сегодня гляну.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 444001  |  @mikhail_be  |  Михаил Беккеров  |  Developer
 
-TEAM LIST:
-  - @mikhail_be  |  Михаил Беккеров  |  Developer
+[ID: msg-501] [09:00] pm_ivan: Мишаня, посмотришь на баг с авторизацией? Там ошибка 500.
+[ID: msg-502] [09:01] mikhail_be: Да, возьму. Сегодня гляну.
 </input>
 <thinking>
-"Мишаня" → team list → Михаил Беккеров = @mikhail_be. mikhail_be himself confirms "Да, возьму" → assignee = @mikhail_be. No deadline mentioned.
+"Мишаня" → full_name match "Михаил" = @mikhail_be → telegram_id 444001. He confirms "Да, возьму". Source messages are msg-501 and msg-502.
 </thinking>
 <output>
-[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "«pm_ivan: Мишаня, посмотришь на баг с авторизацией?» — «mikhail_be: Да, возьму»", "assignee": "@mikhail_be", "deadline": null, "column_id": null}}]
+[{{"title": "Проверить и исправить баг с авторизацией (ошибка 500)", "description": "«pm_ivan: Мишаня, посмотришь на баг с авторизацией?» — «mikhail_be: Да, возьму»", "assignee_id": 444001, "deadline": null, "column_id": null, "source_message_ids": ["msg-501", "msg-502"]}}]
 </output>
 </example>
 
 <example>
 <input>
-[10:00] pm: Пусть фронт займётся этим багом.
-[10:01] backend: Согласен, это на их стороне.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @frontend_kirill  |  Кирилл Версталов  |  Developer
+  - telegram_id: 555001  |  @front_dasha  |  Дарья Фронтендова  |  Developer
 
-TEAM LIST:
-  - @frontend_kirill  |  Кирилл Версталов  |  Developer
-  - @front_dasha  |  Дарья Фронтендова  |  Developer
+[ID: msg-601] [10:00] pm: Пусть фронт займётся этим багом.
+[ID: msg-602] [10:01] backend: Согласен, это на их стороне.
 </input>
 <thinking>
-Role "фронт" → 2 Developers match → ROLE AMBIGUITY → assignee = null.
+Role "фронт" → 2 Developer matches → ROLE AMBIGUITY → assignee_id = null. Source message is msg-601.
 </thinking>
 <output>
-[{{"title": "Исправить баг на стороне фронтенда", "description": "«pm: Пусть фронт займётся этим багом.»", "assignee": null, "deadline": null, "column_id": null}}]
+[{{"title": "Исправить баг на стороне фронтенда", "description": "«pm: Пусть фронт займётся этим багом.»", "assignee_id": null, "deadline": null, "column_id": null, "source_message_ids": ["msg-601"]}}]
 </output>
 </example>
 
 <example>
 <input>
-[15:00] dev1: Кто пойдет обедать?
-[15:01] dev2: Я пас, у меня созвон.
+[ID: msg-701] [15:00] dev1: Кто пойдет обедать?
+[ID: msg-702] [15:01] dev2: Я пас, у меня созвон.
 </input>
 <thinking>
 No assignment, no task signals — pure noise.
@@ -285,39 +321,43 @@ No assignment, no task signals — pure noise.
 
 <example>
 <input>
-[11:00] devops_oleg: Ребята, я настроил мониторинг в Grafana, всё работает. Алерты приходят.
-[11:05] backend_sasha: Круто! Можешь ещё настроить сбор логов в ELK? У нас логи теряются.
-[11:10] devops_oleg: Ладно, завтра займусь.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 666001  |  @devops_oleg  |  Олег Девопсов  |  DevOps
+  - telegram_id: 777001  |  @backend_sasha  |  Александр Бэкенд  |  Developer
+
+[ID: msg-801] [11:00] devops_oleg: Ребята, я настроил мониторинг в Grafana, всё работает. Алерты приходят.
+[ID: msg-802] [11:05] backend_sasha: Круто! Можешь ещё настроить сбор логов в ELK? У нас логи теряются.
+[ID: msg-803] [11:10] devops_oleg: Ладно, завтра займусь.
 </input>
 <thinking>
-"я настроил мониторинг" = already done → skip. Only new request: ELK logs. devops_oleg agrees "завтра займусь" → assignee = devops_oleg. "завтра" → tomorrow 23:59 → < 24h → HIGH.
+"я настроил мониторинг" = already done → skip. New request: ELK logs. devops_oleg agrees → telegram_id 666001. "завтра" → tomorrow 23:59. Source messages are msg-802 and msg-803.
 </thinking>
 <output>
-[{{"title": "Настроить сбор логов в ELK", "description": "«backend_sasha: Можешь ещё настроить сбор логов в ELK? У нас логи теряются» — «devops_oleg: Ладно, завтра займусь»", "assignee": "devops_oleg", "deadline": "2026-06-06T23:59:00Z", "column_id": null}}]
+[{{"title": "Настроить сбор логов в ELK", "description": "«backend_sasha: Можешь ещё настроить сбор логов в ELK? У нас логи теряются» — «devops_oleg: Ладно, завтра займусь»", "assignee_id": 666001, "deadline": "2026-06-06T23:59:00Z", "column_id": null, "source_message_ids": ["msg-802", "msg-803"]}}]
 </output>
 </example>
 
 <example>
 <input>
-[16:00] pm_lead: Пусть девопс настроит мониторинг на новом сервере.
-[16:05] frontend_anna: Да, там алерты не приходят.
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 666001  |  @ops_sasha  |  Александр Девопсов  |  DevOps
+  - telegram_id: 888001  |  @frontend_anna  |  Анна Фронтова  |  Frontend
 
-TEAM LIST:
-  - @ops_sasha  |  Александр Девопсов  |  DevOps
-  - @frontend_anna  |  Анна Фронтова  |  Frontend
+[ID: msg-901] [16:00] pm_lead: Пусть девопс настроит мониторинг на новом сервере.
+[ID: msg-902] [16:05] frontend_anna: Да, там алерты не приходят.
 </input>
 <thinking>
-Role "девопс" → 1 match in team list → @ops_sasha. frontend_anna commented but is Frontend, not DevOps — she is NOT the assignee.
+Role "девопс" → 1 DevOps match → @ops_sasha → telegram_id 666001. frontend_anna is Frontend, not DevOps. Source message is msg-901.
 </thinking>
 <output>
-[{{"title": "Настроить мониторинг на новом сервере", "description": "«pm_lead: Пусть девопс настроит мониторинг на новом сервере.»", "assignee": "@ops_sasha", "deadline": null, "column_id": null}}]
+[{{"title": "Настроить мониторинг на новом сервере", "description": "«pm_lead: Пусть девопс настроит мониторинг на новом сервере.»", "assignee_id": 666001, "deadline": null, "column_id": null, "source_message_ids": ["msg-901"]}}]
 </output>
 </example>
 </examples>"""
 
 task_prompt = ChatPromptTemplate.from_messages([
     ("system", TASK_SYSTEM),
-    ("human", "{columns_context}\n\n{messages}"),
+    ("human", "{columns_context}\n\n{stickers_context}\n\n{messages}"),
 ])
 
 # ==========================================
@@ -342,18 +382,19 @@ Raw JSON only — no markdown, no prose.
 <rules>
 <fields>
 - task_hint: 2–5 words describing WHAT task changed. Extract from context.
-- assignee: who completed the task or who it was assigned to. Prioritize chat username or @mention over display name. null if unclear.
+- assignee_id: telegram_id (integer) of who completed the task or who it was assigned to. Look them up in TEAM LIST. null if not found or unclear.
 </fields>
 
 <assignee_resolution>
 Use TEAM LIST to resolve informal names and roles:
-- Informal name ("Маша", "Мишаня") or role ("фронт", "лид", "девопс") that refers to someone other than the message author → look them up in TEAM LIST.
-- Match by full_name (partial, case-insensitive) OR role keyword.
-- Return their @username from TEAM LIST.
-- Not found in TEAM LIST and no chat username → use the exact name from the text.
+- Informal name ("Маша", "Мишаня") or role ("фронт", "лид", "девопс") → look them up in TEAM LIST.
+- Chat log author who says "готово", "сделал" → look up their username in TEAM LIST.
+- Match by full_name (partial, case-insensitive) OR role keyword OR username.
+- Output the telegram_id integer value from TEAM LIST.
+- Not found in TEAM LIST → assignee_id = null. Never invent or guess an id.
 
 <role_ambiguity>
-If specified by role and multiple team members share that role → assignee = null.
+If specified by role and multiple team members share that role → assignee_id = null.
 </role_ambiguity>
 </assignee_resolution>
 
@@ -363,18 +404,29 @@ If specified by role and multiple team members share that role → assignee = nu
 </rules>
 
 <output_format>
-[{{"task_hint": "...", "assignee": "..." | null, "action": "COMPLETE"|"ASSIGN"|"CANCEL"}}, ...]
+[{{"task_hint": "...", "assignee_id": 12345 | null, "action": "COMPLETE"|"ASSIGN"|"CANCEL"}}, ...]
 </output_format>
 
 <examples>
 <example>
-<input>[11:00] kirill_dev: Я закончил с авторизацией, проверяйте в мастере.</input>
-<output>[{{"task_hint": "авторизация", "assignee": "kirill_dev", "action": "COMPLETE"}}]</output>
+<input>
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+
+[11:00] kirill_dev: Я закончил с авторизацией, проверяйте в мастере.
+</input>
+<output>[{{"task_hint": "авторизация", "assignee_id": 111001, "action": "COMPLETE"}}]</output>
 </example>
 
 <example>
-<input>[16:00] pm: Передаю задачу по онбордингу Вове, у Кирилла другой приоритет.</input>
-<output>[{{"task_hint": "онбординг", "assignee": "Вова", "action": "ASSIGN"}}]</output>
+<input>
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+
+[16:00] pm: Передаю задачу по онбордингу Вове, у Кирилла другой приоритет.
+</input>
+<output>[{{"task_hint": "онбординг", "assignee_id": 222001, "action": "ASSIGN"}}]</output>
 </example>
 
 <example>
@@ -384,18 +436,24 @@ If specified by role and multiple team members share that role → assignee = nu
 </input>
 <output>
 [
-  {{"task_hint": "рефакторинг базы", "assignee": null, "action": "CANCEL"}},
-  {{"task_hint": "онбординг", "assignee": null, "action": "CANCEL"}}
+  {{"task_hint": "рефакторинг базы", "assignee_id": null, "action": "CANCEL"}},
+  {{"task_hint": "онбординг", "assignee_id": null, "action": "CANCEL"}}
 ]
 </output>
 </example>
 
 <example>
-<input>[10:00] ivan: Смотрите: деплой готов, и я назначаю мониторинг на Вову.</input>
+<input>
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 999001  |  @ivan  |  Иван Иванов  |  PM
+  - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
+
+[10:00] ivan: Смотрите: деплой готов, и я назначаю мониторинг на Вову.
+</input>
 <output>
 [
-  {{"task_hint": "деплой", "assignee": "ivan", "action": "COMPLETE"}},
-  {{"task_hint": "мониторинг", "assignee": "Вова", "action": "ASSIGN"}}
+  {{"task_hint": "деплой", "assignee_id": 999001, "action": "COMPLETE"}},
+  {{"task_hint": "мониторинг", "assignee_id": 222001, "action": "ASSIGN"}}
 ]
 </output>
 </example>

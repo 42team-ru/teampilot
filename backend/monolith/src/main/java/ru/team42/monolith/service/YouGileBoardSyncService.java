@@ -8,6 +8,8 @@ import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.TaskColumn;
 import ru.team42.monolith.entity.TaskStatusHistory;
 import ru.team42.monolith.entity.Team;
+import ru.team42.monolith.entity.YouGileSticker;
+import ru.team42.monolith.entity.YouGileStickerState;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSource;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
@@ -16,6 +18,8 @@ import ru.team42.monolith.repository.TaskColumnRepository;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
+import ru.team42.monolith.repository.YouGileStickerRepository;
+import ru.team42.monolith.repository.YouGileStickerStateRepository;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,6 +37,8 @@ public class YouGileBoardSyncService {
     private final TaskStatusHistoryRepository historyRepository;
     private final TeamUserRepository teamUserRepository;
     private final TaskEventPublisher taskEventPublisher;
+    private final YouGileStickerRepository stickerRepository;
+    private final YouGileStickerStateRepository stickerStateRepository;
 
     @Autowired
     @Lazy
@@ -42,6 +48,7 @@ public class YouGileBoardSyncService {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return;
 
         self.syncColumns(team);
+        self.syncStickers(team);
 
         List<YouGileService.YouGileTaskResponse> remoteTasks = youGileService.fetchAllTasksForBoard(team);
         for (YouGileService.YouGileTaskResponse remote : remoteTasks) {
@@ -74,6 +81,41 @@ public class YouGileBoardSyncService {
         }
 
         log.info("Synced {} columns for team {}", result.size(), team.getId());
+        return result;
+    }
+
+    @Transactional
+    public List<YouGileSticker> syncStickers(Team team) {
+        if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
+
+        List<YouGileService.StickerInfo> remote = youGileService.fetchStickers(team);
+        List<YouGileSticker> result = new java.util.ArrayList<>();
+
+        for (YouGileService.StickerInfo info : remote) {
+            YouGileSticker sticker = stickerRepository
+                    .findByTeamIdAndYougileStickerId(team.getId(), info.id())
+                    .orElseGet(YouGileSticker::new);
+
+            sticker.setTeam(team);
+            sticker.setYougileStickerId(info.id());
+            sticker.setTitle(info.title());
+            sticker.setType(info.type());
+            sticker = stickerRepository.save(sticker);
+
+            for (YouGileService.StickerStateInfo stateInfo : info.states()) {
+                YouGileStickerState state = stickerStateRepository
+                        .findByStickerIdAndYougileStateId(sticker.getId(), stateInfo.id())
+                        .orElseGet(YouGileStickerState::new);
+                state.setSticker(sticker);
+                state.setYougileStateId(stateInfo.id());
+                state.setTitle(stateInfo.title());
+                stickerStateRepository.save(state);
+            }
+
+            result.add(sticker);
+        }
+
+        log.info("Synced {} stickers for team {}", result.size(), team.getId());
         return result;
     }
 

@@ -17,7 +17,7 @@ public class LlmUpdateTaskEvent extends BaseEvent {
 
     private UUID taskId;
 
-    private Long assigneeTelegramId;
+    private Long assigneeId;
 
     private String titleTask;
 

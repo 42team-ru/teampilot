@@ -12,8 +12,12 @@ import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.mapper.TaskToYouGileMapper;
 
+import ru.team42.monolith.entity.enums.StickerType;
+
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -37,6 +41,10 @@ public class YouGileService {
 
     public record ColumnInfo(String id, String title) {}
 
+    public record StickerStateInfo(String id, String title) {}
+
+    public record StickerInfo(String id, String title, StickerType type, List<StickerStateInfo> states) {}
+
     public Optional<String> createTask(Team team, Task task) {
         if (team.getKanbanId() == null || team.getKanbanApiKey() == null) {
             return Optional.empty();
@@ -58,6 +66,10 @@ public class YouGileService {
 
         if (task.getAssignee() != null && task.getAssignee().getYougileUserId() != null) {
             dto.setAssigned(List.of(task.getAssignee().getYougileUserId()));
+        }
+
+        if (task.getStickers() != null && !task.getStickers().isEmpty()) {
+            dto.setStickers(task.getStickers());
         }
 
         try {
@@ -127,6 +139,41 @@ public class YouGileService {
             log.error("Failed to fetch board tasks for team {}: {}", team.getId(), e.getMessage());
             return List.of();
         }
+    }
+
+    public List<StickerInfo> fetchStickers(Team team) {
+        if (team.getKanbanId() == null || team.getKanbanApiKey() == null) return List.of();
+        DefaultApi api = buildApi(team);
+        List<StickerInfo> result = new ArrayList<>();
+        try {
+            var sprint = api.sprintStickerControllerSearch(false, null, null, null, team.getKanbanId()).block();
+            if (sprint != null) {
+                sprint.getContent().forEach(s -> {
+                    List<StickerStateInfo> states = s.getStates() == null ? List.of() :
+                            s.getStates().stream()
+                                    .map(st -> new StickerStateInfo(st.getId(), st.getName()))
+                                    .toList();
+                    result.add(new StickerInfo(s.getId(), s.getName(), StickerType.SPRINT, states));
+                });
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch sprint stickers for team {}: {}", team.getId(), e.getMessage());
+        }
+        try {
+            var strings = api.stringStickerControllerSearch(false, null, null, null, team.getKanbanId()).block();
+            if (strings != null) {
+                strings.getContent().forEach(s -> {
+                    List<StickerStateInfo> states = s.getStates() == null ? List.of() :
+                            s.getStates().stream()
+                                    .map(st -> new StickerStateInfo(st.getId(), st.getName()))
+                                    .toList();
+                    result.add(new StickerInfo(s.getId(), s.getName(), StickerType.STRING, states));
+                });
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch string stickers for team {}: {}", team.getId(), e.getMessage());
+        }
+        return result;
     }
 
     public List<ColumnInfo> fetchColumns(Team team) {

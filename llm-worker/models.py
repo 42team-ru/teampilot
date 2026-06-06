@@ -24,6 +24,7 @@ class MessageDto(BaseModel):
     full_name: str
     text: str
     timestamp: datetime
+    message_id: str | None = None
 
 
 class TeamMember(BaseModel):
@@ -39,12 +40,25 @@ class ColumnInfo(BaseModel):
     title: str
 
 
+class StickerStateInfo(BaseModel):
+    id: str
+    title: str
+
+
+class StickerInfo(BaseModel):
+    id: str
+    title: str
+    type: str
+    states: list[StickerStateInfo] = Field(default_factory=list)
+
+
 class MessageBatchEvent(BaseModel):
     event_id: str
     occurred_at: datetime
     team_id: str
     team: list[TeamMember] = Field(default_factory=list)
     columns: list[ColumnInfo] = Field(default_factory=list)
+    stickers: list[StickerInfo] = Field(default_factory=list)
     messages: list[MessageDto]
     batch_start: datetime
     batch_end: datetime
@@ -68,6 +82,7 @@ def proto_to_batch_event(proto_event: Any) -> MessageBatchEvent:
                 full_name=m.full_name,
                 text=m.text,
                 timestamp=ts_to_dt(m.timestamp),
+                message_id=m.message_id or None,
             )
             for m in proto_event.messages
         ],
@@ -85,6 +100,15 @@ def proto_to_batch_event(proto_event: Any) -> MessageBatchEvent:
             ColumnInfo(id=c.id, title=c.title)
             for c in proto_event.columns
         ],
+        stickers=[
+            StickerInfo(
+                id=s.id,
+                title=s.title,
+                type=s.type,
+                states=[StickerStateInfo(id=st.id, title=st.title) for st in s.states],
+            )
+            for s in proto_event.stickers
+        ],
     )
 
 
@@ -94,19 +118,19 @@ class TaskCreateEvent(BaseModel):
     team_id: str
     title: str
     description: str
-    assignee: str | None = None
-    assignee_telegram_id: int | None = None
+    assignee_id: int | None = None
     deadline: str | None = None
     column_id: str | None = None
     source_batch_id: str
     confidence: float = 0.0
+    source_message_ids: list[str] = Field(default_factory=list)
+    stickers: dict[str, str] | None = None
 
 
 class StatusChangeEvent(BaseModel):
     team_id: str
     task_hint: str
-    assignee: str | None = None
-    assignee_telegram_id: int | None = None
+    assignee_id: int | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
     source_batch_id: str
     resolved_task_id: str | None = None
@@ -124,14 +148,16 @@ class ClassificationResult(BaseModel):
 class TaskExtraction(BaseModel):
     title: str
     description: str
-    assignee: str | None = None
+    assignee_id: int | None = None
     deadline: str | None = None
     column_id: str | None = None
+    source_message_ids: list[str] = Field(default_factory=list)
+    stickers: dict[str, str] | None = None
 
 
 class StatusExtraction(BaseModel):
     task_hint: str
-    assignee: str | None = None
+    assignee_id: int | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
 
 
