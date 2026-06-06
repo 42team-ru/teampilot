@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Структура бека: куда добавлять эндпоинт, сервис, репозиторий"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Как бросать AppException в новом эндпоинте"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Соглашения по ResponseUtils, контроллерам, DTO"}
+{"file": ".trellis/tasks/06-06-filter-tasks-by-kanban-column/prd.md", "reason": "PRD с требованиями к фиче"}

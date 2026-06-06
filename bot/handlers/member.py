@@ -15,13 +15,13 @@ from keyboards.member import (
     team_context_manager_keyboard,
     team_context_manager_files_keyboard,
     team_context_manager_manage_keyboard,
-    team_context_manager_tasks_keyboard,
     team_context_member_keyboard,
     team_context_member_files_keyboard,
-    team_context_member_tasks_keyboard,
     team_overview_keyboard,
+    team_tasks_keyboard,
     upload_waiting_keyboard,
 )
+from services.task_service import get_team_columns
 from handlers.tasks_commands import _render_my_tasks
 from services.admin_service import get_user_by_telegram_id
 from services.task_service import get_tasks_page
@@ -197,10 +197,16 @@ async def team_manager_tasks_menu(callback: CallbackQuery) -> None:
         await callback.answer("Сначала привяжите Telegram-чат к команде.", show_alert=True)
         return
 
-    pending_count = await _pending_tasks_count(chat_id, callback.from_user.id)
+    columns = await get_team_columns(int(chat_id), callback.from_user.id)
+    note = "Выберите колонку или раздел:" if columns else "⚠️ Канбан-доска не настроена.\nДоступны только личные задачи."
     await callback.message.edit_text(
-        f"📋 <b>Задачи: {escape(team.get('chatTitle') or team_id)}</b>\n\nВыберите действие с задачами:",
-        reply_markup=team_context_manager_tasks_keyboard(team_id, pending_count=pending_count),
+        f"📋 <b>Задачи: {escape(team.get('chatTitle') or team_id)}</b>\n\n{note}",
+        reply_markup=team_tasks_keyboard(
+            team_id,
+            columns,
+            my_tasks_callback=f"tasks:team_my:{team_id}:active:0",
+            back_callback=f"team_ctx:manager:{team_id}",
+        ),
     )
     await callback.answer()
 
@@ -250,9 +256,17 @@ async def team_member_tasks_menu(callback: CallbackQuery) -> None:
         await callback.answer("У команды пока нет привязанного Telegram-чата.", show_alert=True)
         return
 
+    chat_id = int(team["telegramChatId"])
+    columns = await get_team_columns(chat_id, callback.from_user.id)
+    note = "Выберите колонку:" if columns else "⚠️ Канбан-доска не настроена.\nДоступны только личные задачи."
     await callback.message.edit_text(
-        f"📋 <b>Задачи: {escape(team.get('chatTitle') or team_id)}</b>\n\nВыберите список задач:",
-        reply_markup=team_context_member_tasks_keyboard(team_id),
+        f"📋 <b>Задачи: {escape(team.get('chatTitle') or team_id)}</b>\n\n{note}",
+        reply_markup=team_tasks_keyboard(
+            team_id,
+            columns,
+            my_tasks_callback=f"tasks:team_my:{team_id}:active:0",
+            back_callback=f"team_ctx:member:{team_id}",
+        ),
     )
     await callback.answer()
 

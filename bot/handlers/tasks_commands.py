@@ -9,7 +9,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from services.task_service import get_task_by_id, get_tasks, get_tasks_page
+from services.task_service import get_task_by_id, get_tasks, get_tasks_page, get_team_columns
 from services.team_service import get_member_teams, get_my_teams, get_team_members
 
 router = Router()
@@ -542,6 +542,118 @@ async def _render_team_my_tasks(
     )
 
 
+def _column_tasks_keyboard(
+    page_data: dict,
+    *,
+    column_id: str,
+    back_data: str | None = None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    page = _page_number(page_data)
+    total_pages = _total_pages(page_data)
+    tasks = page_data.get("content", [])
+    start_index = page * int(page_data.get("size") or _TASKS_PAGE_SIZE) + 1
+
+    for offset, task in enumerate(tasks):
+        rows.extend(_task_action_rows(task, start_index + offset))
+
+    if total_pages > 1:
+        prev_page = max(page - 1, 0)
+        next_page = min(page + 1, total_pages - 1)
+        rows.append([
+            InlineKeyboardButton(text="◀️", callback_data=f"tasks:col:{column_id}:{prev_page}"),
+            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data=f"tasks:col:{column_id}:{page}"),
+            InlineKeyboardButton(text="▶️", callback_data=f"tasks:col:{column_id}:{next_page}"),
+        ])
+
+    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"tasks:col:{column_id}:{page}")])
+    if back_data:
+        rows.append([InlineKeyboardButton(text="← Назад", callback_data=back_data)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _format_column_task_page(
+    page_data: dict,
+    header: str,
+    *,
+    column_id: str,
+    back_data: str | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
+    tasks = page_data.get("content", [])
+    total = _total_elements(page_data)
+    total_pages = _total_pages(page_data)
+    page = _page_number(page_data)
+    start_index = page * int(page_data.get("size") or _TASKS_PAGE_SIZE) + 1
+
+    lines = [header, f"Всего: <b>{total}</b>"]
+    if total_pages > 1:
+        lines.append(f"Страница: <b>{page + 1}/{total_pages}</b>")
+    if not tasks:
+        lines.extend(["", "Задач в этой колонке нет."])
+    else:
+        lines.append("")
+        lines.extend(_format_task_row(task, start_index + offset) for offset, task in enumerate(tasks))
+
+    return "\n\n".join(lines), _column_tasks_keyboard(
+        page_data, column_id=column_id, back_data=back_data,
+    )
+
+
+async def _render_team_column_tasks(
+    telegram_id: int,
+    column_id: str,
+    *,
+    page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup] | None:
+    manager_teams, member_teams = await asyncio.gather(
+        get_my_teams(telegram_id),
+        get_member_teams(telegram_id),
+    )
+
+    team = None
+    back_scope = "m"
+    col_title = "Колонка"
+
+    for t in manager_teams:
+        chat_id = _team_chat_id(t)
+        if not chat_id:
+            continue
+        cols = await get_team_columns(chat_id, telegram_id)
+        match = next((c for c in cols if str(c.get("id")) == column_id), None)
+        if match:
+            team, col_title = t, match.get("title") or col_title
+            break
+
+    if team is None:
+        for t in member_teams:
+            chat_id = _team_chat_id(t)
+            if not chat_id:
+                continue
+            cols = await get_team_columns(chat_id, telegram_id)
+            match = next((c for c in cols if str(c.get("id")) == column_id), None)
+            if match:
+                team, col_title, back_scope = t, match.get("title") or col_title, "u"
+                break
+
+    if team is None:
+        return None
+
+    page_data = await _fetch_tasks_page(
+        telegram_id=telegram_id,
+        column_id=column_id,
+        page=page,
+        size=_TASKS_PAGE_SIZE,
+    )
+    team_id = str(team.get("id"))
+    title = escape(team.get("chatTitle") or team_id)
+    return _format_column_task_page(
+        page_data,
+        f"📌 <b>{escape(col_title)}</b> · {title}",
+        column_id=column_id,
+        back_data=f"tm:{back_scope}:t:{team_id}",
+    )
+
+
 def _board_task_line(task: dict, *, overdue: bool = False) -> str:
     assignee = _person_name(task.get("assignee"))
     title = escape(task.get("title") or "Без названия")
@@ -874,6 +986,18 @@ async def navigate_tasks(callback: CallbackQuery) -> None:
             )
         if rendered is None:
             await callback.answer("Команда недоступна или чат не привязан", show_alert=True)
+            return
+        text, keyboard = rendered
+    elif scope == "col" and len(parts) == 4:
+        column_id = parts[2]
+        page = _safe_page(parts[3])
+        rendered = await _render_team_column_tasks(
+            callback.from_user.id,
+            column_id,
+            page=page,
+        )
+        if rendered is None:
+            await callback.answer("Колонка недоступна", show_alert=True)
             return
         text, keyboard = rendered
     elif scope == "user" and len(parts) == 5:
