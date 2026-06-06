@@ -11,18 +11,11 @@ from config import settings
 from kafka.topics import (
     TOPIC_BOTS_NOTIFICATIONS,
     TOPIC_BOTS_TASKS,
-    TOPIC_REMINDER_SEND,
-    TOPIC_SUMMARY_SEND,
-    TOPIC_TASK_PROPOSE,
     TOPIC_TASKS_STATE,
 )
-from keyboards.task import build_task_keyboard
 from models.events import (
     BotNotificationEvent,
-    ReminderSendEvent,
-    SummarySendEvent,
     TaskConfirmationEvent,
-    TaskProposeEvent,
     TaskStateEvent,
 )
 
@@ -32,9 +25,6 @@ _BATCH_WINDOW_SECS = 3
 
 class EventConsumer:
     TOPICS = [
-        TOPIC_TASK_PROPOSE,
-        TOPIC_REMINDER_SEND,
-        TOPIC_SUMMARY_SEND,
         TOPIC_TASKS_STATE,
         TOPIC_BOTS_TASKS,
         TOPIC_BOTS_NOTIFICATIONS,
@@ -76,20 +66,7 @@ class EventConsumer:
             logger.warning("Kafka message from {} has empty payload", topic)
             return
 
-        if topic == TOPIC_TASK_PROPOSE:
-            event = TaskProposeEvent.model_validate_json(payload)
-            await self._send_task_proposal(bot, event)
-
-        elif topic == TOPIC_REMINDER_SEND:
-            event = ReminderSendEvent.model_validate_json(payload)
-            target = event.user_id if event.task_id is not None else event.chat_id or event.user_id
-            await bot.send_message(chat_id=target, text=event.text)
-
-        elif topic == TOPIC_SUMMARY_SEND:
-            event = SummarySendEvent.model_validate_json(payload)
-            await bot.send_message(chat_id=event.chat_id, text=event.summary_text)
-
-        elif topic == TOPIC_TASKS_STATE:
+        if topic == TOPIC_TASKS_STATE:
             event = TaskStateEvent.model_validate_json(payload)
             if event.type != "CREATED":
                 await self._queue_state(bot, event)
@@ -265,25 +242,6 @@ class EventConsumer:
             parse_mode="HTML",
             event_name="TaskStateEvent",
             event_id=event.task_id,
-        )
-
-    async def _send_task_proposal(self, bot: Bot, event: TaskProposeEvent) -> None:
-        kb = build_task_keyboard(event.proposal_id)
-        deadline_str = event.deadline.strftime("%d.%m %H:%M") if event.deadline else "не указан"
-        text = (
-            f"📋 <b>Новая задача</b>\n\n"
-            f"<b>{event.task_title}</b>\n"
-            f"👤 Ответственный: {event.assignee_name or 'не указан'}\n"
-            f"⏰ Дедлайн: {deadline_str}"
-        )
-        await self._send_to_recipients(
-            bot,
-            recipient_ids=event.recipient_telegram_ids,
-            text=text,
-            reply_markup=kb,
-            parse_mode="HTML",
-            event_name="TaskProposeEvent",
-            event_id=event.proposal_id,
         )
 
     async def _send_bot_notification(self, bot: Bot, event: BotNotificationEvent) -> None:
