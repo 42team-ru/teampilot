@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from html import escape
+from urllib.parse import urlparse
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -18,6 +19,8 @@ from keyboards.manager import (
     manager_skip_keyboard,
     manager_team_select_keyboard,
 )
+from services.backend_error import BackendApiError
+from services.meeting_service import create_meeting
 from services.task_service import approve_task, get_task_by_id, get_tasks_page
 from services.team_service import (
     deactivate_team,
@@ -28,7 +31,7 @@ from services.team_service import (
     remove_team_member,
     update_team,
 )
-from states.manager import ManagerLinkChatStates, ManagerUpdateStates
+from states.manager import ManagerLinkChatStates, ManagerMeetingStates, ManagerUpdateStates
 
 router = Router()
 
@@ -93,6 +96,44 @@ def _yougile_setup_keyboard(chat_id: int | str | None) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")])
     rows.append([InlineKeyboardButton(text="← Назад", callback_data="manager:teams")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _meeting_url_keyboard(team_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✖ Отмена", callback_data=f"team_ctx:meeting_cancel:{team_id}")],
+    ])
+
+
+def _normalize_meeting_url(value: str | None) -> str | None:
+    url = (value or "").strip()
+    if not url or len(url) > 1024 or any(char.isspace() for char in url):
+        return None
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return url
+
+
+async def _send_meeting_link_to_group(
+    message: Message,
+    *,
+    chat_id: int,
+    team_title: str,
+    meeting_url: str,
+) -> None:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Открыть созвон", url=meeting_url)],
+    ])
+    await message.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"🎙 <b>Созвон: {escape(team_title)}</b>\n\n"
+            "Менеджер создал встречу для команды.\n"
+            f"Ссылка: {escape(meeting_url)}"
+        ),
+        reply_markup=keyboard,
+    )
 
 
 def _safe_page(raw_page: str | int | None) -> int:
@@ -801,6 +842,132 @@ async def manager_deactivate_confirm(callback: CallbackQuery) -> None:
 
 
 # ── team_ctx direct-entry handlers (skip team selection) ─────────────────────
+
+@router.callback_query(F.data.startswith("team_ctx:meeting:"))
+async def team_ctx_meeting_start(callback: CallbackQuery, state: FSMContext) -> None:
+    team_id = callback.data.split(":", 2)[2]
+    await state.clear()
+
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    if team is None:
+        await callback.answer("Команда недоступна.", show_alert=True)
+        return
+
+    chat_id = _team_chat_id(team)
+    if chat_id is None:
+        await callback.message.edit_text(
+            "Сначала привяжите Telegram-чат к команде, чтобы бот мог отправить ссылку на созвон.",
+            reply_markup=back_to_team_ctx_keyboard(team_id),
+        )
+        await callback.answer()
+        return
+
+    team_title = _team_title(team)
+    await state.update_data(
+        manager_meeting_team_id=team_id,
+        manager_meeting_chat_id=chat_id,
+        manager_meeting_team_title=team_title,
+    )
+    await state.set_state(ManagerMeetingStates.waiting_for_url)
+
+    await callback.message.edit_text(
+        f"🎙 <b>Созвон: {escape(team_title)}</b>\n\n"
+        "Пришлите ссылку на созвон одним сообщением.\n"
+        "Подойдут ссылки вида <code>https://telemost.yandex.ru/...</code>, Zoom, Google Meet и другие http/https-ссылки.",
+        reply_markup=_meeting_url_keyboard(team_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ManagerMeetingStates.waiting_for_url, F.data.startswith("team_ctx:meeting_cancel:"))
+async def team_ctx_meeting_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    team_id = callback.data.split(":", 2)[2]
+    await state.clear()
+    await callback.message.edit_text(
+        "Создание встречи отменено.",
+        reply_markup=back_to_team_ctx_keyboard(team_id),
+    )
+    await callback.answer()
+
+
+@router.message(ManagerMeetingStates.waiting_for_url, F.text)
+async def team_ctx_meeting_url(message: Message, state: FSMContext) -> None:
+    if message.from_user is None:
+        return
+
+    meeting_url = _normalize_meeting_url(message.text)
+    data = await state.get_data()
+    team_id = str(data.get("manager_meeting_team_id") or "")
+    if not team_id:
+        await state.clear()
+        await message.answer("Сессия устарела. Откройте команду и создайте встречу заново.")
+        return
+
+    if meeting_url is None:
+        await message.answer(
+            "Пришлите корректную http/https-ссылку на созвон без пробелов.",
+            reply_markup=_meeting_url_keyboard(team_id),
+        )
+        return
+
+    team = await _get_team_for_manager(message.from_user.id, team_id)
+    if team is None:
+        await state.clear()
+        await message.answer(
+            "Команда недоступна или у вас больше нет прав менеджера.",
+            reply_markup=back_to_team_ctx_keyboard(team_id),
+        )
+        return
+
+    chat_id = _team_chat_id(team)
+    if chat_id is None:
+        await state.clear()
+        await message.answer(
+            "У команды больше нет привязанного Telegram-чата. Сначала привяжите чат.",
+            reply_markup=back_to_team_ctx_keyboard(team_id),
+        )
+        return
+
+    team_title = _team_title(team)
+    try:
+        meeting = await create_meeting(
+            team_id=team_id,
+            meeting_url=meeting_url,
+            telegram_id=message.from_user.id,
+        )
+    except BackendApiError:
+        await state.clear()
+        raise
+
+    sent_to_group = True
+    try:
+        await _send_meeting_link_to_group(
+            message,
+            chat_id=chat_id,
+            team_title=team_title,
+            meeting_url=meeting_url,
+        )
+    except (TelegramBadRequest, TelegramForbiddenError):
+        sent_to_group = False
+
+    await state.clear()
+    meeting_id = meeting.get("id") or "—"
+    if sent_to_group:
+        await message.answer(
+            f"✅ Встреча создана и ссылка отправлена в чат команды <b>{escape(team_title)}</b>.\n\n"
+            f"Meeting ID: <code>{escape(str(meeting_id))}</code>",
+            reply_markup=back_to_team_ctx_keyboard(team_id),
+        )
+        return
+
+    await message.answer(
+        f"✅ Встреча создана, но бот не смог отправить ссылку в чат команды.\n\n"
+        f"Проверьте, что бот добавлен в чат и может писать сообщения.\n"
+        f"Meeting ID: <code>{escape(str(meeting_id))}</code>\n"
+        f"Ссылка: {escape(meeting_url)}",
+        reply_markup=back_to_team_ctx_keyboard(team_id),
+    )
+
 
 @router.callback_query(F.data.startswith("team_ctx:members:"))
 async def team_ctx_members(callback: CallbackQuery, state: FSMContext) -> None:

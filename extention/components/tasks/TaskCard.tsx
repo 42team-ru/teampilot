@@ -16,6 +16,7 @@ const STATUS_LABELS: Record<Task['status'], { label: string; variant: 'warning' 
   created: { label: 'Создана', variant: 'success' },
   rejected: { label: 'Отклонена', variant: 'destructive' },
   incomplete: { label: 'Не хватает данных', variant: 'secondary' },
+  detected: { label: 'Найдена AI', variant: 'secondary' },
 }
 
 export default function TaskCard({ task, onCreateTask, onRejectTask }: Props) {
@@ -61,6 +62,10 @@ export default function TaskCard({ task, onCreateTask, onRejectTask }: Props) {
 
         {task.source && (
           <p className="text-xs text-muted-foreground italic truncate">Источник: {task.source}</p>
+        )}
+
+        {task.description && (
+          <p className="text-xs text-muted-foreground">{task.description}</p>
         )}
 
         {showAssigneeInput && !task.assignee && (

@@ -9,6 +9,7 @@ from handlers.auth import _handle_join, _handle_link
 from handlers.member import show_member_panel
 from services.admin_service import get_user_by_telegram_id, lookup_user_by_telegram_id
 from services.backend_error import BackendApiError
+from services.extension_login import confirm_extension_login
 from services.user_service import patch_telegram_login, register_user, update_user
 from states.auth import RegistrationStates
 
@@ -42,6 +43,30 @@ class NeedsRegistration(BaseFilter):
             return {"existing_user": user, "lookup_failed": False}
 
         return False
+
+
+@router.message(F.chat.type == "private", F.text.regexp(r"^/start(?:@\w+)?\s+\d{6}$"))
+async def confirm_extension_login_code(message: Message) -> None:
+    args = (message.text or "").split(maxsplit=1)
+    code = args[1].strip() if len(args) > 1 else ""
+    if not (code.isdigit() and len(code) == 6):
+        return
+    if message.from_user is None:
+        return
+
+    ok = await confirm_extension_login(
+        code=code,
+        telegram_id=message.from_user.id,
+        telegram_login=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+
+    if not ok:
+        await message.answer("Код входа не найден или истёк. Получите новый код в расширении.")
+        return
+
+    await message.answer("✅ Вход в расширение подтверждён. Можно вернуться в Chrome.")
 
 
 @router.message(

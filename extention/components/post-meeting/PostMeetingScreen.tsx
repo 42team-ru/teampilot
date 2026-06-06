@@ -1,4 +1,4 @@
-import { ExternalLink, Send, ListChecks, Loader2, AlertCircle } from 'lucide-react'
+import { ExternalLink, Send, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { useMeetingResults } from '../../hooks/useMeetingResults'
 import { formatDuration } from '../../lib/utils'
@@ -23,15 +23,6 @@ export default function PostMeetingScreen({ meetingId }: Props) {
     const win = await chrome.windows.getCurrent()
     if (win.id !== undefined) {
       chrome.sidePanel.open({ windowId: win.id }).catch(() => {})
-    }
-  }
-
-  const createAllTasks = async () => {
-    if (!results) return
-    const pending = results.tasks.filter((t) => t.status === 'pending')
-    for (const task of pending) {
-      const { createTask } = await import('../../services/api')
-      await createTask(meetingId, task.id).catch(() => {})
     }
   }
 
@@ -80,11 +71,6 @@ export default function PostMeetingScreen({ meetingId }: Props) {
         </Button>
         <Button className="w-full" size="sm" variant="outline" disabled>
           <Send className="h-3.5 w-3.5 mr-2" /> Отправить в Telegram
-        </Button>
-        <Button className="w-full" size="sm" variant="outline" onClick={createAllTasks}
-          disabled={results.tasks.filter((t) => t.status === 'pending').length === 0}>
-          <ListChecks className="h-3.5 w-3.5 mr-2" />
-          Создать задачи ({results.tasks.filter((t) => t.status === 'pending').length})
         </Button>
       </div>
     </div>
