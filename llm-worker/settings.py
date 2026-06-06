@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Чанкинг транскриптов
     TRANSCRIPT_CHUNK_CHARS: int = 6000
     TRANSCRIPT_CHUNK_OVERLAP_CHARS: int = 500
+    MEETING_CONTEXT_CHARS: int = 6000
+    MEETING_EXTRACTION_MIN_CHARS: int = 1000
+    MEETING_EXTRACTION_STEP_CHARS: int = 1500
 
     # MinIO
     MINIO_ENDPOINT: str = "localhost:9000"
