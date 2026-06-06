@@ -44,5 +44,15 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_SECURE: bool = False
 
+    # Whisper ASR (OpenAI-compatible, переключается через env)
+    # whisper.cpp local: WHISPER_API_BASE=http://localhost:8002/v1
+    # Groq:             WHISPER_API_BASE=https://api.groq.com/openai/v1
+    # OpenAI:           WHISPER_API_BASE=https://api.openai.com/v1
+    WHISPER_API_BASE: str = "http://localhost:8002/v1"
+    WHISPER_API_KEY: str = "dummy"
+    WHISPER_MODEL: str = "whisper-1"
+    WHISPER_LANGUAGE: str = "ru"
+    WHISPER_TIMEOUT_SECONDS: int = 120
+
 
 settings = Settings()
