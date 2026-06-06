@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import os
 from typing import List, Union
 
 from loguru import logger
@@ -22,7 +23,7 @@ from models import (
     TaskCreateEvent,
     TaskExtractionList,
 )
-from infra.minio import download_file
+from infra.minio import download_file, upload_file
 from settings import settings
 
 TOPIC_TASKS = "llm.tasks.create"
@@ -374,6 +375,20 @@ def process_audio(event: AudioNewEvent) -> None:
         return
 
     logger.info(f"Transcribed file_id={event.file_id}: {len(text)} chars")
+
+    try:
+        base_key, _ = os.path.splitext(event.s3_key)
+        transcript_key = base_key + ".txt"
+        logger.info(f"Uploading transcript to {event.bucket}/{transcript_key}")
+        upload_file(
+            event.bucket,
+            transcript_key,
+            text.encode("utf-8"),
+            content_type="text/plain; charset=utf-8",
+        )
+    except Exception as e:
+        logger.error(f"Failed to upload transcript to MinIO: {e}")
+
     process_transcript_text(
         text, event.file_id, event.team_id,
         team_members=event.team,

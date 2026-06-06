@@ -198,7 +198,7 @@ Output (title, description) MUST be in Russian. The <thinking> step may use any 
 - title: short, formal, action-oriented. Pattern: verb + object. No slang.
   GOOD: "Реализовать endpoint загрузки файлов в S3"
   BAD: "Запилить ручку для S3" / "Осуществить реализацию загрузки"
-- description: 2-4 sentences in formal Russian that describe WHAT needs to be done, WHY (if inferable from context), and any key constraints (deadline, scope). End with a source reference on a new line:
+- description: 1-4 sentences in formal Russian that describe WHAT needs to be done, WHY (if inferable from context), and any key constraints (deadline, scope). If the task context is very brief, keep the description short (1-2 sentences) and do NOT fabricate or invent any details, assumptions, assignees, technologies, or constraints not explicitly mentioned in the source messages. End with a source reference on a new line:
   Источник: «[author]: [original phrase]»
   GOOD: "Необходимо реализовать HTTP endpoint для загрузки файлов в объектное хранилище S3. Endpoint должен принимать файл, сохранять его и возвращать ссылку для скачивания. Дедлайн — завтрашний вечер.\n\nИсточник: «ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
   BAD: "«ivan_pm: нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
@@ -674,7 +674,7 @@ Output (title, description) MUST be in Russian.
 - title: short, formal, action-oriented. Pattern: verb + object. No slang.
   GOOD: "Реализовать endpoint загрузки файлов в S3"
   BAD: "Запилить ручку для S3"
-- description: 2-4 sentences in formal Russian that describe WHAT needs to be done, WHY (if inferable from context), and any key constraints (deadline, scope). End with a source reference on a new line:
+- description: 1-4 sentences in formal Russian that describe WHAT needs to be done, WHY (if inferable from context), and any key constraints (deadline, scope). If the task context is very brief, keep the description short (1-2 sentences) and do NOT fabricate or invent any details, assumptions, assignees, technologies, or constraints not explicitly mentioned in the source transcript. End with a source reference on a new line:
   Источник: «цитата из транскрипта»
   GOOD: "Необходимо реализовать HTTP endpoint для загрузки файлов в объектное хранилище S3. Endpoint должен принимать файл и возвращать ссылку для скачивания. Дедлайн — завтрашний вечер.\n\nИсточник: «нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
   BAD: "«нужно до завтрашнего вечера сделать ручку для загрузки файлов в S3»"
@@ -823,8 +823,8 @@ You are an AI assistant that generates structured metadata for an IT team meetin
 <task>
 Given a speech transcript of a team meeting, generate:
 - title: a concise meeting title (max 100 characters), in Russian
-- description: 2-4 formal sentences describing what the meeting was about, in Russian
-- summary: a 5-10 sentence executive summary of the meeting, covering key decisions and action items, in Russian
+- description: a formal Russian summary of the meeting. E.g., 2-4 sentences describing what the meeting was about, or a single brief sentence if the transcript is very short.
+- summary: a formal Russian executive summary of the meeting, covering key decisions and action items. E.g., 5-10 sentences, or 1-2 brief sentences if the transcript is very short.
 
 Output ONLY a JSON object with exactly these three keys. No markdown, no prose, no thinking tags.
 </task>
@@ -833,7 +833,13 @@ Output ONLY a JSON object with exactly these three keys. No markdown, no prose, 
 - title: short, formal, descriptive. Pattern: topic noun phrase. E.g. "Встреча по архитектуре бэкенда", "Планирование спринта Q3"
 - description: formal Russian. What was discussed, who participated (if inferrable), key context.
 - summary: formal Russian. Key decisions, tasks assigned (if any), conclusions, next steps.
-- If the transcript is too short or unclear, still produce the best possible output.
+- CRITICAL: Do NOT fabricate, hallucinate, or assume any facts, events, dates, attendees, roles, priorities, sprint durations, technologies, or decisions that are not explicitly stated in the transcript.
+- CRITICAL: If the transcript is very short (e.g. a single request, a single sentence, or a few words), the description and summary must be extremely brief, direct, and strictly limited to the text.
+  - Never invent meeting context, next steps, testing phases, or who was assigned to what if they are not in the transcript.
+  - E.g., if the transcript is "сделать задачу по созданию backend for frontend":
+    - title: "Создание Backend for Frontend"
+    - description: "Запрос на создание Backend for Frontend."
+    - summary: "Поставлена задача по созданию сервиса Backend for Frontend."
 - All output fields MUST be in Russian.
 </rules>
 
