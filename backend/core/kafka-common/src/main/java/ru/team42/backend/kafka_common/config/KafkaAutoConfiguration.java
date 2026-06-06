@@ -10,15 +10,23 @@ import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import ru.team42.backend.kafka_common.KafkaSender;
 import ru.team42.backend.kafka_common.event.BaseEvent;
+import ru.team42.backend.kafka_common.event.KafkaTopics;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
 
 @AutoConfiguration(beforeName = "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration")
 @ConditionalOnClass(KafkaTemplate.class)
@@ -75,5 +83,25 @@ public class KafkaAutoConfiguration {
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.BATCH);
         factory.setConcurrency(appProps.getConsumerConcurrency());
         return factory;
+    }
+
+    @Bean
+    public KafkaAdmin.NewTopics kafkaTopics(AppKafkaProperties appProps) {
+        List<org.apache.kafka.clients.admin.NewTopic> topics = new ArrayList<>();
+        for (Field field : KafkaTopics.class.getDeclaredFields()) {
+            if (Modifier.isPublic(field.getModifiers())
+                    && Modifier.isStatic(field.getModifiers())
+                    && Modifier.isFinal(field.getModifiers())
+                    && field.getType() == String.class) {
+                try {
+                    String topicName = (String) field.get(null);
+                    topics.add(TopicBuilder.name(topicName)
+                            .partitions(appProps.getDefaultPartitions())
+                            .replicas(appProps.getDefaultReplicationFactor())
+                            .build());
+                } catch (IllegalAccessException ignored) {}
+            }
+        }
+        return new KafkaAdmin.NewTopics(topics.toArray(new org.apache.kafka.clients.admin.NewTopic[0]));
     }
 }
