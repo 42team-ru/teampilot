@@ -664,17 +664,9 @@ async def _finish_update(message: Message, state: FSMContext, telegram_id: int |
         team = next((t for t in teams if t["id"] == team_id), None)
         result_text = "Название не изменено."
 
-    chat_id = team.get("telegramChatId") if team else None
-    kb = _yougile_setup_keyboard(chat_id) if chat_id else manager_back_keyboard()
+    ctx_team_id = data.get("manager_update_ctx_team_id") or data.get("manager_update_team_id")
+    kb = back_to_team_ctx_keyboard(ctx_team_id) if ctx_team_id else manager_back_keyboard()
     await message.answer(result_text, reply_markup=kb)
-
-
-def _yougile_setup_keyboard(chat_id: int):
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚙️ Настроить YouGile", callback_data=f"manager:setup_yougile:{chat_id}")],
-        [InlineKeyboardButton(text="« Назад", callback_data="manager:back")],
-    ])
 
 
 @router.callback_query(F.data.startswith("manager:setup_yougile:"))

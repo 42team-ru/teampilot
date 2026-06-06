@@ -24,6 +24,8 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     Page<Task> findByColumnId(UUID columnId, Pageable pageable);
 
+    Page<Task> findByColumnIdAndAssigneeUserTelegramId(UUID columnId, Long telegramId, Pageable pageable);
+
     Page<Task> findByTeamIdAndLocalStatus(UUID teamId, TaskLocalStatus localStatus, Pageable pageable);
 
     Page<Task> findByTeamIdAndLocalStatusIn(UUID teamId, Collection<TaskLocalStatus> statuses, Pageable pageable);

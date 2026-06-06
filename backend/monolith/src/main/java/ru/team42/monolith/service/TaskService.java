@@ -288,7 +288,10 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Task> listByColumn(UUID columnId, Pageable pageable) {
+    public Page<Task> listByColumn(UUID columnId, Long assigneeTelegramId, Pageable pageable) {
+        if (assigneeTelegramId != null) {
+            return taskRepository.findByColumnIdAndAssigneeUserTelegramId(columnId, assigneeTelegramId, pageable);
+        }
         return taskRepository.findByColumnId(columnId, pageable);
     }
 
