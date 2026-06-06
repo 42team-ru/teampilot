@@ -12,6 +12,7 @@ import ru.team42.monolith.entity.*;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 import ru.team42.monolith.entity.enums.TeamRole;
+import ru.team42.monolith.event.LlmStatusChangeEvent;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.event.LlmUpdateTaskEvent;
 import ru.team42.monolith.kanban.YouGileService;
@@ -310,6 +311,71 @@ public class TaskService {
                 .orElseThrow(() -> AppException.notFound(
                         "Team not found for chatId %d".formatted(chatId)));
         return youGileService.fetchAllTasksForBoard(team);
+    }
+
+    @Transactional
+    public void handleStatusChange(LlmStatusChangeEvent event) {
+        if (event.getTeamId() == null || event.getTaskId() == null) {
+            log.warn("Skipping status change — missing teamId or taskId (action={})", event.getAction());
+            return;
+        }
+
+        UUID taskId;
+        try {
+            taskId = UUID.fromString(event.getTaskId());
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid taskId '{}' in status change event", event.getTaskId());
+            return;
+        }
+
+        Task task = taskRepository.findById(taskId).orElse(null);
+        if (task == null) {
+            log.warn("Task {} not found for status change action={}", taskId, event.getAction());
+            return;
+        }
+
+        Team team = task.getTeam();
+        log.info("Status change action={} for task '{}'", event.getAction(), task.getTitle());
+
+        switch (event.getAction() == null ? "" : event.getAction()) {
+            case "ASSIGN" -> applyAssign(team, task, event.getAssigneeId(), event.getColumnId());
+            case "COMPLETE" -> applyComplete(team, task, event.getColumnId());
+            case "CANCEL" -> cancel(task.getId());
+            default -> log.warn("Unknown status change action: {}", event.getAction());
+        }
+    }
+
+    private void applyAssign(Team team, Task task, Long assigneeId, String columnId) {
+        if (assigneeId != null) {
+            resolveTeamUser(team, assigneeId).ifPresent(task::setAssignee);
+        }
+        applyColumn(task, columnId, assigneeId);
+        task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        Task saved = taskRepository.save(task);
+        youGileService.updateTask(team, saved);
+    }
+
+    private void applyComplete(Team team, Task task, String columnId) {
+        task.setCompleted(true);
+        applyColumn(task, columnId, telegramIdOf(task));
+        Task saved = taskRepository.save(task);
+        youGileService.updateTask(team, saved);
+    }
+
+    private void applyColumn(Task task, String columnId, Long changedByTelegramId) {
+        if (columnId == null) return;
+        try {
+            taskColumnRepository.findById(UUID.fromString(columnId)).ifPresent(col -> {
+                if (!col.equals(task.getColumn())) {
+                    TaskColumn prev = task.getColumn();
+                    task.setColumn(col);
+                    recordHistory(task, prev, col, changedByTelegramId);
+                    taskEventPublisher.publishColumnChanged(task, col);
+                }
+            });
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid columnId '{}' in status change event", columnId);
+        }
     }
 
     private void validateEvent(LlmTaskCreateEvent event) {
