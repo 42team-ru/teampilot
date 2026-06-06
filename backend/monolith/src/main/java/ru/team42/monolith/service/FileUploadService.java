@@ -1,13 +1,18 @@
 package ru.team42.monolith.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.event.FileUploadedEvent;
 import ru.team42.monolith.entity.UploadedFile;
 import ru.team42.monolith.repository.TeamUserRepository;
 import ru.team42.monolith.repository.UploadedFileRepository;
 
+import java.util.UUID;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileUploadService {
@@ -36,5 +41,15 @@ public class FileUploadService {
         }
 
         return uploadedFileRepository.save(uploadedFile);
+    }
+
+    @Transactional
+    public void updateSummary(UUID fileId, String title, String description, String summary) {
+        var file = uploadedFileRepository.findById(fileId)
+                .orElseThrow(() -> AppException.notFound("UploadedFile %s not found".formatted(fileId)));
+        file.setTitle(title);
+        file.setDescription(description);
+        file.setSummary(summary);
+        log.info("Updated summary for fileId={} title={}", fileId, title);
     }
 }

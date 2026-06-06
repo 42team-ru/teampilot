@@ -36,6 +36,6 @@ public class TaskColumn extends AbstractEntity {
     @Column(name = "yougile_column_id")
     private String youGileColumnId;
 
-    @Column(name = "deleted")
+    @Column(name = "deleted", columnDefinition = "boolean not null default false")
     private boolean deleted = false;
 }

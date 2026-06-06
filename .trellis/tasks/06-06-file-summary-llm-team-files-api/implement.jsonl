@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Паттерн Kafka-ивентов: как объявлять топики в KafkaTopics, структура BaseEvent, AbstractEventPublisher — нужно для нового events files.transcript_ready"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException-паттерн для REST endpoint /teams/{teamId}/files — forbidden/notFound"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Куда класть новый consumer, DTO, service-метод в monolith"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Паттерн @Transactional для updateSummary в FileUploadService"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Проверить что Kafka-контракт между LLM Worker и Spring согласован на уровне имён полей"}
