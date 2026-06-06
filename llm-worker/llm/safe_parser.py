@@ -11,7 +11,6 @@ class SafeJsonOutputParser(BaseOutputParser[Any]):
 
     def parse(self, text: str) -> Any:
         text = text.strip()
-        text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL).strip()
 
         try:
             return json.loads(text)
