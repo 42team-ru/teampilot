@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from infra.kafka import publish
 from infra.qdrant import is_task_duplicate, search_tasks
-from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, status_chain, task_chain
+from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, file_summary_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
     AudioNewEvent,
@@ -15,6 +15,7 @@ from models import (
     AudioTeamMember,
     AudioStickerInfo,
     ClassificationResult,
+    FileSummaryEvent,
     MessageBatchEvent,
     StatusChangeEvent,
     StatusExtractionList,
@@ -26,6 +27,7 @@ from settings import settings
 
 TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
+TOPIC_FILE_SUMMARY = "files.transcript_ready"
 
 
 def format_messages(batch: MessageBatchEvent) -> str:
@@ -326,6 +328,31 @@ def process_transcript_text(
         )
 
 
+def generate_file_summary(text: str, file_id: str, team_id: str | None) -> None:
+    try:
+        raw = file_summary_chain.invoke({"transcript": text})
+        title = str(raw.get("title", "")).strip()[:100] or f"Запись {file_id[:8]}"
+        description = str(raw.get("description", "")).strip()
+        summary = str(raw.get("summary", "")).strip()
+
+        if not title:
+            logger.warning(f"File summary returned empty title for file_id={file_id}")
+            return
+
+        event = FileSummaryEvent(
+            file_id=file_id,
+            team_id=team_id,
+            title=title,
+            description=description,
+            summary=summary,
+        )
+        publish(TOPIC_FILE_SUMMARY, event, key=file_id)
+        logger.info(f"File summary published for file_id={file_id} title={title!r}")
+    except Exception as e:
+        logger.error(f"File summary generation failed for file_id={file_id}: {e}")
+
+
+
 def process_audio(event: AudioNewEvent) -> None:
     from infra.audio import to_whisper_wav
     from infra.whisper import transcribe
@@ -353,3 +380,4 @@ def process_audio(event: AudioNewEvent) -> None:
         columns=event.columns,
         stickers=event.stickers,
     )
+    generate_file_summary(text, event.file_id, event.team_id)
