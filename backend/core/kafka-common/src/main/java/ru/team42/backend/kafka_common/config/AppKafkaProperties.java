@@ -10,4 +10,6 @@ public class AppKafkaProperties {
     private int consumerConcurrency = 3;
     private String autoOffsetReset = "earliest";
     private String trustedPackages = "ru.team42.backend.*";
+    private int defaultPartitions = 3;
+    private short defaultReplicationFactor = 1;
 }
