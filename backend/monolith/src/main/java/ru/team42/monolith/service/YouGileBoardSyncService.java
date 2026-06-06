@@ -203,6 +203,11 @@ public class YouGileBoardSyncService {
             changed = true;
         }
 
+        if (remote.completed() != task.isCompleted()) {
+            task.setCompleted(remote.completed());
+            changed = true;
+        }
+
         if (changed) {
             taskRepository.save(task);
             if (columnChanged) {
@@ -224,6 +229,7 @@ public class YouGileBoardSyncService {
         task.setSyncStatus(TaskSyncStatus.SYNCED);
         task.setSource(TaskSource.YOUGILE);
         task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        task.setCompleted(remote.completed());
 
         TaskColumn column = null;
         if (remote.columnId() != null) {

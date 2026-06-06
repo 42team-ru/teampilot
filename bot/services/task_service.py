@@ -19,17 +19,17 @@ async def get_tasks(
     chat_id: int | None = None,
     telegram_id: int | None = None,
     assignee: int | None = None,
-    status: str | None = None,
+    completed: bool | None = None,
     column_id: str | None = None,
     page: int = 0,
     size: int = 10,
 ) -> list[dict]:
-    """GET /tasks?chatId=...&assignee=...&localStatus=...&columnId=...&page=...&size=..."""
+    """GET /tasks?chatId=...&assignee=...&completed=...&columnId=...&page=...&size=..."""
     page_data = await get_tasks_page(
         chat_id=chat_id,
         telegram_id=telegram_id,
         assignee=assignee,
-        status=status,
+        completed=completed,
         column_id=column_id,
         page=page,
         size=size,
@@ -61,12 +61,12 @@ async def get_tasks_page(
     chat_id: int | None = None,
     telegram_id: int | None = None,
     assignee: int | None = None,
-    status: str | None = None,
+    completed: bool | None = None,
     column_id: str | None = None,
     page: int = 0,
     size: int = 10,
 ) -> dict:
-    """GET /tasks?chatId=...&assignee=...&localStatus=...&columnId=...&page=...&size=..."""
+    """GET /tasks?chatId=...&assignee=...&completed=...&columnId=...&page=...&size=..."""
     path = "/tasks"
     params: dict = {"page": page, "size": size}
     if chat_id is not None:
@@ -75,15 +75,14 @@ async def get_tasks_page(
         params["assignee"] = assignee
     if column_id is not None:
         params["columnId"] = column_id
-    local_status = _local_status_param(status)
-    if local_status:
-        params["localStatus"] = local_status
+    if completed is not None:
+        params["completed"] = "true" if completed else "false"
 
     context = {
         "chat_id": chat_id,
         "telegram_id": telegram_id,
         "assignee": assignee,
-        "status": status,
+        "completed": completed,
         "column_id": column_id,
         "page": page,
         "size": size,
@@ -200,12 +199,3 @@ def _normalize_task_response(task: dict) -> dict:
     if "status" not in task and task.get("localStatus") is not None:
         task["status"] = task["localStatus"]
     return task
-
-
-def _local_status_param(status: str | None) -> str | None:
-    if not status:
-        return None
-    normalized = status.upper()
-    if normalized in {"ACTIVE", "PENDING_APPROVAL", "DELETED_FROM_YOUGILE"}:
-        return normalized
-    return None

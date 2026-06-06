@@ -392,7 +392,7 @@ async def _pending_tasks_count(chat_id: int | str, telegram_id: int) -> int:
     page = await get_tasks_page(
         chat_id=int(chat_id),
         telegram_id=telegram_id,
-        status="PENDING_APPROVAL",
+        completed=False,
         page=0,
         size=1,
     )
