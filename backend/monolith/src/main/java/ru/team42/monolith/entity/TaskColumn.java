@@ -35,4 +35,7 @@ public class TaskColumn extends AbstractEntity {
     /** ID колонки в YouGile */
     @Column(name = "yougile_column_id")
     private String youGileColumnId;
+
+    @Column(name = "deleted")
+    private boolean deleted = false;
 }

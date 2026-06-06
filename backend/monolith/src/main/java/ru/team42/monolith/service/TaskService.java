@@ -316,7 +316,7 @@ public class TaskService {
     public List<TaskColumn> listColumns(Long chatId) {
         Team team = teamRepository.findByTelegramChatId(chatId)
                 .orElseThrow(() -> AppException.notFound("Team not found for chatId %d".formatted(chatId)));
-        return taskColumnRepository.findByTeamId(team.getId());
+        return taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId());
     }
 
     @Transactional(readOnly = true)

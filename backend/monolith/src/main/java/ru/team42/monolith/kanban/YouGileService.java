@@ -42,7 +42,7 @@ public class YouGileService {
             boolean completed
     ) {}
 
-    public record ColumnInfo(String id, String title) {}
+    public record ColumnInfo(String id, String title, boolean deleted) {}
 
     public record StickerStateInfo(String id, String title) {}
 
@@ -186,7 +186,7 @@ public class YouGileService {
             var result = blockWithRetry(buildApi(team).columnControllerSearch(false, null, null, null, team.getKanbanId()));
             if (result == null) return List.of();
             return result.getContent().stream()
-                    .map(col -> new ColumnInfo(col.getId(), col.getTitle()))
+                    .map(col -> new ColumnInfo(col.getId(), col.getTitle(), Boolean.TRUE.equals(col.getDeleted())))
                     .toList();
         } catch (Exception e) {
             log.warn("Failed to fetch columns for team {}: {}", team.getId(), e.getMessage());
