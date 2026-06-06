@@ -32,7 +32,7 @@ public class ChatMessageService {
 
     @Transactional
     public void save(ChatMessageEvent event) {
-        Optional<Team> teamOpt = teamRepository.findByTelegramChatId(event.getChatId());
+        Optional<Team> teamOpt = teamRepository.findByTelegramChatIdAndActiveTrue(event.getChatId());
         if (teamOpt.isEmpty()) {
             log.warn("No team found for chatId={}, dropping message", event.getChatId());
             return;
