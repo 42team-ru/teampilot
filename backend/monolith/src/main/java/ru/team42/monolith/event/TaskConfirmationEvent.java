@@ -16,10 +16,11 @@ public class TaskConfirmationEvent extends BaseEvent {
     private final String assigneeUsername;
     private final Instant deadline;
     private final boolean autoConfirmed;
+    private final String columnTitle;
 
     public TaskConfirmationEvent(UUID taskId, Long chatId, String title,
                                  String description, String assigneeUsername,
-                                 Instant deadline, boolean autoConfirmed) {
+                                 Instant deadline, boolean autoConfirmed, String columnTitle) {
         this.taskId = taskId;
         this.chatId = chatId;
         this.title = title;
@@ -27,5 +28,6 @@ public class TaskConfirmationEvent extends BaseEvent {
         this.assigneeUsername = assigneeUsername;
         this.deadline = deadline;
         this.autoConfirmed = autoConfirmed;
+        this.columnTitle = columnTitle;
     }
 }

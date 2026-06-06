@@ -253,24 +253,6 @@ kirill confirms "Беру, смотрю уже" → look up "kirill" in TEAM LIS
 <example>
 <input>
 TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
-  - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
-  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
-
-[ID: msg-301] [12:00] vova_ml: Блин, в qdrant эмбеддинги поплыли. Надо пересоздать коллекцию с правильным размером вектора.
-[ID: msg-302] [12:01] kirill_dev: Вов, возьмёшь на себя? Я на фронте зашиваюсь.
-[ID: msg-303] [12:02] vova_ml: Ок, сегодня поковыряю.
-</input>
-<thinking>
-vova_ml explicitly agrees ("Ок, сегодня поковыряю") → look up in TEAM LIST → telegram_id 222001. "сегодня" → today 23:59. No KANBAN COLUMNS → column_id = null. Source messages are msg-301, msg-302, msg-303.
-</thinking>
-<output>
-[{{"title": "Пересоздать коллекцию Qdrant с корректным размером вектора", "description": "«vova_ml: в qdrant эмбеддинги поплыли, надо пересоздать коллекцию с правильным размером вектора»", "assignee_id": 222001, "deadline": "2026-06-03T23:59:00Z", "column_id": null, "source_message_ids": ["msg-301", "msg-302", "msg-303"]}}]
-</output>
-</example>
-
-<example>
-<input>
-TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
   - telegram_id: 111001  |  @frontend_kirill  |  Кирилл Версталов  |  Developer
   - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
   - telegram_id: 333001  |  @qa_masha  |  Мария Тестова  |  QA
@@ -341,24 +323,6 @@ No assignment, no task signals — pure noise.
 <example>
 <input>
 TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
-  - telegram_id: 666001  |  @devops_oleg  |  Олег Девопсов  |  DevOps
-  - telegram_id: 777001  |  @backend_sasha  |  Александр Бэкенд  |  Developer
-
-[ID: msg-801] [11:00] devops_oleg: Ребята, я настроил мониторинг в Grafana, всё работает. Алерты приходят.
-[ID: msg-802] [11:05] backend_sasha: Круто! Можешь ещё настроить сбор логов в ELK? У нас логи теряются.
-[ID: msg-803] [11:10] devops_oleg: Ладно, завтра займусь.
-</input>
-<thinking>
-"я настроил мониторинг" = already done → skip. New request: ELK logs. devops_oleg agrees → telegram_id 666001. "завтра" → tomorrow 23:59. Source messages are msg-802 and msg-803.
-</thinking>
-<output>
-[{{"title": "Настроить сбор логов в ELK", "description": "«backend_sasha: Можешь ещё настроить сбор логов в ELK? У нас логи теряются» — «devops_oleg: Ладно, завтра займусь»", "assignee_id": 666001, "deadline": "2026-06-06T23:59:00Z", "column_id": null, "source_message_ids": ["msg-802", "msg-803"]}}]
-</output>
-</example>
-
-<example>
-<input>
-TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
   - telegram_id: 666001  |  @ops_sasha  |  Александр Девопсов  |  DevOps
   - telegram_id: 888001  |  @frontend_anna  |  Анна Фронтова  |  Frontend
 
@@ -397,6 +361,18 @@ Raw JSON only — no markdown, no prose. First reason in <thinking>…</thinking
 - ASSIGN: someone takes or is assigned the task — "взял задачу", "беру", "передаю Кириллу", "назначаю на", "занялся"
 - CANCEL: task canceled — "не актуально", "отменяем", "снимаем", "забудьте про X"
 </action_types>
+
+<critical_rule>
+A status change is ONLY valid if the message EXPLICITLY references a specific task by name/topic OR is a personal first-person report from the person who owns the task ("я сделал X", "взял X на себя", "закончил X").
+
+Return [] for:
+- General project announcements without naming a task: "деплой готов", "стейджинг проверяйте", "авторизацию закрыли" (without saying WHICH task)
+- Messages that assign NEW tasks (those belong to task extraction, not status changes)
+- Repeated task-assignment messages that contain no "done/taken/cancelled" language
+- Noise: lunch plans, greetings, filler symbols ("ф", "+", ".", etc.)
+
+When in doubt — return []. Do NOT map a general announcement to a task just because a similar task exists in candidates.
+</critical_rule>
 
 <rules>
 <task_selection>
@@ -542,6 +518,65 @@ TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list)
 ASSIGN action. Role "бэкенд-разработчик" → check TEAM LIST for Developer role → 2 matches (Кирилл, Александр) → ROLE AMBIGUITY → assignee_id = null. Task matches "Написать тесты для API". In Progress column: col-wip.
 </thinking>
 <output>[{{"task_id": "d4e5f6a7-0000-0000-0000-000000000030", "column_id": "col-wip", "assignee_id": null, "action": "ASSIGN"}}]</output>
+</example>
+
+<example>
+<input>
+TASK CANDIDATES:
+  - task_id: "e5f6a7b8-0000-0000-0000-000000000040"  |  title: "Реализовать endpoint загрузки файлов в S3"
+  - task_id: "e5f6a7b8-0000-0000-0000-000000000041"  |  title: "Исправить баг с 500 на /users/me"
+  - task_id: "e5f6a7b8-0000-0000-0000-000000000042"  |  title: "Настроить алерты на новом сервере"
+
+KANBAN COLUMNS:
+  - column_id: "col-backlog"  |  title: "Бэклог"
+  - column_id: "col-wip"     |  title: "В процессе"
+  - column_id: "col-done"    |  title: "Готово"
+
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 111001  |  @kirill_dev  |  Кирилл Версталов  |  Developer
+
+[09:00] pm: Деплой на стейджинг готов, проверяйте.
+[09:01] kirill_dev: Всё, авторизацию закрыли, смотри в мастере.
+[09:02] pm: Кирилл, нужно до конца недели сделать endpoint для загрузки файлов в S3. Приоритет высокий.
+[09:03] pm: Пусть девопс настроит алерты на новом сервере, нужно до завтра.
+</input>
+<thinking>
+CRITICAL RULE CHECK:
+- "Деплой на стейджинг готов, проверяйте" — general deployment announcement, does NOT name any specific task from TASK CANDIDATES → skip.
+- "авторизацию закрыли, смотри в мастере" — mentions "авторизацию" but none of the TASK CANDIDATES have "авторизация" in their title → no matching task → skip.
+- "Кирилл, нужно до конца недели сделать endpoint" — this is a NEW task assignment, not a status change → skip (belongs to task extraction).
+- "Пусть девопс настроит алерты" — NEW task assignment, not a status change → skip.
+No messages explicitly say "я сделал [candidate task]", "взял [candidate task]", "отменяем [candidate task]".
+</thinking>
+<output>[]</output>
+</example>
+
+<example>
+<input>
+TASK CANDIDATES:
+  - task_id: "f6a7b8c9-0000-0000-0000-000000000050"  |  title: "Пересоздать коллекцию Qdrant"
+  - task_id: "f6a7b8c9-0000-0000-0000-000000000051"  |  title: "Написать документацию по REST API"
+
+KANBAN COLUMNS:
+  - column_id: "col-backlog"  |  title: "Бэклог"
+  - column_id: "col-wip"     |  title: "В процессе"
+
+TEAM LIST (output telegram_id as assignee_id — use ONLY values from this list):
+  - telegram_id: 222001  |  @vova_ml  |  Владимир Мельник  |  ML Engineer
+
+[10:00] pm: Мельник Владимир, возьмёшь на себя пересоздание коллекции Qdrant?
+[10:01] pm: Ладно, пошёл обедать, вернусь через час.
+[10:02] pm: ф
+[10:03] pm: ф
+</input>
+<thinking>
+CRITICAL RULE CHECK:
+- "возьмёшь на себя пересоздание коллекции Qdrant?" — this is a question/assignment request, but @vova_ml has NOT confirmed ("ок", "беру", "взял"). No confirmation in the batch. This is a new task assignment, not a status change → skip.
+- "пошёл обедать, вернусь через час" — noise → skip.
+- "ф" × 2 — filler noise → skip.
+No confirmed acceptance of any task. No explicit done/cancel language.
+</thinking>
+<output>[]</output>
 </example>
 </examples>"""
 

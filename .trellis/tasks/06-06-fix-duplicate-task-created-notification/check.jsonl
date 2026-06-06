@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/06-06-fix-duplicate-task-created-notification/prd.md", "reason": "acceptance criteria"}
+{"file": "bot/kafka/consumer.py", "reason": "verify CREATED silenced, batch format correct"}
+{"file": "backend/monolith/src/main/java/ru/team42/monolith/event/TaskConfirmationEvent.java", "reason": "verify columnTitle field present"}
