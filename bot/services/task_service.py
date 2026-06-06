@@ -20,19 +20,41 @@ async def get_tasks(
     telegram_id: int | None = None,
     assignee: int | None = None,
     status: str | None = None,
+    column_id: str | None = None,
     page: int = 0,
     size: int = 10,
 ) -> list[dict]:
-    """GET /tasks?chatId=...&assignee=...&localStatus=...&page=...&size=..."""
+    """GET /tasks?chatId=...&assignee=...&localStatus=...&columnId=...&page=...&size=..."""
     page_data = await get_tasks_page(
         chat_id=chat_id,
         telegram_id=telegram_id,
         assignee=assignee,
         status=status,
+        column_id=column_id,
         page=page,
         size=size,
     )
     return page_data.get("content", [])
+
+
+async def get_team_columns(chat_id: int, telegram_id: int | None = None) -> list[dict]:
+    """GET /tasks/columns?chatId=... → [{id, title}]"""
+    path = "/tasks/columns"
+    params = {"chatId": chat_id}
+    context = {"chat_id": chat_id, "telegram_id": telegram_id}
+    try:
+        resp = await http_client.get(
+            f"{settings.BACKEND_URL}{path}",
+            params=params,
+            headers=_headers(telegram_id),
+        )
+    except HttpRequestError as e:
+        log_http_request_error(service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", error=e, context=context, params=params)
+        raise BackendApiError.unavailable() from e
+    if resp.status_code != 200:
+        log_http_response_error(resp, service="Backend", method="GET", path=f"{settings.BACKEND_URL}{path}", expected="200", context=context, params=params)
+        raise BackendApiError.from_response(resp)
+    return resp.json()
 
 
 async def get_tasks_page(
@@ -40,16 +62,19 @@ async def get_tasks_page(
     telegram_id: int | None = None,
     assignee: int | None = None,
     status: str | None = None,
+    column_id: str | None = None,
     page: int = 0,
     size: int = 10,
 ) -> dict:
-    """GET /tasks?chatId=...&assignee=...&localStatus=...&page=...&size=..."""
+    """GET /tasks?chatId=...&assignee=...&localStatus=...&columnId=...&page=...&size=..."""
     path = "/tasks"
     params: dict = {"page": page, "size": size}
     if chat_id is not None:
         params["chatId"] = chat_id
     if assignee is not None:
         params["assignee"] = assignee
+    if column_id is not None:
+        params["columnId"] = column_id
     local_status = _local_status_param(status)
     if local_status:
         params["localStatus"] = local_status
@@ -59,6 +84,7 @@ async def get_tasks_page(
         "telegram_id": telegram_id,
         "assignee": assignee,
         "status": status,
+        "column_id": column_id,
         "page": page,
         "size": size,
     }

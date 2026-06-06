@@ -281,6 +281,18 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
+    public List<TaskColumn> listColumns(Long chatId) {
+        Team team = teamRepository.findByTelegramChatId(chatId)
+                .orElseThrow(() -> AppException.notFound("Team not found for chatId %d".formatted(chatId)));
+        return taskColumnRepository.findByTeamId(team.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Task> listByColumn(UUID columnId, Pageable pageable) {
+        return taskRepository.findByColumnId(columnId, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public Page<Task> listMyTasks(Long telegramId, Pageable pageable) {
         return taskRepository.findByAssigneeUserTelegramIdAndCompletedFalseAndDeletedFalse(telegramId, pageable);
     }

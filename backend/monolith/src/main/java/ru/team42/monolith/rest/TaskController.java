@@ -10,6 +10,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
+import ru.team42.monolith.dto.response.TaskColumnResponse;
 import ru.team42.monolith.dto.response.TaskResponse;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
@@ -63,15 +64,28 @@ public class TaskController {
     }
 
     @PreAuthorize("isAuthenticated()")
+    @GetMapping("/columns")
+    public ResponseEntity<List<TaskColumnResponse>> listColumns(@RequestParam Long chatId) {
+        return ResponseUtils.ok(taskService.listColumns(chatId).stream()
+                .map(TaskColumnResponse::from)
+                .toList());
+    }
+
+    @PreAuthorize("isAuthenticated()")
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(
             @RequestParam(required = false) Long chatId,
             @RequestParam(required = false) Long assignee,
             @RequestParam(required = false) String localStatus,
+            @RequestParam(required = false) UUID columnId,
             @PageableDefault(size = 20) Pageable pageable) {
 
-        Page<TaskResponse> page = taskService.list(chatId, assignee, localStatus, pageable)
-                .map(TaskResponse::from);
+        Page<TaskResponse> page;
+        if (columnId != null) {
+            page = taskService.listByColumn(columnId, pageable).map(TaskResponse::from);
+        } else {
+            page = taskService.list(chatId, assignee, localStatus, pageable).map(TaskResponse::from);
+        }
         return ResponseUtils.page(PageResponse.fromPage(page));
     }
 

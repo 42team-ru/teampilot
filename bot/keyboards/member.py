@@ -69,21 +69,24 @@ def team_context_manager_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def team_context_manager_tasks_keyboard(team_id: str, pending_count: int | None = None) -> InlineKeyboardMarkup:
-    pending_label = "🆕 Новые задачи"
-    if pending_count:
-        pending_label = f"{pending_label} ({pending_count})"
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=pending_label, callback_data=f"mgr:pending:{team_id}:0"),
-            InlineKeyboardButton(text="📥 Мои задачи", callback_data=f"tasks:team_my:{team_id}:active:0"),
-        ],
-        [
-            InlineKeyboardButton(text="📋 Задачи команды", callback_data=f"tasks:team:{team_id}:active:0"),
-            InlineKeyboardButton(text="📊 Доска", callback_data=f"tasks_board:team:{team_id}"),
-        ],
-        [InlineKeyboardButton(text="← К команде", callback_data=f"team_ctx:manager:{team_id}")],
-    ])
+def team_tasks_keyboard(
+    team_id: str,
+    columns: list[dict],
+    my_tasks_callback: str,
+    back_callback: str,
+) -> InlineKeyboardMarkup:
+    buttons: list[list[InlineKeyboardButton]] = []
+    buttons.append([InlineKeyboardButton(text="📥 Мои задачи", callback_data=my_tasks_callback)])
+    for col in columns:
+        title = (col.get("title") or "Колонка")[:_MAX_TITLE]
+        buttons.append([InlineKeyboardButton(
+            text=f"📌 {title}",
+            callback_data=f"tasks:col:{col['id']}:0",
+        )])
+    if not columns:
+        buttons.append([InlineKeyboardButton(text="⚠️ Канбан-доска не настроена", callback_data="noop")])
+    buttons.append([InlineKeyboardButton(text="← К команде", callback_data=back_callback)])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def team_context_manager_files_keyboard(team_id: str) -> InlineKeyboardMarkup:
@@ -118,14 +121,6 @@ def team_context_member_keyboard(team_id: str = "", has_chat: bool = True) -> In
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def team_context_member_tasks_keyboard(team_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="📥 Мои задачи", callback_data=f"tasks:team_my:{team_id}:active:0"),
-            InlineKeyboardButton(text="📋 Задачи команды", callback_data=f"tasks:team:{team_id}:active:0"),
-        ],
-        [InlineKeyboardButton(text="← К команде", callback_data=f"team_ctx:member:{team_id}")],
-    ])
 
 
 def team_context_member_files_keyboard(team_id: str) -> InlineKeyboardMarkup:
