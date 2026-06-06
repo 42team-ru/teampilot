@@ -54,6 +54,13 @@ public class TaskService {
                 .orElseThrow(() -> AppException.notFound(
                         "Team not found for teamId %s".formatted(event.getTeamId())));
 
+        List<TaskLocalStatus> activeStatuses = List.of(TaskLocalStatus.PENDING_APPROVAL, TaskLocalStatus.ACTIVE);
+        if (taskRepository.existsByTeamIdAndTitleIgnoreCaseAndLocalStatusIn(team.getId(), event.getTitle(), activeStatuses)) {
+            log.warn("Skipping duplicate task title='{}' teamId={}", event.getTitle(), event.getTeamId());
+            return taskRepository.findFirstByTeamIdAndTitleIgnoreCaseAndLocalStatusIn(
+                    team.getId(), event.getTitle(), activeStatuses).orElseThrow();
+        }
+
         Task task = new Task();
         task.setTeam(team);
         task.setTitle(event.getTitle());

@@ -136,3 +136,7 @@ class TaskConfirmationEvent(BackendEvent):
         default=False,
         validation_alias=AliasChoices("autoConfirmed", "auto_confirmed"),
     )
+    column_title: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("columnTitle", "column_title"),
+    )

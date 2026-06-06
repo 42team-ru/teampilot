@@ -14,6 +14,7 @@ public class TaskEventPublisher extends AbstractEventPublisher {
 
     public void publishConfirmation(Task task, boolean autoConfirmed) {
         String assigneeUsername = assigneeOf(task);
+        String columnTitle = task.getColumn() != null ? task.getColumn().getTitle() : null;
         send(KafkaTopics.BOTS_TASKS,
                 task.getTeam().getTelegramChatId().toString(),
                 new TaskConfirmationEvent(
@@ -23,7 +24,8 @@ public class TaskEventPublisher extends AbstractEventPublisher {
                         task.getDescription(),
                         assigneeUsername,
                         task.getDeadline(),
-                        autoConfirmed
+                        autoConfirmed,
+                        columnTitle
                 ));
     }
 
