@@ -129,11 +129,11 @@ class TaskCreateEvent(BaseModel):
 
 class StatusChangeEvent(BaseModel):
     team_id: str
-    task_hint: str
+    task_id: str | None = None
     assignee_id: int | None = None
+    column_id: str | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
     source_batch_id: str
-    resolved_task_id: str | None = None
 
 
 # ── LLM output — валидируем ответ модели ────────────────────────────────────
@@ -156,8 +156,9 @@ class TaskExtraction(BaseModel):
 
 
 class StatusExtraction(BaseModel):
-    task_hint: str
+    task_id: str | None = None
     assignee_id: int | None = None
+    column_id: str | None = None
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
 
 
