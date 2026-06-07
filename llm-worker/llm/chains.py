@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 
-from llm.prompts import audio_status_prompt, audio_task_prompt, classifier_prompt, decision_prompt, file_summary_prompt, status_prompt, sync_match_prompt, task_prompt
+from llm.prompts import audio_status_prompt, audio_task_prompt, classifier_prompt, decision_prompt, file_summary_prompt, speaker_segments_prompt, status_prompt, sync_match_prompt, task_prompt
 from llm.safe_parser import SafeJsonOutputParser
 from settings import settings
 
@@ -33,5 +33,6 @@ status_chain = status_prompt | _expensive | _safe_json
 audio_task_chain = audio_task_prompt | _expensive | _safe_json
 audio_status_chain = audio_status_prompt | _expensive | _safe_json
 file_summary_chain = file_summary_prompt | _expensive | _safe_json
+speaker_segments_chain = speaker_segments_prompt | _cheap | _safe_json
 decision_chain = decision_prompt | _cheap | _safe_json
 sync_match_chain = sync_match_prompt | _cheap | _safe_json

@@ -209,6 +209,11 @@ class MeetingStatusPreview(BaseModel):
     action: Literal["COMPLETE", "ASSIGN", "CANCEL"]
 
 
+class MeetingSpeakerSegment(BaseModel):
+    speaker_label: str
+    sample: str
+
+
 class MeetingLiveResultEvent(BaseModel):
     meeting_id: str
     team_id: str
@@ -229,6 +234,7 @@ class MeetingLiveResultEvent(BaseModel):
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
     hints: list[str] = Field(default_factory=list)
+    speaker_segments: list[MeetingSpeakerSegment] = Field(default_factory=list)
 
 
 # ── LLM output — валидируем ответ модели ────────────────────────────────────
