@@ -1,37 +1,14 @@
 import json
 
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from infra.kafka import publish
 from infra.qdrant import search_tasks
+from llm.chains import sync_match_chain
 from models import SyncDraftEvent, SyncDraftItem, SyncRequestEvent
 from settings import settings
 
 TOPIC_SYNC_DRAFT = "sync.draft"
-
-_MATCH_PROMPT = """Пользователь написал что сделал: "{text}"
-
-Активные задачи:
-{tasks}
-
-Найди задачи, которые ПРЯМО И ОДНОЗНАЧНО упомянуты в тексте пользователя.
-Правила:
-- Совпадение должно быть явным, не косвенным
-- Если текст упоминает одно конкретное действие — верни максимум 1 задачу
-- Если задача не упомянута точно — НЕ включай её
-- Верни ТОЛЬКО JSON-массив id. Если ничего не подходит — верни []
-
-Пример: ["uuid1"] или []"""
-
-
-def _cheap_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        model=settings.LLM_CHEAP_MODEL,
-        base_url=settings.LLM_API_BASE,
-        api_key=settings.LLM_API_KEY,
-        temperature=0,
-    )
 
 
 def _llm_match_tasks(raw_text: str, active_tasks: list) -> list[str]:
@@ -42,16 +19,12 @@ def _llm_match_tasks(raw_text: str, active_tasks: list) -> list[str]:
          for t in active_tasks],
         ensure_ascii=False,
     )
-    prompt = _MATCH_PROMPT.format(text=raw_text, tasks=tasks_json)
     try:
-        response = _cheap_llm().invoke(prompt)
-        content = response.content.strip()
-        start = content.find("[")
-        end = content.rfind("]") + 1
-        if start >= 0 and end > start:
-            matched = json.loads(content[start:end])
-            valid_ids = {t.id for t in active_tasks}
-            return [str(m) for m in matched if isinstance(m, str) and m in valid_ids]
+        result = sync_match_chain.invoke({"text": raw_text, "tasks": tasks_json})
+        if not isinstance(result, list):
+            return []
+        valid_ids = {t.id for t in active_tasks}
+        return [m for m in result if isinstance(m, str) and m in valid_ids]
     except Exception as e:
         logger.warning(f"[SYNC] LLM matching failed: {e}")
     return []
@@ -76,40 +49,37 @@ def process_sync_request(event: SyncRequestEvent) -> None:
 
     active_by_id = {t.id: t for t in event.active_tasks}
     items: list[SyncDraftItem] = []
-    index = 1
 
-    for task_id in matched_ids:
+    for idx, task_id in enumerate(matched_ids, start=1):
         task = active_by_id.get(task_id)
         title = task.title if task else next(
             (c["title"] for c in candidates if c["task_id"] == task_id), task_id
         )
         items.append(SyncDraftItem(
-            index=index,
+            index=idx,
             user_text=event.raw_text,
             task_id=task_id,
             task_title=title,
             is_new_task=False,
         ))
-        index += 1
 
     if not items and event.active_tasks:
-        logger.info(f"[SYNC] Qdrant empty — falling back to LLM matching for requestId={event.request_id}")
+        logger.info(f"[SYNC] Qdrant empty — falling back to LLM for requestId={event.request_id}")
         llm_ids = _llm_match_tasks(event.raw_text, event.active_tasks)
         logger.info(f"[SYNC] LLM matched task_ids={llm_ids}")
-        for task_id in llm_ids:
+        for idx, task_id in enumerate(llm_ids, start=1):
             task = active_by_id.get(task_id)
             if task:
                 items.append(SyncDraftItem(
-                    index=index,
+                    index=idx,
                     user_text=event.raw_text,
                     task_id=task_id,
                     task_title=task.title,
                     is_new_task=False,
                 ))
-                index += 1
 
     if not items:
-        logger.info(f"[SYNC] No tasks matched — marking as new task for requestId={event.request_id}")
+        logger.info(f"[SYNC] No tasks matched — treating as new task for requestId={event.request_id}")
         items.append(SyncDraftItem(
             index=1,
             user_text=event.raw_text,
