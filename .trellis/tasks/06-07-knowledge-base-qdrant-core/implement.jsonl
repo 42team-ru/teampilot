@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/06-07-knowledge-base-qdrant-core/prd.md", "reason": "Полные требования: ingestion sources, decision chain через classifier, knowledge_context в task prompt"}
+{"file": "llm-worker/infra/qdrant.py", "reason": "Добавить store_knowledge, search_knowledge, delete_knowledge"}
+{"file": "llm-worker/models.py", "reason": "Добавить has_decision+confidence_decision в ClassificationResult; DecisionExtraction, DecisionExtractionList"}
+{"file": "llm-worker/llm/prompts.py", "reason": "Обновить classifier prompt (has_decision), добавить decision_prompt, добавить {knowledge_context} в task_prompt human message"}
+{"file": "llm-worker/llm/chains.py", "reason": "Добавить decision_chain (cheap model)"}
+{"file": "llm-worker/processor.py", "reason": "Добавить _extract_decisions, format_knowledge_context, обновить process_batch (3-way parallel), обновить _extract_tasks (search_knowledge)"}
+{"file": "llm-worker/main.py", "reason": "Lifecycle consumer: store_knowledge для CONFIRMED/UPDATED, delete_knowledge для CANCELLED; imports"}

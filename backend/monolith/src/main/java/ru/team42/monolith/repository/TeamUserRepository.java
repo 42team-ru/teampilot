@@ -18,6 +18,13 @@ public interface TeamUserRepository extends JpaRepository<TeamUser, UUID> {
 
     List<TeamUser> findAllByUserTelegramId(Long telegramId);
     List<TeamUser> findAllByUserTelegramIdAndRole(Long telegramId, TeamRole role);
+
+    @Query("""
+            SELECT tu FROM TeamUser tu
+            JOIN FETCH tu.team
+            WHERE tu.user.telegramId = :telegramId
+            """)
+    List<TeamUser> findAllByUserTelegramIdWithTeam(@Param("telegramId") Long telegramId);
     Optional<TeamUser> findByTeamIdAndYougileUserId(UUID teamId, String yougileUserId);
 
     List<TeamUser> findByTeamId(UUID teamId);

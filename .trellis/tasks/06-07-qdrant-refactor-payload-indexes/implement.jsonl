@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-07-qdrant-refactor-payload-indexes/prd.md", "reason": "Полные требования: ensure_collections, payload indexes, settings changes"}
+{"file": "llm-worker/infra/qdrant.py", "reason": "Файл для изменения: init_collections → ensure_collections + индексы"}
+{"file": "llm-worker/settings.py", "reason": "Добавить QDRANT_COLLECTION_KNOWLEDGE, удалить QDRANT_COLLECTION_BATCHES"}
+{"file": "llm-worker/main.py", "reason": "Обновить импорт init_collections → ensure_collections"}

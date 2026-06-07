@@ -40,6 +40,8 @@ public class MeetingLiveResultEvent extends BaseEvent {
     private List<TaskDto> tasks = List.of();
     @Builder.Default
     private List<StatusDto> statuses = List.of();
+    @Builder.Default
+    private List<String> hints = List.of();
 
     @Getter
     @Builder

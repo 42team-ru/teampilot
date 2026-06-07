@@ -24,7 +24,8 @@ public record MeetingLiveResultResponse(
         String transcriptS3Key,
         Instant finalizedAt,
         List<TaskDto> tasks,
-        List<StatusDto> statuses
+        List<StatusDto> statuses,
+        List<String> hints
 ) {
     public static MeetingLiveResultResponse from(MeetingLiveResultEvent event) {
         return new MeetingLiveResultResponse(
@@ -45,7 +46,8 @@ public record MeetingLiveResultResponse(
                 event.getTranscriptS3Key(),
                 event.getFinalizedAt(),
                 event.getTasks().stream().map(TaskDto::from).toList(),
-                event.getStatuses().stream().map(StatusDto::from).toList()
+                event.getStatuses().stream().map(StatusDto::from).toList(),
+                event.getHints()
         );
     }
 
