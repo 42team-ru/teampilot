@@ -20,6 +20,7 @@ public class BotNotificationEvent extends BaseEvent {
     public static final String TYPE_MEETING_SUMMARY = "MEETING_SUMMARY";
 
     public record CourseInfo(String courseId, String title, String url, String description) {}
+    public record SpeakerInfo(String speakerLabel, String sample) {}
 
     private final List<Long> recipientTelegramIds;
     private final String type;
@@ -36,6 +37,7 @@ public class BotNotificationEvent extends BaseEvent {
     private final String meetingSummary;
     private final List<String> meetingTasks;
     private final List<String> meetingHints;
+    private final List<SpeakerInfo> meetingSpeakers;
 
     public BotNotificationEvent(List<Long> recipientTelegramIds, String type, UUID taskId, String taskTitle) {
         this(
@@ -43,6 +45,7 @@ public class BotNotificationEvent extends BaseEvent {
                 type,
                 taskId,
                 taskTitle,
+                null,
                 null,
                 null,
                 null,
@@ -72,7 +75,8 @@ public class BotNotificationEvent extends BaseEvent {
             String meetingTitle,
             String meetingSummary,
             List<String> meetingTasks,
-            List<String> meetingHints
+            List<String> meetingHints,
+            List<SpeakerInfo> meetingSpeakers
     ) {
         this.recipientTelegramIds = recipientTelegramIds;
         this.type = type;
@@ -89,6 +93,7 @@ public class BotNotificationEvent extends BaseEvent {
         this.meetingSummary = meetingSummary;
         this.meetingTasks = meetingTasks;
         this.meetingHints = meetingHints;
+        this.meetingSpeakers = meetingSpeakers;
     }
 
     public static BotNotificationEvent achievement(
@@ -105,6 +110,7 @@ public class BotNotificationEvent extends BaseEvent {
                 achievement.getEmoji(),
                 achievement.getXpReward(),
                 newTotalXp,
+                null,
                 null,
                 null,
                 null,
@@ -135,6 +141,7 @@ public class BotNotificationEvent extends BaseEvent {
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -159,6 +166,7 @@ public class BotNotificationEvent extends BaseEvent {
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -169,7 +177,8 @@ public class BotNotificationEvent extends BaseEvent {
             String meetingTitle,
             String meetingSummary,
             List<String> meetingTasks,
-            List<String> meetingHints
+            List<String> meetingHints,
+            List<SpeakerInfo> meetingSpeakers
     ) {
         return new BotNotificationEvent(
                 List.of(telegramChatId),
@@ -186,7 +195,8 @@ public class BotNotificationEvent extends BaseEvent {
                 meetingTitle,
                 meetingSummary,
                 meetingTasks,
-                meetingHints
+                meetingHints,
+                meetingSpeakers
         );
     }
 }

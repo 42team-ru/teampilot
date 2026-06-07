@@ -145,7 +145,8 @@ BotNotificationEvent.meetingSummary(
     String meetingTitle,
     String meetingSummary,
     List<String> meetingTasks,
-    List<String> meetingHints
+    List<String> meetingHints,
+    List<SpeakerInfo> meetingSpeakers
 )
 ```
 
@@ -156,6 +157,7 @@ meeting_title: str | None = Field(alias="meetingTitle")
 meeting_summary: str | None = Field(alias="meetingSummary")
 meeting_tasks: list[str] = Field(alias="meetingTasks")
 meeting_hints: list[str] = Field(alias="meetingHints")
+meeting_speakers: list[dict] = Field(alias="meetingSpeakers")
 ```
 
 ### 3. Contracts
@@ -169,6 +171,7 @@ meeting_hints: list[str] = Field(alias="meetingHints")
 | `meetingSummary` | string | no | Empty summaries are skipped by Spring. |
 | `meetingTasks` | string[] | no | Compact task-title preview, max 10 items at publisher. |
 | `meetingHints` | string[] | no | Similar-task or duplicate hints, max 5 items at publisher. |
+| `meetingSpeakers` | object[] | no | Anonymous speaker labels and sample snippets for manual mapping. |
 
 Spring stores `meetings.telegram_summary_sent_at` before publishing so repeated
 final Kafka events do not post duplicate Telegram summaries.
@@ -186,11 +189,13 @@ final Kafka events do not post duplicate Telegram summaries.
 
 - Good: final meeting result with summary and tasks -> team chat receives summary, tasks, hints, and meeting ID.
 - Base: summary exists but no tasks -> bot sends summary without task block.
+- Base: speaker snippets exist -> bot adds buttons to map `SPEAKER_N` to team members.
 - Bad: publishing from each live chunk would spam the chat; only `finalResult=true` through `MeetingService.updateFinalResult` may publish.
 
 ### 6. Tests Required
 
 - Spring publisher maps `MeetingLiveResultEvent.tasks/hints` to compact strings.
+- Spring publisher maps `MeetingLiveResultEvent.speakerSegments` to `meetingSpeakers`.
 - `MeetingService.updateFinalResult` sets `telegramSummarySentAt` once.
 - Bot parses camelCase meeting fields from Spring and formats `MEETING_SUMMARY`.
 
@@ -206,6 +211,93 @@ messagingTemplate.convertAndSend("/topic/meetings/%s/results".formatted(id), res
 ```java
 meeting.setTelegramSummarySentAt(Instant.now());
 notificationEventPublisher.publishMeetingSummary(meeting, event);
+```
+
+---
+
+## Scenario: Manual Meeting Speaker Mapping Without Voice Embeddings
+
+### 1. Scope / Trigger
+
+Triggered after a final meeting transcript is available. The system may produce
+anonymous `SPEAKER_1`, `SPEAKER_2`, ... snippets for manager review, but it must
+not identify people by voice and must not store voice embeddings in Qdrant for
+the MVP.
+
+### 2. Signatures
+
+**LLM Worker -> Spring (`meetings.live.results`)**:
+```python
+class MeetingSpeakerSegment(BaseModel):
+    speaker_label: str
+    sample: str
+```
+
+**Bot callbacks**:
+```text
+msel:<meeting_uuid_hex>:<speaker_number>
+mss:<meeting_uuid_hex>:<speaker_number>:<participant_telegram_id>
+```
+
+**Bot -> Spring API**:
+```http
+GET /meetings/{meetingId}/speaker-candidates?telegramUserId=123
+POST /meetings/{meetingId}/speaker-mappings
+X-Bot-Secret: <bot secret>
+
+{
+  "speakerLabel": "SPEAKER_1",
+  "participantTelegramId": 123456789,
+  "telegramUserId": 987654321
+}
+```
+
+### 3. Contracts
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `speakerLabel` | string | no | Must be an anonymous label like `SPEAKER_1`. |
+| `sample` | string | no | Short representative quote for human recognition, not biometric data. |
+| `participantTelegramId` | long | yes | `null` means guest / not a team member. |
+| `telegramUserId` | long | no | Manager who confirms mapping. |
+
+Mappings are persisted in `meeting_speaker_mappings` with a unique
+`(meeting_id, speaker_label)` constraint, so repeated mapping edits update the
+same logical assignment.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| User is not a manager of the meeting team | Backend returns 403 |
+| Participant is not in the meeting team | Backend returns 404 |
+| Speaker extraction cannot infer boundaries | Worker may return one `SPEAKER_1` sample |
+| Manager selects guest | Mapping is stored with `team_user_id = null` |
+| Callback payload exceeds Telegram limit | Use compact `msel`/`mss` payloads with UUID hex and speaker number |
+
+### 5. Good/Base/Bad Cases
+
+- Good: final summary shows `SPEAKER_1: sample`, manager maps it to `@ivan`, mapping is saved.
+- Base: only one speaker is detected; mapping still works but does not claim automatic identity.
+- Bad: storing voiceprint vectors in Qdrant without explicit consent; this is out of MVP scope.
+
+### 6. Tests Required
+
+- Bot parses compact callback payload and restores UUID.
+- Backend allows only meeting-team managers to map speakers.
+- Backend upserts mapping by `(meeting_id, speaker_label)`.
+- Worker produces no more than 6 anonymous speaker labels.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```python
+payload = {"speaker_label": "@ivan", "voice_embedding": embedding}
+```
+
+#### Correct
+```python
+payload = {"speaker_label": "SPEAKER_1", "sample": "Я возьму /sync и напоминания"}
 ```
 
 ---
@@ -385,6 +477,7 @@ class MeetingLiveResultEvent(BaseModel):
     finalized_at: datetime | None = None
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
+    speaker_segments: list[MeetingSpeakerSegment] = Field(default_factory=list)
 ```
 
 ### 3. Contracts
@@ -434,6 +527,7 @@ than blocking all meetings globally.
 | `finalized_at` | ISO-8601 datetime | yes | When final recording/transcript were produced |
 | `tasks` | array | no | Preview of newly extracted task events |
 | `statuses` | array | no | Preview of newly extracted status-change events |
+| `speaker_segments` | array | no | Anonymous `SPEAKER_N` snippets for manual mapping. No voice embeddings or identity claims. |
 
 ### 4. Validation & Error Matrix
 
