@@ -1,16 +1,23 @@
 package ru.team42.monolith.service;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import ru.team42.monolith.entity.SyncSession;
+import ru.team42.monolith.entity.SyncUserState;
+import ru.team42.monolith.entity.enums.UserSyncStatus;
 import ru.team42.monolith.event.SyncDraftEvent;
+import ru.team42.monolith.repository.SyncSessionRepository;
+import ru.team42.monolith.repository.SyncUserStateRepository;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class SyncStateService {
 
-    public enum UserSyncStatus { AWAITING, DRAFT_SENT, CONFIRMED, REJECTED, EXCUSED }
 
     public record UserSyncState(
             Long telegramId,
@@ -47,94 +54,134 @@ public class SyncStateService {
             Map<Long, UserSyncState> userStates
     ) {}
 
-    private final Map<UUID, TeamSyncSession> sessions = new ConcurrentHashMap<>();
-    private final Map<Long, UUID> chatIdToTeamId = new ConcurrentHashMap<>();
-    private final Map<String, Long> requestIdToUser = new ConcurrentHashMap<>();
+    private final SyncSessionRepository syncSessionRepository;
+    private final SyncUserStateRepository syncUserStateRepository;
 
+    @Transactional
     public void openSession(UUID teamId, Long chatId, List<Long> memberTelegramIds, List<String> usernames) {
-        Map<Long, UserSyncState> states = new ConcurrentHashMap<>();
+        // Delete existing session if any (with cascade)
+        syncSessionRepository.deleteById(teamId);
+        syncSessionRepository.flush();
+
+        SyncSession session = new SyncSession();
+        session.setTeamId(teamId);
+        session.setChatId(chatId);
+        session.setStartedAt(Instant.now());
+        session = syncSessionRepository.save(session);
+
         for (int i = 0; i < memberTelegramIds.size(); i++) {
             Long id = memberTelegramIds.get(i);
             String name = i < usernames.size() ? usernames.get(i) : id.toString();
-            states.put(id, new UserSyncState(id, name, UserSyncStatus.AWAITING, null, null, List.of(), 0, 0));
+
+            SyncUserState userState = new SyncUserState();
+            userState.setSession(session);
+            userState.setTelegramId(id);
+            userState.setUsername(name);
+            userState.setStatus(UserSyncStatus.AWAITING);
+            userState.setDraft(List.of());
+            userState.setConfirmedTasksCount(0);
+            userState.setPendingTasksCount(0);
+            syncUserStateRepository.save(userState);
         }
-        sessions.put(teamId, new TeamSyncSession(teamId, chatId, Instant.now(), states));
-        chatIdToTeamId.put(chatId, teamId);
     }
 
+    @Transactional
     public void closeSession(UUID teamId) {
-        TeamSyncSession session = sessions.remove(teamId);
-        if (session != null) {
-            chatIdToTeamId.remove(session.chatId());
-            session.userStates().values().forEach(u -> {
-                if (u.requestId() != null) requestIdToUser.remove(u.requestId());
-            });
-        }
+        syncSessionRepository.deleteById(teamId);
     }
 
+    @Transactional(readOnly = true)
     public boolean isInSyncWindow(Long chatId) {
-        return chatIdToTeamId.containsKey(chatId);
+        return syncSessionRepository.existsByChatId(chatId);
     }
 
+    @Transactional(readOnly = true)
     public Optional<UUID> getTeamIdByChatId(Long chatId) {
-        return Optional.ofNullable(chatIdToTeamId.get(chatId));
+        return syncSessionRepository.findByChatId(chatId).map(SyncSession::getTeamId);
     }
 
+    @Transactional(readOnly = true)
     public Optional<TeamSyncSession> getSession(UUID teamId) {
-        return Optional.ofNullable(sessions.get(teamId));
+        return syncSessionRepository.findById(teamId).map(this::toTeamSyncSession);
     }
 
+    @Transactional
     public void recordUserResponse(UUID teamId, Long telegramId, String text, String requestId) {
-        sessions.computeIfPresent(teamId, (id, session) -> {
-            Map<Long, UserSyncState> updated = new ConcurrentHashMap<>(session.userStates());
-            updated.computeIfPresent(telegramId, (uid, state) -> state.withResponse(text, requestId));
-            requestIdToUser.put(requestId, telegramId);
-            return new TeamSyncSession(session.teamId(), session.chatId(), session.startedAt(), updated);
+        syncUserStateRepository.findBySessionTeamIdAndTelegramId(teamId, telegramId).ifPresent(userState -> {
+            userState.setRawText(text);
+            userState.setRequestId(requestId);
+            syncUserStateRepository.save(userState);
         });
     }
 
+    @Transactional
     public void storeDraft(UUID teamId, String requestId, List<SyncDraftEvent.DraftItem> items) {
-        Long telegramId = requestIdToUser.get(requestId);
-        if (telegramId == null) return;
-        sessions.computeIfPresent(teamId, (id, session) -> {
-            Map<Long, UserSyncState> updated = new ConcurrentHashMap<>(session.userStates());
-            updated.computeIfPresent(telegramId, (uid, state) -> state.withDraft(items));
-            return new TeamSyncSession(session.teamId(), session.chatId(), session.startedAt(), updated);
+        syncUserStateRepository.findByRequestId(requestId).ifPresent(userState -> {
+            userState.setDraft(items);
+            userState.setStatus(UserSyncStatus.DRAFT_SENT);
+            syncUserStateRepository.save(userState);
         });
     }
 
+    @Transactional(readOnly = true)
     public Optional<UserSyncState> getUserState(UUID teamId, Long telegramId) {
-        return getSession(teamId).map(s -> s.userStates().get(telegramId));
+        return syncUserStateRepository.findBySessionTeamIdAndTelegramId(teamId, telegramId)
+                .map(this::toUserSyncState);
     }
 
+    @Transactional
     public void addConfirmCounts(UUID teamId, Long telegramId, int confirmed, int pending) {
-        sessions.computeIfPresent(teamId, (id, session) -> {
-            Map<Long, UserSyncState> updated = new ConcurrentHashMap<>(session.userStates());
-            updated.computeIfPresent(telegramId, (uid, state) -> state.addConfirmCounts(confirmed, pending));
-            return new TeamSyncSession(session.teamId(), session.chatId(), session.startedAt(), updated);
+        syncUserStateRepository.findBySessionTeamIdAndTelegramId(teamId, telegramId).ifPresent(userState -> {
+            userState.setConfirmedTasksCount(userState.getConfirmedTasksCount() + confirmed);
+            userState.setPendingTasksCount(userState.getPendingTasksCount() + pending);
+            userState.setStatus(UserSyncStatus.CONFIRMED);
+            syncUserStateRepository.save(userState);
         });
     }
 
+    @Transactional
     public void updateUserStatus(UUID teamId, Long telegramId, UserSyncStatus status) {
-        sessions.computeIfPresent(teamId, (id, session) -> {
-            Map<Long, UserSyncState> updated = new ConcurrentHashMap<>(session.userStates());
-            updated.computeIfPresent(telegramId, (uid, state) -> state.withStatus(status));
-            return new TeamSyncSession(session.teamId(), session.chatId(), session.startedAt(), updated);
+        syncUserStateRepository.findBySessionTeamIdAndTelegramId(teamId, telegramId).ifPresent(userState -> {
+            userState.setStatus(status);
+            syncUserStateRepository.save(userState);
         });
     }
 
+    @Transactional(readOnly = true)
     public Optional<Long> getUserByRequestId(String requestId) {
-        return Optional.ofNullable(requestIdToUser.get(requestId));
+        return syncUserStateRepository.findByRequestId(requestId).map(SyncUserState::getTelegramId);
     }
 
+    @Transactional(readOnly = true)
     public Optional<UUID> getTeamIdByUserId(Long telegramUserId) {
-        return sessions.values().stream()
-                .filter(s -> s.userStates().containsKey(telegramUserId))
-                .map(TeamSyncSession::teamId)
-                .findFirst();
+        return syncUserStateRepository.findFirstByTelegramId(telegramUserId)
+                .map(u -> u.getSession().getTeamId());
     }
 
+    @Transactional(readOnly = true)
     public Collection<TeamSyncSession> getAllSessions() {
-        return sessions.values();
+        return syncSessionRepository.findAll().stream()
+                .map(this::toTeamSyncSession)
+                .toList();
+    }
+
+    private TeamSyncSession toTeamSyncSession(SyncSession session) {
+        List<SyncUserState> userStates = syncUserStateRepository.findBySessionTeamId(session.getTeamId());
+        Map<Long, UserSyncState> stateMap = userStates.stream()
+                .collect(Collectors.toMap(SyncUserState::getTelegramId, this::toUserSyncState));
+        return new TeamSyncSession(session.getTeamId(), session.getChatId(), session.getStartedAt(), stateMap);
+    }
+
+    private UserSyncState toUserSyncState(SyncUserState entity) {
+        return new UserSyncState(
+                entity.getTelegramId(),
+                entity.getUsername(),
+                entity.getStatus(),
+                entity.getRawText(),
+                entity.getRequestId(),
+                entity.getDraft() != null ? entity.getDraft() : List.of(),
+                entity.getConfirmedTasksCount(),
+                entity.getPendingTasksCount()
+        );
     }
 }

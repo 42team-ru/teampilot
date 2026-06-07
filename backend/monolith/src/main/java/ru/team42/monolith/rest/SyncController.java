@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
+import ru.team42.monolith.entity.enums.UserSyncStatus;
 import ru.team42.monolith.service.EveningSyncService;
 import ru.team42.monolith.service.ExcuseService;
 import ru.team42.monolith.service.SyncStateService;
@@ -141,7 +142,7 @@ public class SyncController {
             syncStateService.getSession(request.teamId()).ifPresent(session -> {
                 if (session.userStates().containsKey(request.telegramUserId())) {
                     syncStateService.updateUserStatus(request.teamId(), request.telegramUserId(),
-                            SyncStateService.UserSyncStatus.EXCUSED);
+                            UserSyncStatus.EXCUSED);
                 }
             });
         } else {
@@ -156,7 +157,7 @@ public class SyncController {
                 syncStateService.getSession(teamId).ifPresent(session -> {
                     if (session.userStates().containsKey(request.telegramUserId())) {
                         syncStateService.updateUserStatus(teamId, request.telegramUserId(),
-                                SyncStateService.UserSyncStatus.EXCUSED);
+                                UserSyncStatus.EXCUSED);
                     }
                 });
             }
