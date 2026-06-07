@@ -105,3 +105,36 @@ Replaced in-memory ConcurrentHashMap session state with JPA/PostgreSQL: new enti
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Fix: YouGile недоступен → задачи больше не отменяются
+
+**Date**: 2026-06-07
+**Task**: Fix: YouGile недоступен → задачи больше не отменяются
+**Branch**: `master`
+
+### Summary
+
+При недоступности YouGile fetchAllTasksForBoard и fetchColumns теперь бросают исключение вместо возврата пустого списка. Планировщик уже ловит его — reconcileDeletedTasks не вызывается, задачи и колонки не помечаются удалёнными ложно.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `de1e2c0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
