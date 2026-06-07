@@ -238,6 +238,8 @@ class ClassificationResult(BaseModel):
     confidence_task: float = 0.0
     has_status_change: bool = False
     confidence_status: float = 0.0
+    has_decision: bool = False
+    confidence_decision: float = 0.0
 
 
 class TaskExtraction(BaseModel):
@@ -279,6 +281,21 @@ class TaskLifecycleEvent(BaseModel):
     type: Literal["CONFIRMED", "UPDATED", "CANCELLED"]
     title: str
     description: str | None = None
+
+
+class DecisionExtraction(BaseModel):
+    text: str
+
+
+class DecisionExtractionList(BaseModel):
+    decisions: list[DecisionExtraction] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_from_raw_list(cls, data: Any) -> dict:
+        if isinstance(data, list):
+            return {"decisions": data}
+        return data
 
 
 class StatusExtractionList(BaseModel):
