@@ -72,3 +72,36 @@ Added /excuse command: user writes /excuse [reason] in private chat, bot shows i
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: SyncStateService + ExcuseService → PostgreSQL
+
+**Date**: 2026-06-07
+**Task**: SyncStateService + ExcuseService → PostgreSQL
+**Branch**: `master`
+
+### Summary
+
+Replaced in-memory ConcurrentHashMap session state with JPA/PostgreSQL: new entities SyncSession, SyncUserState, SyncExcuse + repositories. Drop-in replacement — public API unchanged. Fixed entity→service layer violation (UserSyncStatus extracted to entity.enums). ddl-auto handles schema, no Flyway migrations.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bce3bec` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
