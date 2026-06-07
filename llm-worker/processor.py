@@ -11,8 +11,8 @@ from loguru import logger
 from pydantic import ValidationError
 
 from infra.kafka import publish
-from infra.qdrant import is_task_duplicate, search_tasks
-from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, file_summary_chain, status_chain, task_chain
+from infra.qdrant import is_task_duplicate, search_knowledge, search_tasks, store_knowledge
+from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, decision_chain, file_summary_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
     AudioNewEvent,
@@ -20,6 +20,7 @@ from models import (
     AudioTeamMember,
     AudioStickerInfo,
     ClassificationResult,
+    DecisionExtractionList,
     FileSummaryEvent,
     MeetingAudioChunkEvent,
     MeetingLiveResultEvent,
@@ -131,6 +132,19 @@ def format_stickers_context(batch: MessageBatchEvent) -> str:
             lines.append(f'  - sticker_id: "{s.id}"  |  name: "{s.title}"  |  states: [{states_str}]')
         else:
             lines.append(f'  - sticker_id: "{s.id}"  |  name: "{s.title}"  |  free-text value')
+    return "\n".join(lines)
+
+
+def format_knowledge_context(items: list[dict]) -> str:
+    if not items:
+        return "KNOWLEDGE BASE: (empty — no relevant team knowledge found)"
+    lines = ["KNOWLEDGE BASE (team decisions, meeting summaries, past tasks — use as background context):"]
+    for item in items:
+        kind = item.get("type", "")
+        title = item.get("title", "")
+        content = item.get("content", "")
+        label = f"[{kind}]" + (f" {title}" if title else "")
+        lines.append(f"  - {label}: {content}")
     return "\n".join(lines)
 
 
@@ -277,17 +291,27 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
 
     run_tasks = clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD
     run_statuses = clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD
+    run_decisions = clf.has_decision and clf.confidence_decision >= settings.CLASSIFIER_THRESHOLD
 
-    if run_tasks and run_statuses:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_tasks = executor.submit(_extract_tasks, batch, text, clf.confidence_task)
-            future_statuses = executor.submit(_extract_statuses, batch, text)
-            results.extend(future_tasks.result())
-            results.extend(future_statuses.result())
-    elif run_tasks:
-        results.extend(_extract_tasks(batch, text, clf.confidence_task))
-    elif run_statuses:
-        results.extend(_extract_statuses(batch, text))
+    n_workers = sum([run_tasks, run_statuses, run_decisions])
+    if n_workers >= 2:
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            future_tasks = executor.submit(_extract_tasks, batch, text, clf.confidence_task) if run_tasks else None
+            future_statuses = executor.submit(_extract_statuses, batch, text) if run_statuses else None
+            future_decisions = executor.submit(_extract_decisions, batch, text) if run_decisions else None
+            if future_tasks:
+                results.extend(future_tasks.result())
+            if future_statuses:
+                results.extend(future_statuses.result())
+            if future_decisions:
+                future_decisions.result()
+    else:
+        if run_tasks:
+            results.extend(_extract_tasks(batch, text, clf.confidence_task))
+        elif run_statuses:
+            results.extend(_extract_statuses(batch, text))
+        elif run_decisions:
+            _extract_decisions(batch, text)
 
     return results
 
@@ -295,12 +319,14 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
 def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0) -> List[TaskCreateEvent]:
     try:
         columns_ctx, col_map = format_columns_context(batch)
+        knowledge_items = search_knowledge(text, batch.team_id) if batch.team_id else []
         raw = task_chain.invoke({
             "messages": text,
             "current_datetime": batch.occurred_at.isoformat(),
             "team_context": format_team_context(batch),
             "columns_context": columns_ctx,
             "stickers_context": format_stickers_context(batch),
+            "knowledge_context": format_knowledge_context(knowledge_items),
         })
         extraction_list = TaskExtractionList.model_validate(raw)
 
@@ -398,6 +424,27 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
     except Exception as e:
         logger.error(f"Status extraction chain failed (batch={batch.event_id}): {e}")
         return []
+
+
+def _extract_decisions(batch: MessageBatchEvent, text: str) -> None:
+    if not batch.team_id:
+        return
+    try:
+        raw = decision_chain.invoke({"messages": text})
+        extraction_list = DecisionExtractionList.model_validate(raw)
+        for i, extraction in enumerate(extraction_list.decisions):
+            if not extraction.text.strip():
+                continue
+            source_id = f"decision:{batch.event_id}:{i}"
+            store_knowledge(
+                source_id=source_id,
+                team_id=batch.team_id,
+                knowledge_type="decision",
+                content=extraction.text,
+            )
+            logger.info(f"[DECISION] stored: {extraction.text!r} team={batch.team_id}")
+    except Exception as e:
+        logger.error(f"Decision extraction failed (batch={batch.event_id}): {e}")
 
 
 def format_audio_team_context(members: list[AudioTeamMember]) -> str:
@@ -568,6 +615,15 @@ def generate_file_summary(text: str, file_id: str, team_id: str | None) -> None:
         )
         publish(TOPIC_FILE_SUMMARY, event, key=file_id)
         logger.info(f"File summary published for file_id={file_id} title={title!r}")
+
+        if team_id and summary:
+            store_knowledge(
+                source_id=f"file:{file_id}",
+                team_id=team_id,
+                knowledge_type="file_summary",
+                content=summary,
+                title=title,
+            )
     except Exception as e:
         logger.error(f"File summary generation failed for file_id={file_id}: {e}")
 
@@ -693,7 +749,7 @@ def _wait_for_meeting_chunk_objects(bucket: str, meeting_id: str, final_chunk_in
     deadline = time.monotonic() + settings.MEETING_FINALIZE_WAIT_SECONDS
     keys: list[str] = []
 
-    while time.monotonic() < deadline:
+    while True:
         try:
             keys = _meeting_chunk_object_keys(bucket, meeting_id, final_chunk_index)
         except Exception as e:
@@ -703,6 +759,8 @@ def _wait_for_meeting_chunk_objects(bucket: str, meeting_id: str, final_chunk_in
                 bucket,
                 e,
             )
+            if time.monotonic() >= deadline:
+                break
             time.sleep(0.2)
             continue
 
@@ -713,6 +771,8 @@ def _wait_for_meeting_chunk_objects(bucket: str, meeting_id: str, final_chunk_in
         }
         if expected.issubset(indexes):
             return keys
+        if time.monotonic() >= deadline:
+            break
         time.sleep(0.2)
 
     indexes = {
@@ -938,6 +998,14 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
             transcript = finalization.full_transcript
             context = finalization.full_transcript
             summary = finalization.summary
+            if event.team_id and finalization.summary:
+                store_knowledge(
+                    source_id=f"meeting:{event.meeting_id}",
+                    team_id=event.team_id,
+                    knowledge_type="meeting_summary",
+                    content=finalization.summary,
+                    title=finalization.title,
+                )
 
     tasks = [
         _to_meeting_task_preview(e)
