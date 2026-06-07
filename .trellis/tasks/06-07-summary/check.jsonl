@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Проверить что новые события соответствуют соглашениям: BaseEvent, KafkaTopics, правильные топики"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Проверить что нет прямых RuntimeException/ResponseStatusException, только AppException"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Проверить наследование AbstractEntity, использование ResponseUtils, маппинги без /api"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Проверить целостность флоу Bot→Kafka→Spring→LLM→YouGile: нет ли пропущенных слоёв"}
