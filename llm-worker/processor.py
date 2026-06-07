@@ -1006,6 +1006,25 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
                     content=finalization.summary,
                     title=finalization.title,
                 )
+            if finalization.full_transcript:
+                full_events = _process_transcript_chunk(
+                    finalization.full_transcript,
+                    event.chunk_index,
+                    f"{event.meeting_id}:full",
+                    event.team_id,
+                    event.team,
+                    event.columns,
+                    event.stickers,
+                )
+                new_full_events = _filter_new_meeting_events(event.meeting_id, full_events)
+                _publish_transcript_events(new_full_events, key=event.meeting_id)
+                extracted_events = extracted_events + new_full_events
+                logger.info(
+                    "Full transcript re-extraction meeting_id={} new_events={} total_events={}",
+                    event.meeting_id,
+                    len(new_full_events),
+                    len(extracted_events),
+                )
 
     tasks = [
         _to_meeting_task_preview(e)
