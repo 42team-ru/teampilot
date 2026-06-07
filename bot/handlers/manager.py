@@ -128,7 +128,7 @@ async def _send_meeting_link_to_group(
     await message.bot.send_message(
         chat_id=chat_id,
         text=(
-            f"🎙 <b>Созвон: {escape(team_title)}</b>\n\n"
+            f"🎙 <b>Созвон</b>\n\n"
             "Менеджер создал встречу для команды.\n"
             f"Ссылка: {escape(meeting_url)}"
         ),
@@ -871,7 +871,7 @@ async def team_ctx_meeting_start(callback: CallbackQuery, state: FSMContext) -> 
     await state.set_state(ManagerMeetingStates.waiting_for_url)
 
     await callback.message.edit_text(
-        f"🎙 <b>Созвон: {escape(team_title)}</b>\n\n"
+        f"🎙 <b>Созвон/b>\n\n"
         "Пришлите ссылку на созвон одним сообщением.\n"
         "Подойдут ссылки вида <code>https://telemost.yandex.ru/...</code>, Zoom, Google Meet и другие http/https-ссылки.",
         reply_markup=_meeting_url_keyboard(team_id),

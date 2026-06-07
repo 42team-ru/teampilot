@@ -23,6 +23,7 @@ export type ExtMessage =
   | { type: 'OFFSCREEN_TEST_AUDIO' }
   | { type: 'AUDIO_LEVEL'; level: number }
   | { type: 'REQUEST_TEST_AUDIO' }
+  | { type: 'MIC_PERMISSION_GRANTED' }
   | { type: 'RECORDING_STARTED'; meetingId: string }
   | { type: 'RECORDING_ERROR'; error: string }
   | { type: 'PROCESSING_DONE'; meetingId: string }
