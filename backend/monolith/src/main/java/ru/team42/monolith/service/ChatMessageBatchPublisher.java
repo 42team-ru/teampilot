@@ -45,10 +45,11 @@ public class ChatMessageBatchPublisher {
     }
 
     private MessageBatchProto.MessageBatchEvent.MessageDto toProtoMessage(ChatMessage m) {
+        var user = m.getTeamUser().getUser();
         return MessageBatchProto.MessageBatchEvent.MessageDto.newBuilder()
-                .setUserId(m.getUser().getTelegramId())
-                .setUsername(nullToEmpty(m.getUser().getTelegramLogin()))
-                .setFullName(buildFullName(m.getUser().getFirstName(), m.getUser().getLastName()))
+                .setUserId(user.getTelegramId())
+                .setUsername(nullToEmpty(user.getTelegramLogin()))
+                .setFullName(buildFullName(user.getFirstName(), user.getLastName()))
                 .setText(m.getText())
                 .setTimestamp(toTimestamp(m.getMessageTimestamp()))
                 .setMessageId(m.getId().toString())
