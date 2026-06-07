@@ -20,4 +20,7 @@ public final class KafkaTopics {
     public static final String SYNC_DRAFT              = "sync.draft";
     public static final String MEETINGS_AUDIO_CHUNKS   = "meetings.audio.chunks";
     public static final String MEETINGS_LIVE_RESULTS   = "meetings.live.results";
+    public static final String COURSES_INDEXED             = "courses.indexed";
+    public static final String COURSES_RECOMMEND_REQUEST   = "courses.recommend.request";
+    public static final String COURSES_RECOMMEND_RESULT    = "courses.recommend.result";
 }

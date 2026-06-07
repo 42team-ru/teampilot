@@ -76,6 +76,15 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     @Query("""
             SELECT t FROM Task t
             WHERE t.localStatus = ru.team42.monolith.entity.enums.TaskLocalStatus.ACTIVE
+              AND t.deadline IS NOT NULL
+              AND t.deadline < :now
+              AND t.courseRecommendedAt IS NULL
+            """)
+    List<Task> findByCourseRecommendationNeeded(@Param("now") Instant now);
+
+    @Query("""
+            SELECT t FROM Task t
+            WHERE t.localStatus = ru.team42.monolith.entity.enums.TaskLocalStatus.ACTIVE
               AND NOT EXISTS (
                   SELECT h FROM TaskStatusHistory h
                   WHERE h.task = t

@@ -18,6 +18,7 @@ public class MeetingService {
 
     private final MeetingRepository meetingRepository;
     private final TeamService teamService;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     @Transactional
     public MeetingResponse create(CreateMeetingRequest request, Long managerTelegramId) {
@@ -64,5 +65,12 @@ public class MeetingService {
         meeting.setDescription(event.getDescription());
         meeting.setSummary(event.getSummary());
         meeting.setFinalizedAt(event.getFinalizedAt());
+
+        if (meeting.getTelegramSummarySentAt() == null
+                && event.getSummary() != null
+                && !event.getSummary().isBlank()) {
+            meeting.setTelegramSummarySentAt(java.time.Instant.now());
+            notificationEventPublisher.publishMeetingSummary(meeting, event);
+        }
     }
 }

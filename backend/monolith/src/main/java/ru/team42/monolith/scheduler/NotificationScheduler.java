@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.repository.TaskRepository;
+import ru.team42.monolith.service.CourseEventPublisher;
 import ru.team42.monolith.service.NotificationEventPublisher;
 
 import java.time.Instant;
@@ -22,6 +23,7 @@ public class NotificationScheduler {
 
     private final TaskRepository taskRepository;
     private final NotificationEventPublisher notificationEventPublisher;
+    private final CourseEventPublisher courseEventPublisher;
 
     @Transactional
     @Scheduled(fixedDelay = 300_000)
@@ -44,6 +46,26 @@ public class NotificationScheduler {
                 log.info("Deadline reminder sent for task {} ('{}')", task.getId(), task.getTitle());
             } catch (Exception e) {
                 log.error("Failed to send deadline reminder for task {}: {}", task.getId(), e.getMessage());
+            }
+        }
+    }
+
+    @Transactional
+    @Scheduled(fixedDelay = 1_800_000)
+    public void sendCourseRecommendations() {
+        Instant now = Instant.now();
+        List<Task> tasks = taskRepository.findByCourseRecommendationNeeded(now);
+
+        log.info("Course recommendation check: found {} overdue task(s) without recommendation", tasks.size());
+
+        for (Task task : tasks) {
+            try {
+                task.setCourseRecommendedAt(now);
+                taskRepository.save(task);
+                courseEventPublisher.publishCourseRecommendRequest(task);
+                log.info("Course recommendation request sent for task {} ('{}')", task.getId(), task.getTitle());
+            } catch (Exception e) {
+                log.error("Failed to send course recommendation request for task {}: {}", task.getId(), e.getMessage());
             }
         }
     }
