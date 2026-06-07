@@ -5,7 +5,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 # ── Kafka: Spring → LLM Worker ─────────────────────────────────────────────
 
 class AudioTeamMember(BaseModel):
@@ -329,7 +328,10 @@ class SyncRequestEvent(BaseModel):
     telegram_user_id: int = Field(alias="telegramUserId")
     username: str | None = None
     raw_text: str = Field(alias="rawText")
-    active_tasks: list[SyncTaskSummary] = Field(alias="activeTasks", default_factory=list)
+    active_tasks: list[SyncTaskSummary] = Field(
+        alias="activeTasks",
+        default_factory=list,
+    )
 
 
 class SyncDraftItem(BaseModel):
@@ -354,8 +356,40 @@ class SyncDraftResult(BaseModel):
 
 
 class SyncDraftEvent(BaseModel):
-    """LLM Worker → Spring через sync.draft (snake_case — Spring читает с SNAKE_CASE маппером)."""
+    """LLM Worker → Spring через sync.draft."""
     request_id: str
     team_id: str
     telegram_user_id: int
     items: list[SyncDraftItem]
+
+
+# ── Courses ───────────────────────────────────────────────────────────────────
+
+class CourseIndexedEvent(BaseModel):
+    """Incoming event from courses.indexed — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    courseId: str
+    title: str
+    description: str | None = None
+    url: str
+    teamId: str
+
+
+class CourseRecommendRequestEvent(BaseModel):
+    """Incoming event from courses.recommend.request — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    requestId: str
+    taskId: str
+    taskTitle: str
+    taskDescription: str | None = None
+    teamId: str
+
+
+class CourseRecommendResultEvent(BaseModel):
+    """LLM Worker → Spring via courses.recommend.result (snake_case)."""
+    request_id: str
+    task_id: str
+    team_id: str
+    course_ids: list[str]
