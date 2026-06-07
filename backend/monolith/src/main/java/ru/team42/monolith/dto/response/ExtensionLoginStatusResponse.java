@@ -1,0 +1,11 @@
+package ru.team42.monolith.dto.response;
+
+import java.time.Instant;
+
+public record ExtensionLoginStatusResponse(
+        String status,
+        String code,
+        Instant expiresAt,
+        TelegramAuthResponse auth
+) {
+}
