@@ -7,15 +7,9 @@ import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.dto.request.CreateMeetingRequest;
 import ru.team42.monolith.dto.response.MeetingResponse;
 import ru.team42.monolith.entity.Meeting;
-import ru.team42.monolith.entity.MeetingSpeakerMapping;
-import ru.team42.monolith.entity.TeamUser;
-import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.event.MeetingLiveResultEvent;
 import ru.team42.monolith.repository.MeetingRepository;
-import ru.team42.monolith.repository.MeetingSpeakerMappingRepository;
-import ru.team42.monolith.repository.TeamUserRepository;
 
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -24,9 +18,6 @@ public class MeetingService {
 
     private final MeetingRepository meetingRepository;
     private final TeamService teamService;
-    private final NotificationEventPublisher notificationEventPublisher;
-    private final TeamUserRepository teamUserRepository;
-    private final MeetingSpeakerMappingRepository meetingSpeakerMappingRepository;
 
     @Transactional
     public MeetingResponse create(CreateMeetingRequest request, Long managerTelegramId) {
@@ -73,100 +64,5 @@ public class MeetingService {
         meeting.setDescription(event.getDescription());
         meeting.setSummary(event.getSummary());
         meeting.setFinalizedAt(event.getFinalizedAt());
-
-        if (meeting.getTelegramSummarySentAt() == null
-                && event.getSummary() != null
-                && !event.getSummary().isBlank()) {
-            meeting.setTelegramSummarySentAt(java.time.Instant.now());
-            notificationEventPublisher.publishMeetingSummary(meeting, event);
-        }
     }
-
-    @Transactional(readOnly = true)
-    public List<SpeakerCandidate> getSpeakerCandidates(UUID meetingId, Long managerTelegramId) {
-        Meeting meeting = requireMeetingManager(meetingId, managerTelegramId);
-        return teamUserRepository.findByTeamIdWithUser(meeting.getTeam().getId())
-                .stream()
-                .filter(member -> member.getUser() != null && member.getUser().getTelegramId() != null)
-                .map(member -> new SpeakerCandidate(
-                        member.getUser().getTelegramId(),
-                        member.getUser().getTelegramLogin(),
-                        fullName(member),
-                        member.getRole().name()
-                ))
-                .toList();
-    }
-
-    @Transactional
-    public SpeakerMappingResult mapSpeaker(
-            UUID meetingId,
-            String speakerLabel,
-            Long participantTelegramId,
-            Long managerTelegramId
-    ) {
-        Meeting meeting = requireMeetingManager(meetingId, managerTelegramId);
-        if (speakerLabel == null || speakerLabel.isBlank()) {
-            throw AppException.badRequest("speakerLabel is required");
-        }
-
-        TeamUser participant = null;
-        if (participantTelegramId != null && participantTelegramId != 0) {
-            participant = teamUserRepository.findByTeamIdAndUserTelegramId(meeting.getTeam().getId(), participantTelegramId)
-                    .orElseThrow(() -> AppException.notFound("Participant not found in meeting team"));
-        }
-
-        MeetingSpeakerMapping mapping = meetingSpeakerMappingRepository
-                .findByMeetingIdAndSpeakerLabel(meetingId, speakerLabel)
-                .orElseGet(MeetingSpeakerMapping::new);
-        mapping.setMeeting(meeting);
-        mapping.setSpeakerLabel(speakerLabel);
-        mapping.setTeamUser(participant);
-        mapping.setMappedByTelegramId(managerTelegramId);
-        meetingSpeakerMappingRepository.save(mapping);
-
-        String displayName = participant != null ? displayName(participant) : "Гость";
-        Long mappedTelegramId = participant != null ? participant.getUser().getTelegramId() : null;
-        return new SpeakerMappingResult(speakerLabel, mappedTelegramId, displayName);
-    }
-
-    private Meeting requireMeetingManager(UUID meetingId, Long telegramId) {
-        if (telegramId == null) {
-            throw AppException.unauthorized("Telegram user authentication required");
-        }
-        Meeting meeting = meetingRepository.findById(meetingId)
-                .orElseThrow(() -> AppException.notFound("Meeting with ID %s not found".formatted(meetingId)));
-        teamUserRepository.findByTeamIdAndUserTelegramId(meeting.getTeam().getId(), telegramId)
-                .filter(member -> member.getRole() == TeamRole.MANAGER)
-                .orElseThrow(() -> AppException.forbidden("Only team managers can map meeting speakers"));
-        return meeting;
-    }
-
-    private String fullName(TeamUser member) {
-        var user = member.getUser();
-        String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
-        String last = user.getLastName() != null ? user.getLastName().trim() : "";
-        return (first + " " + last).trim();
-    }
-
-    private String displayName(TeamUser member) {
-        var user = member.getUser();
-        if (user.getTelegramLogin() != null && !user.getTelegramLogin().isBlank()) {
-            return "@" + user.getTelegramLogin();
-        }
-        String name = fullName(member);
-        return !name.isBlank() ? name : user.getTelegramId().toString();
-    }
-
-    public record SpeakerCandidate(
-            Long telegramId,
-            String username,
-            String fullName,
-            String role
-    ) {}
-
-    public record SpeakerMappingResult(
-            String speakerLabel,
-            Long telegramId,
-            String displayName
-    ) {}
 }

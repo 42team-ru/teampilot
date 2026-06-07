@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Паттерны Kafka-событий: BaseEvent, AbstractEventPublisher, KafkaTopics — для CourseIndexedEvent, CourseRecommendRequestEvent, CourseRecommendResultEvent"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException паттерны — для CourseController (notFound, forbidden, badRequest)"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "AbstractEntity, JPA conventions — для Course entity"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Структура пакетов monolith — куда класть новые файлы"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality требования для Spring"}
-{"file": ".trellis/tasks/06-07-course-recommendation-system/prd.md", "reason": "Полная спецификация фичи: сущности, эндпоинты, Kafka-топики, изменения в LLM Worker и боте"}

@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.TeamUser;
-import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.repository.TeamUserRepository;
 
@@ -21,20 +20,9 @@ public class TaskNotificationRecipientResolver {
 
     public List<Long> resolveRecipients(Task task) {
         UUID teamId = task.getTeam().getId();
+        UUID assigneeId = task.getAssignee() != null ? task.getAssignee().getId() : null;
         List<TeamUser> members = teamUserRepository.findByTeamIdWithUser(teamId);
         Set<Long> recipients = new LinkedHashSet<>();
-
-        // Задачи на аппруве — только менеджеры, сотрудник не подтверждает свою же задачу
-        if (task.getLocalStatus() == TaskLocalStatus.PENDING_APPROVAL) {
-            for (TeamUser member : members) {
-                if (member.getRole() == TeamRole.MANAGER) {
-                    addTelegramId(recipients, member);
-                }
-            }
-            return List.copyOf(recipients);
-        }
-
-        UUID assigneeId = task.getAssignee() != null ? task.getAssignee().getId() : null;
 
         for (TeamUser member : members) {
             if (member.getRole() == TeamRole.MANAGER) {

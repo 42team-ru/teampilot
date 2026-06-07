@@ -86,9 +86,6 @@ public class Task extends AbstractEntity {
     @Column(name = "deadline_notified_at")
     private Instant deadlineNotifiedAt;
 
-    @Column(name = "course_recommended_at")
-    private Instant courseRecommendedAt;
-
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "stickers", columnDefinition = "jsonb")
     private Map<String, String> stickers;

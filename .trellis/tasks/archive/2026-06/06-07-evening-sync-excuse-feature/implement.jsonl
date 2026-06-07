@@ -1,4 +1,0 @@
-{"file": ".trellis/tasks/06-07-evening-sync-excuse-feature/prd.md", "reason": "Full requirements, technical approach, and AC for the excuse feature"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException conventions for new REST endpoints"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Where to place ExcuseService and new controller methods"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Bot↔backend↔Kafka data flow conventions"}

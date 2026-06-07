@@ -1,6 +1,6 @@
 import type { ExtMessage } from '../../types/messages'
 
-const CHUNK_DURATION_MS = 30_000
+const CHUNK_DURATION_MS = 15000
 const FINAL_CHUNK_DURATION_MS = 250
 
 let audioContext: AudioContext | null = null

@@ -39,9 +39,6 @@ dependencies {
     implementation(libs.mapstruct)
     annotationProcessor(libs.mapstruct.processor)
 
-    // HTML parsing
-    implementation("org.jsoup:jsoup:1.17.2")
-
     // Testing
     testImplementation(libs.spring.security.test)
     testImplementation("org.springframework.boot:spring-boot-starter-test")

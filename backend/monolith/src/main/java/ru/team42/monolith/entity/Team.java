@@ -38,21 +38,6 @@ public class Team extends AbstractEntity {
     @Column(name = "kanban_api_key", length = 512)
     private String kanbanApiKey;
 
-    @Column(name = "reminder_max_per_task_per_day", nullable = false)
-    private int reminderMaxPerTaskPerDay = 1;
-
-    @Column(name = "reminder_quiet_hours_start", nullable = false)
-    private int reminderQuietHoursStart = 22;
-
-    @Column(name = "reminder_quiet_hours_end", nullable = false)
-    private int reminderQuietHoursEnd = 9;
-
-    @Column(name = "stale_reminder_hours", nullable = false)
-    private int staleReminderHours = 24;
-
-    @Column(name = "deadline_reminder_minutes_before", nullable = false)
-    private int deadlineReminderMinutesBefore = 120;
-
     @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "company_id")
     private YouGileCompany company;

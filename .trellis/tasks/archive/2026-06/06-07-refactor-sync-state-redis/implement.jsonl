@@ -1,4 +1,0 @@
-{"file": ".trellis/tasks/06-07-refactor-sync-state-redis/prd.md", "reason": "Full requirements, DB schema, AC and technical approach for PostgreSQL migration"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException conventions for service methods"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Where to place new entities and repositories"}
-{"file": "CLAUDE.md", "reason": "No Flyway, ddl-auto:update, AbstractEntity, AppException conventions"}

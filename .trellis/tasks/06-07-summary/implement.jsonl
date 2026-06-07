@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Новые события синка расширяют существующие Kafka-топики (messages.raw, bots.notifications) — нужны соглашения по структуре событий"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Новые компоненты (EveningSyncScheduler, SyncStateService, SyncSummaryPublisher) должны лежать в правильных пакетах monolith"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Все исключения — только через AppException, нужно соблюдать при работе с YouGile API и Kafka"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Соглашения по Spring: маппинги, ResponseUtils, наследование AbstractEntity/BaseEvent"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Синк пронизывает Bot → Kafka → Spring → LLM → YouGile — нужен cross-layer checklist"}

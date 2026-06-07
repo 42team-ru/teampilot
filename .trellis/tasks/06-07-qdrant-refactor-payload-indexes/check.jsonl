@@ -1,4 +1,0 @@
-{"file": ".trellis/tasks/06-07-qdrant-refactor-payload-indexes/prd.md", "reason": "Acceptance criteria для проверки: оба collection, оба индекса, идемпотентность"}
-{"file": "llm-worker/infra/qdrant.py", "reason": "Проверить: ensure_collections создаёт tasks+knowledge, индексы team_id+type"}
-{"file": "llm-worker/settings.py", "reason": "Проверить: есть QDRANT_COLLECTION_KNOWLEDGE, нет QDRANT_COLLECTION_BATCHES"}
-{"file": "llm-worker/main.py", "reason": "Проверить: импорт ensure_collections, вызов при старте"}

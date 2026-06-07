@@ -94,10 +94,6 @@ def team_context_manager_keyboard(
     menu_buttons.append(InlineKeyboardButton(text="⚙️ Управление командой", callback_data=f"tm:m:g:{team_id}"))
 
     buttons = _rows(menu_buttons)
-    buttons.append([
-        InlineKeyboardButton(text="📚 Курсы команды", callback_data=f"courses:list:{team_id}:0"),
-        InlineKeyboardButton(text="➕ Добавить курс", callback_data=f"courses:add:{team_id}"),
-    ])
     buttons.append([InlineKeyboardButton(text="← Мои команды", callback_data="member:teams_overview")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -159,10 +155,6 @@ def team_context_member_keyboard(team_id: str = "", has_chat: bool = True, has_k
             InlineKeyboardButton(text=tasks_label, callback_data=f"tm:u:t:{team_id}"),
             InlineKeyboardButton(text="📎 Файлы", callback_data=f"tm:u:f:{team_id}"),
         ]))
-    if team_id:
-        buttons.append([
-            InlineKeyboardButton(text="📚 Курсы команды", callback_data=f"courses:list:{team_id}:0"),
-        ])
     buttons.append([InlineKeyboardButton(text="← Мои команды", callback_data="member:teams_overview")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
