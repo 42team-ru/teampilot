@@ -454,4 +454,3 @@ def search_knowledge(
             e,
         )
         return []
-        return False

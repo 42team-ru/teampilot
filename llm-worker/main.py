@@ -18,6 +18,7 @@ from models import (
     proto_to_batch_event,
 )
 from processor import process_audio, process_batch, process_meeting_audio
+from sync_processor import process_sync_request
 from proto_generated.ru.team42.events import message_batch_pb2
 from settings import settings
 
@@ -26,6 +27,7 @@ TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
 TOPIC_AUDIO = "audio.new"
 TOPIC_LIFECYCLE = "tasks.lifecycle"
+TOPIC_SYNC_REQUESTS = "sync.requests"
 TOPIC_MEETING_AUDIO = "meetings.audio.chunks"
 
 
@@ -44,6 +46,25 @@ def _process_and_publish_batch(batch: MessageBatchEvent) -> None:
         f"[BATCH {batch.event_id[:8]}] msgs={len(batch.messages)} "
         f"→ tasks={tasks_published} statuses={statuses_published}"
     )
+
+
+def run_sync_consumer(stop_event: threading.Event) -> None:
+    from models import SyncRequestEvent
+    consumer = BatchConsumer(TOPIC_SYNC_REQUESTS)
+    try:
+        while not stop_event.is_set():
+            msg = consumer.poll(timeout=1.0)
+            if msg is None:
+                continue
+            try:
+                event = SyncRequestEvent.model_validate_json(msg.value().decode())
+                process_sync_request(event)
+            except Exception as e:
+                logger.error(f"Error processing sync.requests: {e}")
+            finally:
+                consumer.commit(msg)
+    finally:
+        consumer.close()
 
 
 def run_lifecycle_consumer(stop_event: threading.Event) -> None:
@@ -191,6 +212,14 @@ def main() -> None:
     )
     lifecycle_thread.start()
 
+    sync_thread = threading.Thread(
+        target=run_sync_consumer,
+        args=(stop_event,),
+        daemon=True,
+        name="sync-consumer",
+    )
+    sync_thread.start()
+
     consumer = BatchConsumer(TOPIC_IN, settings.KAFKA_GROUP_ID_BATCHES)
     pending: deque[tuple[Future, Any]] = deque()
     concurrency = settings.LLM_WORKER_CONCURRENCY
@@ -241,6 +270,7 @@ def main() -> None:
             audio_thread.join(timeout=5)
             meeting_audio_thread.join(timeout=5)
             lifecycle_thread.join(timeout=5)
+            sync_thread.join(timeout=5)
 
 
 if __name__ == "__main__":
