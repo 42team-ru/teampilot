@@ -20,13 +20,9 @@ import java.time.Instant;
 @NoArgsConstructor
 public class ChatMessage extends AbstractEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "team_id")
-    private Team team;
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "team_user_id", nullable = false)
+    private TeamUser teamUser;
 
     @Column(name = "text", nullable = false, columnDefinition = "TEXT")
     private String text;
