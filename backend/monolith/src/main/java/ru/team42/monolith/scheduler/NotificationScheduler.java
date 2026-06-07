@@ -7,12 +7,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
+import ru.team42.monolith.event.BotNotificationEvent;
 import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.service.CourseEventPublisher;
 import ru.team42.monolith.service.NotificationEventPublisher;
+import ru.team42.monolith.service.NotificationPolicyService;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
@@ -24,25 +25,30 @@ public class NotificationScheduler {
     private final TaskRepository taskRepository;
     private final NotificationEventPublisher notificationEventPublisher;
     private final CourseEventPublisher courseEventPublisher;
+    private final NotificationPolicyService notificationPolicyService;
 
     @Transactional
     @Scheduled(fixedDelay = 300_000)
     public void sendDeadlineReminders() {
         Instant now = Instant.now();
-        Instant from = now.plus(115, ChronoUnit.MINUTES);
-        Instant to = now.plus(125, ChronoUnit.MINUTES);
+        Instant to = now.plus(24, ChronoUnit.HOURS);
 
-        List<Task> tasks = taskRepository.findByLocalStatusAndDeadlineBetweenAndDeadlineNotifiedAtIsNull(
-                TaskLocalStatus.ACTIVE, from, to
-        );
+        List<Task> tasks = taskRepository.findDeadlineReminderCandidates(now, to);
 
-        log.info("Deadline reminder check: found {} task(s) in window [{}, {}]", tasks.size(), from, to);
+        log.info("Deadline reminder check: found {} candidate task(s) before {}", tasks.size(), to);
 
         for (Task task : tasks) {
             try {
-                task.setDeadlineNotifiedAt(Instant.now());
+                if (!notificationPolicyService.shouldSendDeadlineReminder(task, now)) {
+                    continue;
+                }
+                List<Long> recipients = notificationEventPublisher.publishDeadlineReminder(task);
+                if (recipients.isEmpty()) {
+                    continue;
+                }
+                notificationPolicyService.recordQueued(task, BotNotificationEvent.TYPE_DEADLINE, recipients, now);
+                task.setDeadlineNotifiedAt(now);
                 taskRepository.save(task);
-                notificationEventPublisher.publishDeadlineReminder(task);
                 log.info("Deadline reminder sent for task {} ('{}')", task.getId(), task.getTitle());
             } catch (Exception e) {
                 log.error("Failed to send deadline reminder for task {}: {}", task.getId(), e.getMessage());
@@ -70,18 +76,24 @@ public class NotificationScheduler {
         }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     @Scheduled(cron = "0 0 * * * *")
     public void sendStaleAlerts() {
-        LocalDateTime threshold = LocalDateTime.now().minus(24, ChronoUnit.HOURS);
+        Instant now = Instant.now();
+        List<Task> staleTasks = taskRepository.findByDeletedFalseAndLocalStatus(TaskLocalStatus.ACTIVE);
 
-        List<Task> staleTasks = taskRepository.findActiveStaleTasks(threshold);
-
-        log.info("Stale alert check: found {} stale task(s)", staleTasks.size());
+        log.info("Stale alert check: found {} active task candidate(s)", staleTasks.size());
 
         for (Task task : staleTasks) {
             try {
-                notificationEventPublisher.publishStaleAlert(task);
+                if (!notificationPolicyService.shouldSendStaleAlert(task, now)) {
+                    continue;
+                }
+                List<Long> recipients = notificationEventPublisher.publishStaleAlert(task);
+                if (recipients.isEmpty()) {
+                    continue;
+                }
+                notificationPolicyService.recordQueued(task, BotNotificationEvent.TYPE_STALE, recipients, now);
                 log.info("Stale alert sent for task {} ('{}')", task.getId(), task.getTitle());
             } catch (Exception e) {
                 log.error("Failed to send stale alert for task {}: {}", task.getId(), e.getMessage());
