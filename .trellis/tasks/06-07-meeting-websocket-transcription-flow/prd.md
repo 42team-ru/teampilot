@@ -36,6 +36,9 @@ Add live meeting support: managers create a meeting for a team, one primary reco
 * Add LLM worker consumer for meeting chunk events.
 * LLM worker downloads chunk audio, converts/transcribes with Whisper, accumulates transcript context per meeting, and periodically runs extraction on the accumulated window.
 * LLM worker publishes live meeting results back to Spring with transcript text, summary/context, extracted task candidates, and status changes.
+* On `finalChunk=true`, LLM worker lists durable chunks under `meetings/{meetingId}/chunks/`, concatenates them into one final recording, uploads it to S3/MinIO, uploads the full transcript next to it, and generates final `title`, `description`, and `summary`.
+* LLM worker uses separate Kafka group ids for batch, audio file, meeting audio, and lifecycle consumers.
+* Spring stores final recording/transcript S3 fields plus final `title`, `description`, `summary`, and `finalizedAt` on `Meeting`.
 * Spring consumes meeting result events and broadcasts them over STOMP to all subscribers of that meeting.
 * Do not add tests.
 * Add a usage document explaining REST auth, meeting lookup/creation, STOMP destinations, chunk payloads, live result payloads, and internal Kafka flow.
@@ -49,6 +52,9 @@ Add live meeting support: managers create a meeting for a team, one primary reco
 * Spring exposes a STOMP endpoint and destination for meeting chunks.
 * Accepted chunks are uploaded to MinIO and produce Kafka events.
 * LLM worker consumes meeting chunk events, transcribes via existing Whisper integration, keeps a sliding text context, and emits live result events.
+* A final chunk produces a full meeting recording object and full transcript object under `meetings/{meetingId}/final/`.
+* Final recording concatenation uses MinIO `meetings/{meetingId}/chunks/` as the durable source, not in-memory worker state.
+* Meeting lookup responses include final recording/transcript keys and final summary metadata after finalization.
 * Spring broadcasts live results to the meeting topic.
 * Usage documentation exists for client/backend integration.
 * Gradle/Python syntax checks pass where feasible, without adding or running tests unless unavoidable.
@@ -58,7 +64,7 @@ Add live meeting support: managers create a meeting for a team, one primary reco
 * Browser extension UI changes.
 * Realtime speaker diarization.
 * Perfect deduplication of repeated partial LLM output.
-* Durable distributed meeting transcript state across LLM worker restarts.
+* Durable distributed live transcript context across LLM worker restarts.
 * End-to-end integration tests.
 
 ## Research References
@@ -72,3 +78,4 @@ Add live meeting support: managers create a meeting for a team, one primary reco
 * Spring Framework docs use `@EnableWebSocketMessageBroker`, `WebSocketMessageBrokerConfigurer`, STOMP endpoint registration, `setApplicationDestinationPrefixes`, and `/topic`/`/queue` broker destinations.
 * Project Kafka spec: Spring → Python JSON uses camelCase; Python Pydantic models need aliases. Python → Spring inbound consumers currently use snake_case-compatible mapper behavior.
 * Monolith currently uses `spring.jpa.hibernate.ddl-auto=update`; backend spec still asks new monolith schema migrations under `backend/monolith/src/main/resources/db/migration/`.
+* New Kafka topics default to 12 partitions via `app.kafka.default-partitions`; existing topics need manual partition expansion if already created smaller.

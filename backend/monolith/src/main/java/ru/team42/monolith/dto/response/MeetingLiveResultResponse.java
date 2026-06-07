@@ -2,6 +2,7 @@ package ru.team42.monolith.dto.response;
 
 import ru.team42.monolith.event.MeetingLiveResultEvent;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,6 +13,16 @@ public record MeetingLiveResultResponse(
         String transcript,
         String summary,
         String context,
+        boolean finalResult,
+        String title,
+        String description,
+        String recordingBucket,
+        String recordingS3Key,
+        String recordingContentType,
+        Long recordingSizeBytes,
+        String transcriptBucket,
+        String transcriptS3Key,
+        Instant finalizedAt,
         List<TaskDto> tasks,
         List<StatusDto> statuses
 ) {
@@ -23,6 +34,16 @@ public record MeetingLiveResultResponse(
                 event.getTranscript(),
                 event.getSummary(),
                 event.getContext(),
+                event.isFinalResult(),
+                event.getTitle(),
+                event.getDescription(),
+                event.getRecordingBucket(),
+                event.getRecordingS3Key(),
+                event.getRecordingContentType(),
+                event.getRecordingSizeBytes(),
+                event.getTranscriptBucket(),
+                event.getTranscriptS3Key(),
+                event.getFinalizedAt(),
                 event.getTasks().stream().map(TaskDto::from).toList(),
                 event.getStatuses().stream().map(StatusDto::from).toList()
         );
