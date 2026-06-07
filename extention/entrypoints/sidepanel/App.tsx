@@ -14,7 +14,7 @@ import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
 export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const auth = useAuthSession()
-  const { state, pauseRecording, stopRecording, resumeRecording, toggleMic } = useRecordingState()
+  const { state, pauseRecording, stopRecording, resumeRecording, toggleMic, resetRecording } = useRecordingState()
   const { results } = useMeetingResults(state.meetingId)
 
   if (!auth.session) {
@@ -55,6 +55,7 @@ export default function App() {
         onStop={stopRecording}
         onToggleMic={toggleMic}
         onOpenSettings={() => setShowSettings(true)}
+        onReset={resetRecording}
       />
 
       <Tabs defaultValue="live" className="flex-1 flex flex-col overflow-hidden">

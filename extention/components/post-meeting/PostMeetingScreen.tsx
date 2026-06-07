@@ -5,6 +5,7 @@ import { formatDuration } from '../../lib/utils'
 
 interface Props {
   meetingId: string
+  onReset: () => void
 }
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
@@ -16,7 +17,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   )
 }
 
-export default function PostMeetingScreen({ meetingId }: Props) {
+export default function PostMeetingScreen({ meetingId, onReset }: Props) {
   const { results, loading, error } = useMeetingResults(meetingId)
 
   const openPanel = async () => {
@@ -43,9 +44,14 @@ export default function PostMeetingScreen({ meetingId }: Props) {
           <span className="font-semibold text-sm">Встреча завершена</span>
         </div>
         <p className="text-xs text-muted-foreground">Результаты обрабатываются...</p>
-        <Button className="w-full" onClick={openPanel}>
-          <ExternalLink className="h-3.5 w-3.5 mr-2" /> Открыть панель
-        </Button>
+        <div className="space-y-2">
+          <Button className="w-full" onClick={onReset}>
+            Начать запись
+          </Button>
+          <Button className="w-full" size="sm" variant="outline" onClick={openPanel}>
+            <ExternalLink className="h-3.5 w-3.5 mr-2" /> Открыть панель
+          </Button>
+        </div>
       </div>
     )
   }
@@ -66,7 +72,10 @@ export default function PostMeetingScreen({ meetingId }: Props) {
       </div>
 
       <div className="space-y-2">
-        <Button className="w-full" size="sm" onClick={openPanel}>
+        <Button className="w-full" onClick={onReset}>
+          Начать запись
+        </Button>
+        <Button className="w-full" size="sm" variant="outline" onClick={openPanel}>
           <ExternalLink className="h-3.5 w-3.5 mr-2" /> Открыть результаты
         </Button>
         <Button className="w-full" size="sm" variant="outline" disabled>

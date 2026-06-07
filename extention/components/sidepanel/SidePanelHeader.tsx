@@ -12,6 +12,7 @@ interface Props {
   onStop: () => void
   onToggleMic: () => void
   onOpenSettings: () => void
+  onReset?: () => void
 }
 
 const STATUS_CONFIG = {
@@ -31,6 +32,7 @@ export default function SidePanelHeader({
   onStop,
   onToggleMic,
   onOpenSettings,
+  onReset,
 }: Props) {
   const elapsed = useTimer(
     state.startedAt,
@@ -109,6 +111,12 @@ export default function SidePanelHeader({
               <Square className="h-3.5 w-3.5" />
             </Button>
           </div>
+        )}
+
+        {state.status === 'done' && onReset && (
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onReset}>
+            Начать заново
+          </Button>
         )}
       </div>
     </div>

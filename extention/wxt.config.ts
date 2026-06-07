@@ -14,6 +14,7 @@ export default defineConfig({
       "activeTab",
       "alarms",
       "tabs",
+      "microphone",
     ],
     host_permissions: [
       "http://localhost/*",
