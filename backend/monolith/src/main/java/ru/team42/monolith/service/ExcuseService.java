@@ -1,53 +1,59 @@
 package ru.team42.monolith.service;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import ru.team42.monolith.entity.SyncExcuse;
+import ru.team42.monolith.repository.SyncExcuseRepository;
 
-import java.util.HashMap;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class ExcuseService {
 
-    // Map<telegramId, Map<teamId, reason>>
-    private final Map<Long, Map<UUID, String>> excuses = new ConcurrentHashMap<>();
+    private final SyncExcuseRepository syncExcuseRepository;
 
+    @Transactional
     public void excuse(Long telegramId, UUID teamId, String reason) {
-        excuses.computeIfAbsent(telegramId, k -> new ConcurrentHashMap<>())
-                .put(teamId, reason);
-    }
-
-    public void excuseAllTeams(Long telegramId, List<UUID> teamIds, String reason) {
-        Map<UUID, String> teamMap = excuses.computeIfAbsent(telegramId, k -> new ConcurrentHashMap<>());
-        for (UUID teamId : teamIds) {
-            teamMap.put(teamId, reason);
+        if (!syncExcuseRepository.existsByTelegramIdAndTeamIdAndExcuseDate(telegramId, teamId, LocalDate.now())) {
+            SyncExcuse excuse = new SyncExcuse();
+            excuse.setTelegramId(telegramId);
+            excuse.setTeamId(teamId);
+            excuse.setReason(reason);
+            excuse.setExcuseDate(LocalDate.now());
+            syncExcuseRepository.save(excuse);
         }
     }
 
+    @Transactional
+    public void excuseAllTeams(Long telegramId, List<UUID> teamIds, String reason) {
+        for (UUID teamId : teamIds) {
+            excuse(telegramId, teamId, reason);
+        }
+    }
+
+    @Transactional(readOnly = true)
     public boolean isExcused(Long telegramId, UUID teamId) {
-        Map<UUID, String> teamMap = excuses.get(telegramId);
-        return teamMap != null && teamMap.containsKey(teamId);
+        return syncExcuseRepository.existsByTelegramIdAndTeamIdAndExcuseDate(telegramId, teamId, LocalDate.now());
     }
 
     /**
      * Returns Map<telegramId, reason> for all users excused from the given team.
      */
+    @Transactional(readOnly = true)
     public Map<Long, String> getExcusedForTeam(UUID teamId) {
-        Map<Long, String> result = new HashMap<>();
-        for (Map.Entry<Long, Map<UUID, String>> entry : excuses.entrySet()) {
-            String reason = entry.getValue().get(teamId);
-            if (reason != null) {
-                result.put(entry.getKey(), reason);
-            }
-        }
-        return result;
+        return syncExcuseRepository.findByTeamIdAndExcuseDate(teamId, LocalDate.now())
+                .stream()
+                .collect(Collectors.toMap(SyncExcuse::getTelegramId, SyncExcuse::getReason));
     }
 
+    @Transactional
     public void clearTeam(UUID teamId) {
-        for (Map<UUID, String> teamMap : excuses.values()) {
-            teamMap.remove(teamId);
-        }
+        syncExcuseRepository.deleteByTeamIdAndExcuseDate(teamId, LocalDate.now());
     }
 }

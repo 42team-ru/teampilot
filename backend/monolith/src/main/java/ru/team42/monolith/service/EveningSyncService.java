@@ -11,6 +11,7 @@ import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 import ru.team42.monolith.entity.enums.TeamRole;
+import ru.team42.monolith.entity.enums.UserSyncStatus;
 import ru.team42.monolith.event.ChatMessageEvent;
 import ru.team42.monolith.event.SyncDraftEvent;
 import ru.team42.monolith.event.SyncRequestEvent;
@@ -189,7 +190,7 @@ public class EveningSyncService {
         SyncStateService.UserSyncState state = syncStateService.getUserState(teamId, telegramUserId)
                 .orElseThrow(() -> AppException.notFound("User not in sync session"));
 
-        if (state.status() != SyncStateService.UserSyncStatus.DRAFT_SENT) {
+        if (state.status() != UserSyncStatus.DRAFT_SENT) {
             throw AppException.badRequest("No draft pending for user");
         }
 
@@ -219,7 +220,7 @@ public class EveningSyncService {
     @Transactional
     public void rejectSync(Long chatId, Long telegramUserId) {
         syncStateService.getTeamIdByChatId(chatId).ifPresent(teamId ->
-                syncStateService.updateUserStatus(teamId, telegramUserId, SyncStateService.UserSyncStatus.REJECTED));
+                syncStateService.updateUserStatus(teamId, telegramUserId, UserSyncStatus.REJECTED));
         log.info("User={} rejected sync for chatId={}", telegramUserId, chatId);
     }
 
@@ -269,10 +270,10 @@ public class EveningSyncService {
 
         for (SyncStateService.UserSyncState u : session.userStates().values()) {
             // EXCUSED users are reported in the dedicated excused block — skip them here
-            if (u.status() == SyncStateService.UserSyncStatus.EXCUSED) {
+            if (u.status() == UserSyncStatus.EXCUSED) {
                 continue;
             }
-            if (u.status() == SyncStateService.UserSyncStatus.AWAITING
+            if (u.status() == UserSyncStatus.AWAITING
                     && u.confirmedTasksCount() == 0 && u.pendingTasksCount() == 0) {
                 notResponded.add(u.username());
             } else {
