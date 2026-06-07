@@ -8,19 +8,57 @@ import ProcessingScreen from '../../components/popup/ProcessingScreen'
 import ErrorScreen from '../../components/popup/ErrorScreen'
 import SettingsScreen from '../../components/popup/SettingsScreen'
 import PostMeetingScreen from '../../components/post-meeting/PostMeetingScreen'
+import { useAuthSession } from '../../hooks/useAuthSession'
+import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false)
+  const auth = useAuthSession()
   const { state, startRecording, stopRecording, pauseRecording, resumeRecording, toggleMic } =
     useRecordingState()
 
+  const handleStart = async () => {
+    const session = auth.session ?? (await auth.login())
+    if (!session) return
+    await startRecording()
+  }
+
+  if (!auth.session) {
+    return (
+      <AuthRequiredScreen
+        loading={auth.loading}
+        challenge={auth.challenge}
+        error={auth.error}
+        onLogin={auth.login}
+      />
+    )
+  }
+
   if (showSettings) {
-    return <SettingsScreen onBack={() => setShowSettings(false)} />
+    return (
+      <SettingsScreen
+        onBack={() => setShowSettings(false)}
+        authSession={auth.session}
+        authLoading={auth.loading}
+        authError={auth.error}
+        onLogin={auth.login}
+        onLogout={auth.logout}
+      />
+    )
   }
 
   switch (state.status) {
     case 'idle':
-      return <IdleScreen onStart={startRecording} onOpenSettings={() => setShowSettings(true)} />
+      return (
+        <IdleScreen
+          authSession={auth.session}
+          authLoading={auth.loading}
+          authError={auth.error}
+          onStart={handleStart}
+          onLogin={auth.login}
+          onOpenSettings={() => setShowSettings(true)}
+        />
+      )
     case 'starting':
       return <StartingScreen state={state} />
     case 'recording':
@@ -40,12 +78,21 @@ export default function App() {
       return (
         <ErrorScreen
           error={state.error ?? 'Неизвестная ошибка'}
-          onRetry={startRecording}
+          onRetry={handleStart}
         />
       )
     case 'done':
       return <PostMeetingScreen meetingId={state.meetingId!} />
     default:
-      return <IdleScreen onStart={startRecording} onOpenSettings={() => setShowSettings(true)} />
+      return (
+        <IdleScreen
+          authSession={auth.session}
+          authLoading={auth.loading}
+          authError={auth.error}
+          onStart={handleStart}
+          onLogin={auth.login}
+          onOpenSettings={() => setShowSettings(true)}
+        />
+      )
   }
 }

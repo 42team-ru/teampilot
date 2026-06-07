@@ -6,8 +6,17 @@ export type ExtMessage =
   | { type: 'PAUSE_RECORDING' }
   | { type: 'RESUME_RECORDING' }
   | { type: 'TOGGLE_MIC' }
-  | { type: 'AUDIO_CHUNK'; chunk: number[]; meetingId: string }
+  | {
+      type: 'AUDIO_CHUNK'
+      chunk: number[]
+      meetingId: string
+      contentType: string
+      finalChunk: boolean
+    }
   | { type: 'OFFSCREEN_START'; streamId: string; meetingId: string; micDeviceId?: string }
+  | { type: 'OFFSCREEN_PAUSE' }
+  | { type: 'OFFSCREEN_RESUME' }
+  | { type: 'OFFSCREEN_STOP' }
   | { type: 'OFFSCREEN_TOGGLE_MIC' }
   | { type: 'RECORDING_STARTED'; meetingId: string }
   | { type: 'RECORDING_ERROR'; error: string }

@@ -11,6 +11,7 @@ import ru.team42.monolith.client.yougile.model.CredentialsWithNameDto;
 import ru.team42.monolith.config.YougileClientConfig;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
+import ru.team42.monolith.dto.request.ConfirmExtensionLoginRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
 import ru.team42.monolith.dto.request.TelegramOAuthRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
@@ -19,6 +20,8 @@ import ru.team42.monolith.dto.request.YouGileBoardSelectRequest;
 import ru.team42.monolith.dto.request.YouGileConnectRequest;
 import ru.team42.monolith.dto.request.YouGileCredentialsRequest;
 import ru.team42.monolith.dto.response.AuthResponse;
+import ru.team42.monolith.dto.response.ExtensionLoginStartResponse;
+import ru.team42.monolith.dto.response.ExtensionLoginStatusResponse;
 import ru.team42.monolith.dto.response.InviteResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
 import ru.team42.monolith.dto.response.TelegramAuthResponse;
@@ -39,6 +42,11 @@ import ru.team42.monolith.security.JwtService;
 import ru.team42.monolith.security.TelegramOAuthVerifier;
 
 import java.util.List;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
 @Slf4j
@@ -54,6 +62,8 @@ public class AuthService {
     private final DefaultApi yougileUnauthenticatedApi;
     private final TelegramOAuthVerifier telegramOAuthVerifier;
     private final JwtService jwtService;
+    private final Map<String, ExtensionLoginSession> extensionLoginSessions = new ConcurrentHashMap<>();
+    private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional(readOnly = true)
     public InviteResponse createInvite(CreateInviteRequest request) {
@@ -300,6 +310,62 @@ public class AuthService {
         return new TelegramAuthResponse(user.getId(), user.getTelegramId(), user.getSystemRole(), token);
     }
 
+    public ExtensionLoginStartResponse createExtensionLogin() {
+        cleanupExpiredExtensionLogins();
+
+        String code;
+        do {
+            code = "%06d".formatted(secureRandom.nextInt(1_000_000));
+        } while (extensionLoginSessions.containsKey(code));
+
+        Instant expiresAt = Instant.now().plus(5, ChronoUnit.MINUTES);
+        extensionLoginSessions.put(code, new ExtensionLoginSession(code, expiresAt, null));
+        return new ExtensionLoginStartResponse(code, expiresAt);
+    }
+
+    public ExtensionLoginStatusResponse getExtensionLogin(String code) {
+        var session = extensionLoginSessions.get(normalizeCode(code));
+        if (session == null) {
+            return new ExtensionLoginStatusResponse("expired", normalizeCode(code), Instant.now(), null);
+        }
+        if (session.isExpired()) {
+            extensionLoginSessions.remove(session.code());
+            return new ExtensionLoginStatusResponse("expired", session.code(), session.expiresAt(), null);
+        }
+        if (session.auth() != null) {
+            return new ExtensionLoginStatusResponse("confirmed", session.code(), session.expiresAt(), session.auth());
+        }
+        return new ExtensionLoginStatusResponse("pending", session.code(), session.expiresAt(), null);
+    }
+
+    @Transactional
+    public ExtensionLoginStatusResponse confirmExtensionLogin(String code, ConfirmExtensionLoginRequest request) {
+        String normalizedCode = normalizeCode(code);
+        var session = extensionLoginSessions.get(normalizedCode);
+        if (session == null || session.isExpired()) {
+            extensionLoginSessions.remove(normalizedCode);
+            throw AppException.notFound("Extension login code expired or not found");
+        }
+
+        User user = userRepository.findByTelegramId(request.telegramId())
+                .orElseGet(User::new);
+        user.setTelegramId(request.telegramId());
+        if (request.telegramLogin() != null) user.setTelegramLogin(request.telegramLogin());
+        if (request.firstName() != null) user.setFirstName(request.firstName());
+        if (request.lastName() != null) user.setLastName(request.lastName());
+        user = userRepository.save(user);
+
+        var auth = new TelegramAuthResponse(
+                user.getId(),
+                user.getTelegramId(),
+                user.getSystemRole(),
+                jwtService.generateToken(user)
+        );
+        var confirmed = new ExtensionLoginSession(session.code(), session.expiresAt(), auth);
+        extensionLoginSessions.put(session.code(), confirmed);
+        return new ExtensionLoginStatusResponse("confirmed", session.code(), session.expiresAt(), auth);
+    }
+
     @Transactional
     public AuthResponse registerUser(CreateUserRequest request) {
         User user = userRepository.findByTelegramId(request.telegramId())
@@ -319,5 +385,23 @@ public class AuthService {
         user.setFirstName(request.firstName());
         user.setLastName(request.lastName());
         return userRepository.save(user);
+    }
+
+    private String normalizeCode(String code) {
+        return code == null ? "" : code.trim();
+    }
+
+    private void cleanupExpiredExtensionLogins() {
+        extensionLoginSessions.entrySet().removeIf(entry -> entry.getValue().isExpired());
+    }
+
+    private record ExtensionLoginSession(
+            String code,
+            Instant expiresAt,
+            TelegramAuthResponse auth
+    ) {
+        boolean isExpired() {
+            return Instant.now().isAfter(expiresAt);
+        }
     }
 }

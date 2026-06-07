@@ -89,6 +89,7 @@ def team_context_manager_keyboard(
         menu_buttons.extend([
             InlineKeyboardButton(text=tasks_label, callback_data=f"tm:m:t:{team_id}"),
             InlineKeyboardButton(text="📎 Файлы", callback_data=f"tm:m:f:{team_id}"),
+            InlineKeyboardButton(text="🎙 Созвон", callback_data=f"team_ctx:meeting:{team_id}"),
         ])
     menu_buttons.append(InlineKeyboardButton(text="⚙️ Управление командой", callback_data=f"tm:m:g:{team_id}"))
 

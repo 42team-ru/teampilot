@@ -10,6 +10,8 @@ export type RecordingStatus =
 export interface RecordingState {
   status: RecordingStatus
   meetingId?: string
+  teamId?: string
+  primaryRecorderTelegramId?: number
   startedAt?: number
   pausedAt?: number
   totalPausedMs: number
@@ -39,11 +41,12 @@ export function defaultRecordingState(): RecordingState {
 export interface Task {
   id: string
   title: string
+  description?: string
   assignee?: string
   deadline?: string
   confidence: number
   source: string
-  status: 'pending' | 'created' | 'rejected' | 'incomplete'
+  status: 'pending' | 'created' | 'rejected' | 'incomplete' | 'detected'
 }
 
 export interface Decision {
@@ -74,4 +77,73 @@ export interface MeetingResults {
   decisions: Decision[]
   liveEvents: LiveEvent[]
   summary: Summary
+}
+
+export interface AuthSession {
+  userId: string
+  telegramId: number
+  systemRole: string
+  token: string
+}
+
+export interface ExtensionLoginChallenge {
+  code: string
+  expiresAt: string
+  botUsername: string
+}
+
+export interface ExtensionLoginStartResponse {
+  code: string
+  expiresAt: string
+}
+
+export interface ExtensionLoginStatusResponse {
+  status: 'pending' | 'confirmed' | 'expired'
+  code: string
+  expiresAt: string
+  auth?: AuthSession
+}
+
+export interface MeetingResponse {
+  id: string
+  teamId: string
+  meetingUrl: string
+  primaryRecorderTelegramId?: number
+  active: boolean
+  createdAt: string
+}
+
+export interface MeetingLiveResult {
+  meetingId: string
+  teamId: string
+  chunkIndex?: number
+  transcript?: string
+  summary?: string
+  context?: string
+  tasks?: MeetingLiveTask[]
+  statuses?: MeetingLiveStatus[]
+}
+
+export interface MeetingLiveTask {
+  title: string
+  description?: string
+  assigneeId?: number
+  deadline?: string
+  columnId?: string
+  confidence: number
+}
+
+export interface MeetingLiveStatus {
+  taskId?: string
+  assigneeId?: number
+  columnId?: string
+  action?: string
+}
+
+export interface MeetingAudioChunkPayload {
+  chunkIndex: number
+  audioBase64: string
+  contentType: string
+  originalFilename: string
+  finalChunk: boolean
 }
