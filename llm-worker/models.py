@@ -5,7 +5,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 # ── Kafka: Spring → LLM Worker ─────────────────────────────────────────────
 
 class AudioTeamMember(BaseModel):
@@ -229,6 +228,7 @@ class MeetingLiveResultEvent(BaseModel):
     finalized_at: datetime | None = None
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
+    hints: list[str] = Field(default_factory=list)
 
 
 # ── LLM output — валидируем ответ модели ────────────────────────────────────
@@ -238,6 +238,8 @@ class ClassificationResult(BaseModel):
     confidence_task: float = 0.0
     has_status_change: bool = False
     confidence_status: float = 0.0
+    has_decision: bool = False
+    confidence_decision: float = 0.0
 
 
 class TaskExtraction(BaseModel):
@@ -281,6 +283,21 @@ class TaskLifecycleEvent(BaseModel):
     description: str | None = None
 
 
+class DecisionExtraction(BaseModel):
+    text: str
+
+
+class DecisionExtractionList(BaseModel):
+    decisions: list[DecisionExtraction] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_from_raw_list(cls, data: Any) -> dict:
+        if isinstance(data, list):
+            return {"decisions": data}
+        return data
+
+
 class StatusExtractionList(BaseModel):
     statuses: list[StatusExtraction] = Field(default_factory=list)
 
@@ -290,3 +307,89 @@ class StatusExtractionList(BaseModel):
         if isinstance(data, list):
             return {"statuses": data}
         return data
+
+
+# ── Вечерний синк ────────────────────────────────────────────────────────────
+
+class SyncTaskSummary(BaseModel):
+    """Активная задача пользователя, приходит внутри SyncRequestEvent."""
+    id: str
+    title: str
+    description: str | None = None
+
+
+class SyncRequestEvent(BaseModel):
+    """Spring → LLM Worker через sync.requests."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId")
+    team_id: str = Field(alias="teamId")
+    chat_id: int = Field(alias="chatId")
+    telegram_user_id: int = Field(alias="telegramUserId")
+    username: str | None = None
+    raw_text: str = Field(alias="rawText")
+    active_tasks: list[SyncTaskSummary] = Field(
+        alias="activeTasks",
+        default_factory=list,
+    )
+
+
+class SyncDraftItem(BaseModel):
+    """Один элемент черновика сопоставления."""
+    index: int
+    user_text: str
+    task_id: str | None = None
+    task_title: str | None = None
+    is_new_task: bool = False
+
+
+class SyncDraftResult(BaseModel):
+    """Результат LLM-сопоставления — список элементов."""
+    items: list[SyncDraftItem] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_from_list(cls, data: Any) -> dict:
+        if isinstance(data, list):
+            return {"items": data}
+        return data
+
+
+class SyncDraftEvent(BaseModel):
+    """LLM Worker → Spring через sync.draft."""
+    request_id: str
+    team_id: str
+    telegram_user_id: int
+    items: list[SyncDraftItem]
+
+
+# ── Courses ───────────────────────────────────────────────────────────────────
+
+class CourseIndexedEvent(BaseModel):
+    """Incoming event from courses.indexed — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    courseId: str
+    title: str
+    description: str | None = None
+    url: str
+    teamId: str
+
+
+class CourseRecommendRequestEvent(BaseModel):
+    """Incoming event from courses.recommend.request — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    requestId: str
+    taskId: str
+    taskTitle: str
+    taskDescription: str | None = None
+    teamId: str
+
+
+class CourseRecommendResultEvent(BaseModel):
+    """LLM Worker → Spring via courses.recommend.result (snake_case)."""
+    request_id: str
+    task_id: str
+    team_id: str
+    course_ids: list[str]
