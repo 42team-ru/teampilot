@@ -1,13 +1,16 @@
 import type { ExtMessage } from '../../types/messages'
 
-const CHUNK_DURATION_MS = 15000
+const CHUNK_DURATION_MS = 30000
 const FINAL_CHUNK_DURATION_MS = 250
+const LEVEL_INTERVAL_MS = 300
 
 let audioContext: AudioContext | null = null
 let tabStream: MediaStream | null = null
 let micStream: MediaStream | null = null
 let mixedStream: MediaStream | null = null
 let currentRecorder: MediaRecorder | null = null
+let analyser: AnalyserNode | null = null
+let levelInterval: number | null = null
 let loopPromise: Promise<void> | null = null
 let running = false
 let paused = false
@@ -40,7 +43,7 @@ async function handleMessage(msg: ExtMessage) {
       return { ok: true }
 
     case 'OFFSCREEN_RESUME':
-      resumeCapture()
+      await resumeCapture()
       return { ok: true }
 
     case 'OFFSCREEN_STOP':
@@ -50,6 +53,9 @@ async function handleMessage(msg: ExtMessage) {
     case 'OFFSCREEN_TOGGLE_MIC':
       toggleMic()
       return { ok: true }
+
+    case 'OFFSCREEN_TEST_AUDIO':
+      return await captureTestAudio()
   }
 }
 
@@ -58,8 +64,39 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
 
   currentMeetingId = meetingId
   currentMimeType = resolveMimeType()
-  audioContext = new AudioContext()
+  audioContext = new AudioContext({ sampleRate: 48000 })
+
+  // Resume immediately before any source connections — new AudioContexts start
+  // suspended in extension contexts and must be explicitly resumed.
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume()
+  }
+
   const destination = audioContext.createMediaStreamDestination()
+
+  analyser = audioContext.createAnalyser()
+  analyser.fftSize = 256
+
+  // AnalyserNode needs a downstream connection to stay active in Chrome's audio graph
+  // (nodes with no path to the destination may be de-activated). Route through a
+  // silent gain node into destination so the analyser is always in the pull chain.
+  const analyserSink = audioContext.createGain()
+  analyserSink.gain.value = 0
+  analyser.connect(analyserSink)
+  analyserSink.connect(destination)
+
+  // Silent oscillator keeps the AudioContext from auto-suspending between chunks.
+  try {
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    gainNode.gain.value = 0
+    oscillator.connect(gainNode)
+    gainNode.connect(destination)
+    gainNode.connect(audioContext.destination)  // hardware path keeps Chrome from suspending
+    oscillator.start()
+  } catch (oscErr) {
+    console.warn('[offscreen] Failed to start silent oscillator:', oscErr)
+  }
 
   tabStream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -68,9 +105,21 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
     video: false,
   })
 
+  const tabTracks = tabStream.getAudioTracks()
+  console.log('[offscreen] Tab audio tracks:', tabTracks.map((t) => ({
+    readyState: t.readyState,
+    muted: t.muted,
+    enabled: t.enabled,
+    label: t.label,
+  })))
+
+  if (tabTracks.length === 0 || tabTracks.every((t) => t.readyState === 'ended')) {
+    console.error('[offscreen] Tab capture returned no live tracks — stream ID may have expired')
+  }
+
   const tabSource = audioContext.createMediaStreamSource(tabStream)
   tabSource.connect(destination)
-  tabSource.connect(audioContext.destination)
+  tabSource.connect(analyser)
 
   try {
     const audioConstraints: MediaTrackConstraints = micDeviceId
@@ -80,8 +129,18 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
       audio: audioConstraints,
       video: false,
     })
-    audioContext.createMediaStreamSource(micStream).connect(destination)
-  } catch {
+    const micTracks = micStream.getAudioTracks()
+    console.log('[offscreen] Mic audio tracks:', micTracks.map((t) => ({
+      readyState: t.readyState,
+      muted: t.muted,
+      enabled: t.enabled,
+      label: t.label,
+    })))
+    const micSource = audioContext.createMediaStreamSource(micStream)
+    micSource.connect(destination)
+    micSource.connect(analyser)
+  } catch (micErr) {
+    console.warn('[offscreen] Failed to capture microphone:', micErr)
     micStream = null
   }
 
@@ -90,7 +149,29 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
   paused = false
   stopping = false
   finalSent = false
+
+  startLevelReporting()
+
   loopPromise = runChunkLoop()
+}
+
+function startLevelReporting() {
+  if (levelInterval !== null) window.clearInterval(levelInterval)
+  const buf = new Uint8Array(analyser?.frequencyBinCount ?? 128)
+  levelInterval = window.setInterval(() => {
+    if (!analyser || !running) return
+    analyser.getByteFrequencyData(buf)
+    const sum = buf.reduce((a, b) => a + b, 0)
+    const level = Math.round((sum / buf.length / 255) * 100)
+    chrome.runtime.sendMessage({ type: 'AUDIO_LEVEL', level } satisfies ExtMessage).catch(() => {})
+  }, LEVEL_INTERVAL_MS)
+}
+
+function stopLevelReporting() {
+  if (levelInterval !== null) {
+    window.clearInterval(levelInterval)
+    levelInterval = null
+  }
 }
 
 function pauseCapture() {
@@ -98,8 +179,11 @@ function pauseCapture() {
   stopCurrentRecorder()
 }
 
-function resumeCapture() {
+async function resumeCapture() {
   paused = false
+  if (audioContext && audioContext.state === 'suspended') {
+    await audioContext.resume()
+  }
 }
 
 async function stopCapture() {
@@ -108,6 +192,7 @@ async function stopCapture() {
   stopping = true
   paused = false
   running = false
+  stopLevelReporting()
   stopCurrentRecorder()
   await loopPromise
 
@@ -127,6 +212,7 @@ async function stopCapture() {
   tabStream = null
   micStream = null
   mixedStream = null
+  analyser = null
   currentRecorder = null
   loopPromise = null
   currentMeetingId = null
@@ -143,6 +229,7 @@ async function runChunkLoop() {
     }
 
     const blob = await recordSingleChunk(CHUNK_DURATION_MS)
+    console.log(`[offscreen] Chunk recorded: ${blob.size} bytes, type: ${blob.type}`)
     if (blob.size > 0) {
       const isFinal = stopping || !running
       await sendAudioChunk(blob, isFinal)
@@ -179,8 +266,37 @@ function recordSingleChunk(durationMs: number): Promise<Blob> {
       resolve(new Blob(chunks, { type: currentMimeType }))
     }
 
-    recorder.start()
+    // timeslice ensures ondataavailable fires periodically, not only on stop
+    recorder.start(5_000)
   })
+}
+
+async function captureTestAudio(): Promise<{ bytes?: number[]; contentType?: string; error?: string }> {
+  if (!mixedStream || !running) {
+    return { error: 'Нет активной записи. Запустите запись, затем нажмите тест.' }
+  }
+
+  const testChunks: Blob[] = []
+  const testRecorder = new MediaRecorder(mixedStream, {
+    mimeType: currentMimeType,
+    audioBitsPerSecond: 64_000,
+  })
+
+  await new Promise<void>((resolve) => {
+    testRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) testChunks.push(e.data)
+    }
+    testRecorder.onstop = () => resolve()
+    testRecorder.start(1_000)
+    window.setTimeout(() => {
+      if (testRecorder.state === 'recording') testRecorder.stop()
+    }, 5_000)
+  })
+
+  const blob = new Blob(testChunks, { type: currentMimeType })
+  console.log(`[offscreen] Test audio: ${blob.size} bytes`)
+  const buffer = await blob.arrayBuffer()
+  return { bytes: Array.from(new Uint8Array(buffer)), contentType: blob.type }
 }
 
 async function sendAudioChunk(blob: Blob, finalChunk: boolean) {
@@ -234,5 +350,6 @@ function isOffscreenMessage(msg: unknown): msg is ExtMessage {
     'OFFSCREEN_RESUME',
     'OFFSCREEN_STOP',
     'OFFSCREEN_TOGGLE_MIC',
+    'OFFSCREEN_TEST_AUDIO',
   ].includes(String((msg as { type?: unknown }).type))
 }
