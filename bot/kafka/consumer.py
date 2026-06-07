@@ -260,6 +260,22 @@ class EventConsumer:
                 f"Задача: <b>{task_title}</b>"
                 f"{task_ref}"
             )
+        elif event.type == "ACHIEVEMENT":
+            achievement_emoji = escape(event.achievement_emoji or "")
+            achievement_name = escape(event.achievement_name or "достижение")
+            xp_gained = event.xp_gained or 0
+            new_total_xp = event.new_total_xp or 0
+            text = (
+                f"🏆 <b>Новая ачивка: «{achievement_emoji} {achievement_name}»</b>\n"
+                f"+{xp_gained} XP · Теперь у тебя {new_total_xp} XP"
+            )
+        elif event.type == "LEVEL_UP":
+            level_name = escape(event.new_level_name or "нового уровня")
+            new_total_xp = event.new_total_xp or 0
+            text = (
+                f"🎉 Ты достиг уровня <b>{level_name}</b>!\n"
+                f"⭐ XP: {new_total_xp}"
+            )
         else:
             text = (
                 "🔔 <b>Уведомление по задаче</b>\n\n"

@@ -109,4 +109,66 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
             UUID teamId, Long telegramId, Pageable pageable);
 
     Page<Task> findByAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(Long telegramId, Pageable pageable);
+
+    long countByAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalse(Long telegramId);
+
+    @Query(
+            value = """
+                    SELECT COUNT(*)
+                    FROM tasks t
+                    JOIN team_users tu ON t.assignee_id = tu.id
+                    JOIN users u ON tu.user_id = u.id
+                    WHERE u.telegram_id = :tid
+                      AND t.completed = true
+                      AND t.deleted = false
+                      AND t.deadline IS NOT NULL
+                      AND t.updated_at > t.deadline
+                    """,
+            nativeQuery = true
+    )
+    long countOverdueCompleted(@Param("tid") Long telegramId);
+
+    @Query("""
+            SELECT COUNT(t) FROM Task t
+            WHERE t.assignee.user.telegramId = :tid
+              AND t.completed = false
+              AND t.deleted = false
+              AND t.deadline IS NOT NULL
+              AND t.deadline < :now
+            """)
+    long countStillOverdue(@Param("tid") Long telegramId, @Param("now") Instant now);
+
+    List<Task> findTop10ByAssigneeUserTelegramIdAndCompletedTrueAndDeletedFalseOrderByUpdatedAtDesc(Long telegramId);
+
+    @Query(
+            value = """
+                    SELECT COUNT(*)
+                    FROM tasks t
+                    JOIN team_users tu ON t.assignee_id = tu.id
+                    JOIN users u ON tu.user_id = u.id
+                    WHERE u.telegram_id = :tid
+                      AND t.completed = true
+                      AND t.deleted = false
+                      AND t.deadline IS NOT NULL
+                      AND t.updated_at > t.deadline
+                      AND t.updated_at >= :since
+                    """,
+            nativeQuery = true
+    )
+    long countOverdueCompletedSince(@Param("tid") Long telegramId, @Param("since") LocalDateTime since);
+
+    @Query("""
+            SELECT COUNT(t) FROM Task t
+            WHERE t.assignee.user.telegramId = :tid
+              AND t.completed = false
+              AND t.deleted = false
+              AND t.deadline IS NOT NULL
+              AND t.deadline >= :since
+              AND t.deadline < :now
+            """)
+    long countStillOverdueSince(
+            @Param("tid") Long telegramId,
+            @Param("since") Instant since,
+            @Param("now") Instant now
+    );
 }

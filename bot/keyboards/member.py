@@ -16,6 +16,7 @@ def member_main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📥 Мои задачи", callback_data="member:mytasks"),
             InlineKeyboardButton(text="🏢 Команды", callback_data="member:teams_overview"),
         ],
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile:open")],
     ])
 
 
