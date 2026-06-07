@@ -5,10 +5,12 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,6 +22,7 @@ import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
 import ru.team42.monolith.dto.request.ConfirmExtensionLoginRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
+import ru.team42.monolith.dto.request.UpdateYouGileProfileRequest;
 import ru.team42.monolith.dto.request.TelegramOAuthRequest;
 import ru.team42.monolith.dto.request.YouGileAuthRequest;
 import ru.team42.monolith.dto.request.YouGileBoardSelectRequest;
@@ -38,6 +41,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Auth", description = "Аутентификация через Telegram-бота")
 public class AuthController {
 
@@ -114,7 +118,19 @@ public class AuthController {
             @PathVariable UUID teamId,
             @Valid @RequestBody LoginRequest request
     ) {
+        log.info("Received joinTeam request for teamId {}, request {}", teamId, request);
         return ResponseEntity.ok(authService.joinTeam(teamId, request));
+    }
+
+    @Operation(summary = "Обновить YouGile-профиль участника команды")
+    @PreAuthorize("isAuthenticated()")
+    @PatchMapping("/invite/{teamId}/yougile")
+    public ResponseEntity<Void> updateYouGileProfile(
+            @PathVariable UUID teamId,
+            @Valid @RequestBody UpdateYouGileProfileRequest request
+    ) {
+        authService.updateYouGileProfile(teamId, request);
+        return ResponseUtils.noContent();
     }
 
     @Operation(

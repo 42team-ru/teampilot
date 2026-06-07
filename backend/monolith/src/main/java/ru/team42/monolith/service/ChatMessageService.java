@@ -6,10 +6,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.event.ChatMessageEvent;
 import ru.team42.monolith.entity.Team;
+import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.entity.User;
+import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.mapper.ChatMessageMapper;
 import ru.team42.monolith.repository.ChatMessageRepository;
 import ru.team42.monolith.repository.TeamRepository;
+import ru.team42.monolith.repository.TeamUserRepository;
 import ru.team42.monolith.repository.UserRepository;
 
 import java.util.List;
@@ -24,6 +27,7 @@ public class ChatMessageService {
     private final ChatMessageMapper chatMessageMapper;
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
+    private final TeamUserRepository teamUserRepository;
 
     @Transactional
     public void saveAll(List<ChatMessageEvent> events) {
@@ -32,13 +36,27 @@ public class ChatMessageService {
 
     @Transactional
     public void save(ChatMessageEvent event) {
-        Optional<Team> teamOpt = teamRepository.findByTelegramChatIdAndActiveTrue(event.getChatId());
-        if (teamOpt.isEmpty()) {
-            log.warn("No team found for chatId={}, dropping message", event.getChatId());
-            return;
+        Optional<TeamUser> teamUserOpt = teamUserRepository
+                .findByTeamTelegramChatIdAndUserTelegramId(event.getChatId(), event.getUserId());
+
+        TeamUser teamUser;
+        if (teamUserOpt.isPresent()) {
+            teamUser = teamUserOpt.get();
+        } else {
+            Optional<Team> teamOpt = teamRepository.findByTelegramChatIdAndActiveTrue(event.getChatId());
+            if (teamOpt.isEmpty()) {
+                log.warn("No team found for chatId={}, dropping message", event.getChatId());
+                return;
+            }
+            User user = findOrCreateUser(event);
+            var newTeamUser = new TeamUser();
+            newTeamUser.setTeam(teamOpt.get());
+            newTeamUser.setUser(user);
+            newTeamUser.setRole(TeamRole.USER);
+            teamUser = teamUserRepository.save(newTeamUser);
         }
-        User user = findOrCreateUser(event);
-        chatMessageRepository.save(chatMessageMapper.toEntity(event, user, teamOpt.get()));
+
+        chatMessageRepository.save(chatMessageMapper.toEntity(event, teamUser));
     }
 
     private User findOrCreateUser(ChatMessageEvent event) {
