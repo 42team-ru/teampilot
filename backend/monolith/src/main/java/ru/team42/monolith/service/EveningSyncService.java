@@ -34,6 +34,7 @@ public class EveningSyncService {
     private final TaskEventPublisher taskEventPublisher;
     private final YouGileService youGileService;
     private final TaskProposalCache proposalCache;
+    private final ExcuseService excuseService;
 
     @Transactional(readOnly = true)
     public void startSyncForAllTeams() {
@@ -51,9 +52,11 @@ public class EveningSyncService {
     private void startSyncForTeam(Team team) {
         List<TeamUser> members = teamUserRepository.findByTeamIdWithUser(team.getId());
         // Синк только для сотрудников — менеджеры отчёт не пишут, они подтверждают
+        // Excused users are filtered out
         List<TeamUser> employees = members.stream()
                 .filter(m -> m.getRole() != TeamRole.MANAGER
-                        && m.getUser() != null && m.getUser().getTelegramId() != null)
+                        && m.getUser() != null && m.getUser().getTelegramId() != null
+                        && !excuseService.isExcused(m.getUser().getTelegramId(), team.getId()))
                 .toList();
         List<Long> memberIds = employees.stream()
                 .map(m -> m.getUser().getTelegramId())
@@ -265,6 +268,10 @@ public class EveningSyncService {
         int pending = 0;
 
         for (SyncStateService.UserSyncState u : session.userStates().values()) {
+            // EXCUSED users are reported in the dedicated excused block — skip them here
+            if (u.status() == SyncStateService.UserSyncStatus.EXCUSED) {
+                continue;
+            }
             if (u.status() == SyncStateService.UserSyncStatus.AWAITING
                     && u.confirmedTasksCount() == 0 && u.pendingTasksCount() == 0) {
                 notResponded.add(u.username());
@@ -275,17 +282,45 @@ public class EveningSyncService {
             pending += u.pendingTasksCount();
         }
 
-        List<TeamUser> managers = teamUserRepository.findByTeamIdWithUser(session.teamId()).stream()
+        // Load all members once for both excused lookup and manager filtering
+        List<TeamUser> allMembers = teamUserRepository.findByTeamIdWithUser(session.teamId());
+
+        // Build excused users info from ExcuseService
+        Map<Long, String> excusedMap = excuseService.getExcusedForTeam(session.teamId());
+        List<String> excusedEntries = new ArrayList<>();
+        if (!excusedMap.isEmpty()) {
+            Map<Long, String> telegramIdToName = new HashMap<>();
+            for (TeamUser m : allMembers) {
+                if (m.getUser() != null && m.getUser().getTelegramId() != null) {
+                    var u = m.getUser();
+                    String first = u.getFirstName() != null ? u.getFirstName().trim() : "";
+                    String last = u.getLastName() != null ? u.getLastName().trim() : "";
+                    String name = (first + " " + last).trim();
+                    if (name.isEmpty()) {
+                        name = u.getTelegramLogin() != null ? u.getTelegramLogin() : u.getTelegramId().toString();
+                    }
+                    telegramIdToName.put(u.getTelegramId(), name);
+                }
+            }
+            for (Map.Entry<Long, String> entry : excusedMap.entrySet()) {
+                String name = telegramIdToName.getOrDefault(entry.getKey(), entry.getKey().toString());
+                excusedEntries.add(name + " — " + entry.getValue());
+            }
+        }
+
+        List<TeamUser> managers = allMembers.stream()
                 .filter(m -> m.getRole() == TeamRole.MANAGER && m.getUser() != null && m.getUser().getTelegramId() != null)
                 .toList();
 
         if (managers.isEmpty()) {
             log.warn("No managers found for team={}", session.teamId());
+            excuseService.clearTeam(session.teamId());
             return;
         }
 
         List<Long> managerIds = managers.stream().map(m -> m.getUser().getTelegramId()).toList();
-        syncEventPublisher.publishSyncSummary(managerIds, session.teamId(), responded, notResponded, confirmed, pending);
+        syncEventPublisher.publishSyncSummary(managerIds, session.teamId(), responded, notResponded, confirmed, pending, excusedEntries);
+        excuseService.clearTeam(session.teamId());
     }
 
     @Transactional

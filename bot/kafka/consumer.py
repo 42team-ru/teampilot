@@ -470,13 +470,21 @@ def _format_sync_summary(summary) -> str:
         return "📊 <b>Вечерний синк завершён</b>"
     responded = ", ".join(summary.responded_usernames) or "никто"
     not_responded = ", ".join(summary.not_responded_usernames) or "все отчитались"
-    return (
-        "📊 <b>Вечерний синк — итоги</b>\n\n"
-        f"✅ Отчитались: {escape(responded)}\n"
-        f"❌ Не ответили: {escape(not_responded)}\n"
-        f"📌 Задач закрыто: {summary.tasks_completed}\n"
-        f"🕐 На аппруве у менеджера: {summary.new_tasks_pending_approval}"
-    )
+    lines = [
+        "📊 <b>Вечерний синк — итоги</b>",
+        "",
+        f"✅ Отчитались: {escape(responded)}",
+        f"❌ Не ответили: {escape(not_responded)}",
+        f"📌 Задач закрыто: {summary.tasks_completed}",
+        f"🕐 На аппруве у менеджера: {summary.new_tasks_pending_approval}",
+    ]
+    excused = getattr(summary, "excused_entries", None) or []
+    if excused:
+        lines.append("")
+        lines.append("🤒 Не участвовали:")
+        for entry in excused:
+            lines.append(f"  • {escape(entry)}")
+    return "\n".join(lines)
 
 
 def _format_deadline(value: datetime) -> str:

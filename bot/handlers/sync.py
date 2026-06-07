@@ -7,7 +7,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from config import settings
-from keyboards.sync import build_active_tasks_keyboard, build_reject_choice_keyboard, build_sync_draft_keyboard
+from keyboards.sync import (
+    build_active_tasks_keyboard,
+    build_excuse_keyboard,
+    build_reject_choice_keyboard,
+    build_sync_draft_keyboard,
+)
 from services import sync_service
 from services import sync_state as sync_state_service
 from services.http_client import http_client
@@ -39,6 +44,84 @@ async def cmd_test_sync_summary(message: Message) -> None:
     await message.answer("⏳ Закрываю окно синка и отправляю summary...")
     await sync_service.trigger_summary()
     await message.answer("✅ Summary отправлен менеджерам")
+
+
+# ---------------------------------------------------------------------------
+# Excuse handlers
+# ---------------------------------------------------------------------------
+
+async def _submit_excuse(telegram_user_id: int, team_id: str | None, reason: str) -> None:
+    await http_client.post(
+        f"{settings.BACKEND_URL}/sync/excuse",
+        json={"telegramUserId": telegram_user_id, "teamId": team_id, "reason": reason},
+        headers={"X-Bot-Secret": settings.BOT_SECRET},
+    )
+
+
+@router.message(Command("excuse"))
+async def cmd_excuse(message: Message) -> None:
+    text = message.text or ""
+    parts = text.split(None, 1)
+    reason = parts[1].strip() if len(parts) > 1 else "без объяснений"
+
+    try:
+        resp = await http_client.get(
+            f"{settings.BACKEND_URL}/sync/excuse/teams",
+            params={"telegramUserId": message.from_user.id},
+            headers={"X-Bot-Secret": settings.BOT_SECRET},
+        )
+    except Exception:
+        await message.answer("Не удалось получить список команд")
+        return
+
+    if resp.status_code != 200:
+        await message.answer("Не удалось получить список команд")
+        return
+
+    teams = resp.json()
+    if not teams:
+        await message.answer("Ты не состоишь ни в одной команде.")
+        return
+
+    if len(teams) == 1:
+        await _submit_excuse(message.from_user.id, teams[0]["teamId"], reason)
+        await message.answer(
+            f"Понял, тебя не жду на синке сегодня\nКоманда: {escape(teams[0]['teamName'])}",
+            parse_mode="HTML",
+        )
+        return
+
+    await message.answer(
+        f"В какой команде тебя не ждать?\nПричина: <i>{escape(reason)}</i>",
+        reply_markup=build_excuse_keyboard(teams, reason),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("excuse_team:"))
+async def excuse_team_selected(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":", 2)
+    team_id = parts[1]
+    reason = parts[2] if len(parts) > 2 else "без объяснений"
+    await _submit_excuse(callback.from_user.id, team_id, reason)
+    await callback.message.edit_text(
+        f"Понял, тебя не жду на синке сегодня\nПричина: {escape(reason)}",
+        reply_markup=None,
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("excuse_all:"))
+async def excuse_all_teams(callback: CallbackQuery) -> None:
+    reason = callback.data.split(":", 1)[1] if ":" in callback.data else "без объяснений"
+    await _submit_excuse(callback.from_user.id, None, reason)
+    await callback.message.edit_text(
+        f"Понял, тебя не жду на синке во всех командах сегодня\nПричина: {escape(reason)}",
+        reply_markup=None,
+        parse_mode="HTML",
+    )
+    await callback.answer()
 
 
 # ---------------------------------------------------------------------------

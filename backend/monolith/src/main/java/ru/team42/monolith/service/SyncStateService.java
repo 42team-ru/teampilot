@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class SyncStateService {
 
-    public enum UserSyncStatus { AWAITING, DRAFT_SENT, CONFIRMED, REJECTED }
+    public enum UserSyncStatus { AWAITING, DRAFT_SENT, CONFIRMED, REJECTED, EXCUSED }
 
     public record UserSyncState(
             Long telegramId,
