@@ -13,7 +13,6 @@ import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
 import ru.team42.monolith.dto.request.ConfirmExtensionLoginRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
-import ru.team42.monolith.dto.request.UpdateYouGileProfileRequest;
 import ru.team42.monolith.dto.request.TelegramOAuthRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.request.YouGileAuthRequest;
@@ -95,14 +94,11 @@ public class AuthService {
                     String apiKey = fetchApiKey(request.yougileLogin(), request.yougilePassword(),
                             team.getCompany().getYougileCompanyId());
                     var api = YougileClientConfig.createAuthenticatedApi(apiKey);
-                    log.info("Fetched YouGile API key for user {} in team {}: {}", user.getTelegramId(), teamId, apiKey);
                     var yougileUser = api.userControllerGetMe().block();
-                    if (yougileUser != null) {
-                        log.info("Fetched YouGile user for user {} in team {}: YouGile user ID {}", user.getTelegramId(), teamId, yougileUser.getId());
+                    if (yougileUser != null && yougileUser.getId() != null) {
                         teamUser.setYougileUserApiKey(apiKey);
                         teamUser.setYougileUserId(yougileUser.getId());
                     }
-                    log.info("Finished YouGile auth for user {} in team {}", user.getTelegramId(), teamId);
                 } catch (Exception e) {
                     log.warn("Failed to fetch YouGile user for team {}: {}", teamId, e.getMessage());
                 }
@@ -216,20 +212,13 @@ public class AuthService {
             try {
                 var api = YougileClientConfig.createAuthenticatedApi(apiKey);
                 var yougileUser = api.userControllerGetMe().block();
-                log.info("Try connect YouGile user for manager {} in team {}: API key {}, YouGile user {}",
-                        managerTelegramId, team.getId(), apiKey, yougileUser != null ? yougileUser.getId() : "null");
-                if (yougileUser != null) {
+                if (yougileUser != null && yougileUser.getId() != null) {
                     final String yougileUserId = yougileUser.getId();
-                    log.info("Fetched YouGile user for manager {} in team {}: YouGile user ID {}", managerTelegramId, team.getId(), yougileUserId);
                     teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), managerTelegramId)
                             .ifPresent(tu -> {
                                 tu.setYougileUserId(yougileUserId);
-                                tu.setYougileUserApiKey(apiKey);
                                 teamUserRepository.save(tu);
-                                log.info("Updated TeamUser for manager {} + {}: set YouGile user ID {} and API key",
-                                        managerTelegramId, tu, yougileUserId);
                             });
-
                 }
             } catch (Exception e) {
                 log.warn("Failed to set YouGile user ID for manager {}: {}", managerTelegramId, e.getMessage());
@@ -375,43 +364,6 @@ public class AuthService {
         var confirmed = new ExtensionLoginSession(session.code(), session.expiresAt(), auth);
         extensionLoginSessions.put(session.code(), confirmed);
         return new ExtensionLoginStatusResponse("confirmed", session.code(), session.expiresAt(), auth);
-    }
-
-    @Transactional
-    public void updateYouGileProfile(UUID teamId, UpdateYouGileProfileRequest request) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
-
-        TeamUser teamUser = teamUserRepository.findByTeamIdAndUserTelegramId(teamId, request.telegramId())
-                .orElseThrow(() -> AppException.notFound(
-                        "User %d is not a member of team %s".formatted(request.telegramId(), teamId)));
-
-        if (team.getCompany() == null) {
-            throw AppException.badRequest("Team %s has no YouGile company configured".formatted(teamId));
-        }
-
-        String apiKey = fetchApiKey(request.yougileLogin(), request.yougilePassword(),
-                team.getCompany().getYougileCompanyId());
-
-        String yougileUserId = null;
-        try {
-            var api = YougileClientConfig.createAuthenticatedApi(apiKey);
-            var yougileUser = api.userControllerGetMe().block();
-            if (yougileUser != null) {
-                yougileUserId = yougileUser.getId();
-            }
-        } catch (Exception e) {
-            log.warn("Failed to fetch YouGile user profile for user {} in team {}: {}",
-                    request.telegramId(), teamId, e.getMessage());
-        }
-
-        teamUser.setYougileUserApiKey(apiKey);
-        if (yougileUserId != null) {
-            teamUser.setYougileUserId(yougileUserId);
-        }
-        teamUserRepository.save(teamUser);
-        log.info("Updated YouGile profile for user {} in team {}: YouGile user ID {}",
-                request.telegramId(), teamId, yougileUserId);
     }
 
     @Transactional

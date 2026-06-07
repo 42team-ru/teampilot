@@ -168,7 +168,7 @@ async def main() -> None:
 
     logger.info("Starting bot polling...")
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await dp.start_polling(bot)
     finally:
         consumer_task.cancel()
         loop_lag_task.cancel()

@@ -10,9 +10,9 @@ import java.util.UUID;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> {
 
-    @Query("SELECT DISTINCT m.teamUser.team FROM ChatMessage m WHERE m.sentToLlmAt IS NULL")
+    @Query("SELECT DISTINCT m.team FROM ChatMessage m WHERE m.sentToLlmAt IS NULL")
     List<Team> findDistinctTeamsWithUnprocessedMessages();
 
-    @Query("SELECT m FROM ChatMessage m WHERE m.teamUser.team = :team AND m.sentToLlmAt IS NULL ORDER BY m.messageTimestamp ASC")
+    @Query("SELECT m FROM ChatMessage m WHERE m.team = :team AND m.sentToLlmAt IS NULL ORDER BY m.messageTimestamp ASC")
     List<ChatMessage> findUnprocessedByTeam(Team team);
 }

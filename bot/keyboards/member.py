@@ -155,8 +155,6 @@ def team_context_member_keyboard(team_id: str = "", has_chat: bool = True, has_k
             InlineKeyboardButton(text=tasks_label, callback_data=f"tm:u:t:{team_id}"),
             InlineKeyboardButton(text="📎 Файлы", callback_data=f"tm:u:f:{team_id}"),
         ]))
-    if team_id:
-        buttons.append([InlineKeyboardButton(text="✏️ Изменить данные YouGile", callback_data=f"team_ctx:member_yougile:{team_id}")])
     buttons.append([InlineKeyboardButton(text="← Мои команды", callback_data="member:teams_overview")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
