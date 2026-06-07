@@ -7,11 +7,15 @@ import ru.team42.backend.kafka_common.AbstractEventPublisher;
 import ru.team42.backend.kafka_common.event.KafkaTopics;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.TaskColumn;
+import ru.team42.monolith.entity.TeamUser;
+import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.event.TaskConfirmationEvent;
 import ru.team42.monolith.event.TaskLifecycleEvent;
 import ru.team42.monolith.event.TaskStateEvent;
+import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -19,6 +23,7 @@ import java.util.List;
 public class TaskEventPublisher extends AbstractEventPublisher {
 
     private final TaskNotificationRecipientResolver recipientResolver;
+    private final TeamUserRepository teamUserRepository;
 
     public void publishConfirmation(Task task, boolean autoConfirmed) {
         String assigneeUsername = assigneeOf(task);
@@ -40,6 +45,21 @@ public class TaskEventPublisher extends AbstractEventPublisher {
                         autoConfirmed,
                         columnTitle
                 ));
+    }
+
+    public void publishProposal(String proposalId, UUID teamId, String title, String reporterName) {
+        List<Long> managers = teamUserRepository.findByTeamIdWithUser(teamId).stream()
+                .filter(m -> m.getRole() == TeamRole.MANAGER)
+                .map(m -> m.getUser() != null ? m.getUser().getTelegramId() : null)
+                .filter(id -> id != null)
+                .toList();
+        if (managers.isEmpty()) {
+            log.warn("No managers found for team {} — proposal '{}' not delivered", teamId, title);
+            return;
+        }
+        send(KafkaTopics.BOTS_TASKS, teamId.toString(),
+                new TaskConfirmationEvent(proposalId, managers, title, reporterName));
+        log.info("Task proposal '{}' sent to {} manager(s) for team={}", title, managers.size(), teamId);
     }
 
     public void publishCreated(Task task) {

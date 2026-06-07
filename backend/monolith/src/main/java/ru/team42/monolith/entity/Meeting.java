@@ -63,4 +63,7 @@ public class Meeting extends AbstractEntity {
 
     @Column(name = "finalized_at")
     private Instant finalizedAt;
+
+    @Column(name = "telegram_summary_sent_at")
+    private Instant telegramSummarySentAt;
 }

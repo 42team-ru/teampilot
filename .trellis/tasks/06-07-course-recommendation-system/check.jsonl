@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/kafka-events.md", "reason": "Проверить что новые Kafka-события наследуют BaseEvent и используют правильные топики"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Проверить что контроллер использует AppException, не RuntimeException"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Проверить что Course наследует AbstractEntity, нет Flyway-миграций (ddl-auto:update)"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code review checklist"}
+{"file": ".trellis/tasks/06-07-course-recommendation-system/prd.md", "reason": "Сверить реализацию с acceptance criteria"}

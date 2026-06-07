@@ -141,7 +141,7 @@ public class YouGileService {
                     .toList();
         } catch (Exception e) {
             log.error("Failed to fetch board tasks for team {}: {}", team.getId(), e.getMessage());
-            return List.of();
+            throw new RuntimeException("YouGile board fetch failed for team " + team.getId(), e);
         }
     }
 
@@ -189,8 +189,8 @@ public class YouGileService {
                     .map(col -> new ColumnInfo(col.getId(), col.getTitle(), Boolean.TRUE.equals(col.getDeleted())))
                     .toList();
         } catch (Exception e) {
-            log.warn("Failed to fetch columns for team {}: {}", team.getId(), e.getMessage());
-            return List.of();
+            log.error("Failed to fetch columns for team {}: {}", team.getId(), e.getMessage());
+            throw new RuntimeException("YouGile column fetch failed for team " + team.getId(), e);
         }
     }
 

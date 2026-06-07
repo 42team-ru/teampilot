@@ -11,6 +11,7 @@ import java.util.UUID;
 public class TaskConfirmationEvent extends BaseEvent {
 
     private final UUID taskId;
+    private final String proposalId;
     private final List<Long> recipientTelegramIds;
     private final String title;
     private final String description;
@@ -19,10 +20,12 @@ public class TaskConfirmationEvent extends BaseEvent {
     private final boolean autoConfirmed;
     private final String columnTitle;
 
+    /** Существующая задача — подтверждение создания/статуса */
     public TaskConfirmationEvent(UUID taskId, List<Long> recipientTelegramIds, String title,
                                  String description, String assigneeUsername,
                                  Instant deadline, boolean autoConfirmed, String columnTitle) {
         this.taskId = taskId;
+        this.proposalId = null;
         this.recipientTelegramIds = recipientTelegramIds;
         this.title = title;
         this.description = description;
@@ -30,5 +33,19 @@ public class TaskConfirmationEvent extends BaseEvent {
         this.deadline = deadline;
         this.autoConfirmed = autoConfirmed;
         this.columnTitle = columnTitle;
+    }
+
+    /** Предложение новой задачи от сотрудника — задача ещё не создана в БД */
+    public TaskConfirmationEvent(String proposalId, List<Long> recipientTelegramIds,
+                                 String title, String assigneeUsername) {
+        this.taskId = null;
+        this.proposalId = proposalId;
+        this.recipientTelegramIds = recipientTelegramIds;
+        this.title = title;
+        this.description = null;
+        this.assigneeUsername = assigneeUsername;
+        this.deadline = null;
+        this.autoConfirmed = false;
+        this.columnTitle = null;
     }
 }

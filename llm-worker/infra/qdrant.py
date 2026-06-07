@@ -10,6 +10,8 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
+    MinShould,
+    PayloadSchemaType,
     PointIdsList,
     PointStruct,
     VectorParams,
@@ -34,6 +36,7 @@ def get_qdrant_client() -> QdrantClient:
 
 
 _TASK_POINT_NAMESPACE = uuid.UUID("ea185060-8485-4f07-a957-28d556640727")
+_KNOWLEDGE_POINT_NAMESPACE = uuid.UUID("c3f1a2b4-9d7e-4f8c-a1b2-3d4e5f6a7b8c")
 _TASK_VECTOR_KINDS = ("summary", "title", "description", "status")
 _STATUS_ACTIONS = (
     "готово",
@@ -142,7 +145,7 @@ def _query_task_points(
         return []
 
     vector = _embedder().embed_query(normalized_query)
-    response = get_qdrant_client().query_points(
+    raw = get_qdrant_client().query_points(
         collection_name=settings.QDRANT_COLLECTION_TASKS,
         query=vector,
         limit=max(limit * len(_TASK_VECTOR_KINDS) * 2, limit),
@@ -151,7 +154,22 @@ def _query_task_points(
             must=[FieldCondition(key="team_id", match=MatchValue(value=team_id))]
         ),
     )
-    return list(response.points)
+    all_points = list(raw.points)
+    if all_points:
+        top_scores = ", ".join(
+            f"{p.payload.get('kind', '?')}={p.score:.3f}" for p in all_points[:5]
+        )
+        logger.debug(
+            "task search query={!r} threshold={} top_scores=[{}]",
+            query[:80],
+            score_threshold,
+            top_scores,
+        )
+    return [
+        p
+        for p in all_points
+        if score_threshold is None or p.score >= score_threshold
+    ]
 
 
 def _aggregate_task_points(points: list, limit: int) -> list[dict]:
@@ -207,9 +225,12 @@ def _aggregate_task_points(points: list, limit: int) -> list[dict]:
     )[:limit]
 
 
-def init_collections() -> None:
+def ensure_collections() -> None:
     client = get_qdrant_client()
-    for name in [settings.QDRANT_COLLECTION_TASKS]:
+    for name in [
+        settings.QDRANT_COLLECTION_TASKS,
+        settings.QDRANT_COLLECTION_KNOWLEDGE,
+    ]:
         if not client.collection_exists(name):
             client.create_collection(
                 collection_name=name,
@@ -219,6 +240,17 @@ def init_collections() -> None:
                 ),
             )
             logger.info(f"Created Qdrant collection: {name}")
+        client.create_payload_index(
+            collection_name=name,
+            field_name="team_id",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+
+    client.create_payload_index(
+        collection_name=settings.QDRANT_COLLECTION_KNOWLEDGE,
+        field_name="type",
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
 
 
 def store_task(task_id: str, title: str, description: str, team_id: str) -> None:
@@ -324,4 +356,154 @@ def is_task_duplicate(title: str, description: str, team_id: str) -> bool:
             title,
             e,
         )
-        return False
+
+
+# ─── Knowledge base ───────────────────────────────────────────────────────────
+
+def _knowledge_point_id(source_id: str) -> str:
+    return str(uuid.uuid5(_KNOWLEDGE_POINT_NAMESPACE, source_id))
+
+
+def store_knowledge(
+    source_id: str,
+    team_id: str,
+    knowledge_type: str,
+    content: str,
+    title: str = "",
+) -> None:
+    try:
+        text = _normalize_text(content)
+        if not text:
+            return
+        vector = _embedder().embed_query(text)
+        get_qdrant_client().upsert(
+            collection_name=settings.QDRANT_COLLECTION_KNOWLEDGE,
+            points=[
+                PointStruct(
+                    id=_knowledge_point_id(source_id),
+                    vector=vector,
+                    payload={
+                        "source_id": source_id,
+                        "team_id": team_id,
+                        "type": knowledge_type,
+                        "content": text,
+                        "title": _normalize_text(title),
+                    },
+                )
+            ],
+        )
+        logger.debug(
+            "store_knowledge source_id={} type={} team={}",
+            source_id,
+            knowledge_type,
+            team_id,
+        )
+    except Exception as e:
+        logger.opt(exception=True).warning(
+            "store_knowledge failed (source_id={}): {}",
+            source_id,
+            e,
+        )
+
+
+def delete_knowledge(source_id: str) -> None:
+    try:
+        get_qdrant_client().delete(
+            collection_name=settings.QDRANT_COLLECTION_KNOWLEDGE,
+            points_selector=PointIdsList(points=[_knowledge_point_id(source_id)]),
+        )
+        logger.debug("delete_knowledge source_id={}", source_id)
+    except Exception as e:
+        logger.opt(exception=True).warning(
+            "delete_knowledge failed (source_id={}): {}",
+            source_id,
+            e,
+        )
+
+
+def search_knowledge(
+    query: str,
+    team_id: str,
+    knowledge_type: str | None = None,
+    limit: int = 3,
+    extra_team_ids: list[str] | None = None,
+) -> list[dict]:
+    try:
+        normalized = _normalize_text(query)
+        if not normalized:
+            return []
+        vector = _embedder().embed_query(normalized)
+
+        if extra_team_ids:
+            all_team_ids = [team_id] + list(extra_team_ids)
+            team_conditions = [
+                FieldCondition(key="team_id", match=MatchValue(value=tid))
+                for tid in all_team_ids
+            ]
+            min_should = MinShould(conditions=team_conditions, min_count=1)
+            if knowledge_type:
+                query_filter = Filter(
+                    must=[
+                        FieldCondition(
+                            key="type",
+                            match=MatchValue(value=knowledge_type),
+                        )
+                    ],
+                    min_should=min_should,
+                )
+            else:
+                query_filter = Filter(min_should=min_should)
+        else:
+            must = [FieldCondition(key="team_id", match=MatchValue(value=team_id))]
+            if knowledge_type:
+                must.append(
+                    FieldCondition(
+                        key="type",
+                        match=MatchValue(value=knowledge_type),
+                    )
+                )
+            query_filter = Filter(must=must)
+
+        response = get_qdrant_client().query_points(
+            collection_name=settings.QDRANT_COLLECTION_KNOWLEDGE,
+            query=vector,
+            limit=limit,
+            query_filter=query_filter,
+        )
+        results = [
+            {
+                "source_id": p.payload.get("source_id", ""),
+                "type": p.payload.get("type", ""),
+                "title": p.payload.get("title", ""),
+                "content": _snippet(p.payload.get("content", "")),
+                "score": float(p.score or 0.0),
+            }
+            for p in response.points
+            if p.payload
+        ]
+        if results:
+            scores_summary = ", ".join(
+                f"{r['type']}:{r['score']:.3f} {r['title'][:30]!r}" for r in results
+            )
+            logger.debug(
+                "knowledge search query={!r} team={} extra_teams={} hits=[{}]",
+                query[:80],
+                team_id,
+                extra_team_ids,
+                scores_summary,
+            )
+        else:
+            logger.debug(
+                "knowledge search query={!r} team={} extra_teams={} hits=[]",
+                query[:80],
+                team_id,
+                extra_team_ids,
+            )
+        return results
+    except Exception as e:
+        logger.opt(exception=True).warning(
+            "search_knowledge failed for team {}: {}",
+            team_id,
+            e,
+        )
+        return []

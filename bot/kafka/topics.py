@@ -12,6 +12,11 @@ TOPIC_TASKS_STATE        = "tasks.state"
 TOPIC_BOTS_TASKS         = "bots.tasks"
 TOPIC_BOTS_NOTIFICATIONS = "bots.notifications"
 
+# Courses
+TOPIC_COURSES_INDEXED           = "courses.indexed"
+TOPIC_COURSES_RECOMMEND_REQUEST = "courses.recommend.request"
+TOPIC_COURSES_RECOMMEND_RESULT  = "courses.recommend.result"
+
 
 class Topics:
     FILES_UPLOADED = FILES_UPLOADED

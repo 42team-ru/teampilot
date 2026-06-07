@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/06-07-knowledge-base-bot-qa/prd.md", "reason": "Требования: FastAPI в llm-worker, /wiki хендлер в боте, team_id resolution"}
+{"file": "llm-worker/infra/qdrant.py", "reason": "search_knowledge функция для реиспользования в api.py"}
+{"file": "llm-worker/settings.py", "reason": "Добавить HTTP_PORT; посмотреть существующие QDRANT_* и EMBEDDINGS_* настройки"}
+{"file": "llm-worker/main.py", "reason": "Паттерн запуска тредов — добавить uvicorn thread рядом с Kafka-консьюмерами"}
+{"file": "bot/handlers/tasks_commands.py", "reason": "Паттерн aiogram Command хендлера, team_id resolution, HTML-форматирование"}
+{"file": "bot/services/team_service.py", "reason": "get_team_id и get_member_teams — для резолвинга team_id в wiki хендлере"}
+{"file": "bot/config.py", "reason": "Добавить LLM_WORKER_URL; посмотреть паттерн существующих настроек"}
+{"file": "bot/main.py", "reason": "Паттерн регистрации роутеров — добавить knowledge_router"}

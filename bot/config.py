@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "uploads"
     MINIO_BUCKET_AUDIO: str = "audio-recordings"
+    LLM_WORKER_URL: str = "http://localhost:8001"
     # Set to true to skip YouGile setup and use mock credentials
     MOCK_YOUGILE: bool = False
     MOCK_YOUGILE_TOKEN: str = "mock_token"

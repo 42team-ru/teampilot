@@ -23,6 +23,10 @@ public interface LlmTaskUpdateMapper {
     @Mapping(target = "column", ignore = true)
     @Mapping(target = "source", ignore = true)
     @Mapping(target = "localStatus", ignore = true)
+    @Mapping(target = "deadlineNotifiedAt", ignore = true)
+    @Mapping(target = "courseRecommendedAt", ignore = true)
+    @Mapping(target = "stickers", ignore = true)
+    @Mapping(target = "sourceMessages", ignore = true)
     void updateTaskFromEvent(LlmUpdateTaskEvent event, @MappingTarget Task task);
 
     default Instant mapDeadline(LlmUpdateTaskEvent event) {
