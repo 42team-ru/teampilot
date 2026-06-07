@@ -1,14 +1,18 @@
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import os
+import re
+import threading
+import time
 from typing import List, Union
 
 from loguru import logger
 from pydantic import ValidationError
 
 from infra.kafka import publish
-from infra.qdrant import is_task_duplicate, search_tasks
-from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, file_summary_chain, status_chain, task_chain
+from infra.qdrant import is_task_duplicate, search_knowledge, search_tasks, store_knowledge
+from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, decision_chain, file_summary_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
     AudioNewEvent,
@@ -16,19 +20,87 @@ from models import (
     AudioTeamMember,
     AudioStickerInfo,
     ClassificationResult,
+    DecisionExtractionList,
     FileSummaryEvent,
+    MeetingAudioChunkEvent,
+    MeetingLiveResultEvent,
+    MeetingStatusPreview,
+    MeetingTaskPreview,
     MessageBatchEvent,
     StatusChangeEvent,
     StatusExtractionList,
     TaskCreateEvent,
     TaskExtractionList,
 )
-from infra.minio import download_file, upload_file
+from infra.minio import download_file, list_object_keys, upload_file
 from settings import settings
 
 TOPIC_TASKS = "llm.tasks.create"
 TOPIC_STATUS = "llm.status.change"
 TOPIC_FILE_SUMMARY = "files.transcript_ready"
+TOPIC_MEETING_RESULTS = "meetings.live.results"
+_MAX_STATUS_SEARCH_QUERIES = 6
+_STATUS_SEARCH_MARKERS = (
+    "готов",
+    "сделал",
+    "сделала",
+    "сделали",
+    "доделал",
+    "доделала",
+    "закрыл",
+    "закрыла",
+    "закрыли",
+    "закончил",
+    "закончила",
+    "завершил",
+    "завершила",
+    "смотри в",
+    "проверяй",
+    "в мастере",
+    "в pr",
+    "в pull request",
+    "задепло",
+    "беру",
+    "взял",
+    "взяла",
+    "приступил",
+    "приступила",
+    "начал",
+    "начала",
+    "отменяем",
+    "отменить",
+    "снимаем",
+    "не актуально",
+    "неактуально",
+    "отбой",
+)
+
+
+@dataclass
+class MeetingTranscriptState:
+    transcripts_by_chunk: dict[int, str] = field(default_factory=dict)
+    last_extracted_chars: int = 0
+    published_task_keys: set[str] = field(default_factory=set)
+    published_status_keys: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class MeetingFinalizationResult:
+    title: str
+    description: str
+    summary: str
+    full_transcript: str
+    recording_bucket: str
+    recording_s3_key: str
+    recording_content_type: str
+    recording_size_bytes: int
+    transcript_bucket: str
+    transcript_s3_key: str
+    finalized_at: datetime
+
+
+_meeting_state: dict[str, MeetingTranscriptState] = {}
+_meeting_state_lock = threading.Lock()
 
 
 def format_messages(batch: MessageBatchEvent) -> str:
@@ -63,6 +135,19 @@ def format_stickers_context(batch: MessageBatchEvent) -> str:
     return "\n".join(lines)
 
 
+def format_knowledge_context(items: list[dict]) -> str:
+    if not items:
+        return "KNOWLEDGE BASE: (empty — no relevant team knowledge found)"
+    lines = ["KNOWLEDGE BASE (team decisions, meeting summaries, past tasks — use as background context):"]
+    for item in items:
+        kind = item.get("type", "")
+        title = item.get("title", "")
+        content = item.get("content", "")
+        label = f"[{kind}]" + (f" {title}" if title else "")
+        lines.append(f"  - {label}: {content}")
+    return "\n".join(lines)
+
+
 def build_column_map(batch: MessageBatchEvent) -> dict[str, str]:
     return {str(i + 1): col.id for i, col in enumerate(batch.columns)}
 
@@ -77,6 +162,118 @@ def format_columns_context(batch: MessageBatchEvent) -> tuple[str, dict[str, str
         short = real_to_short[col.id]
         lines.append(f"  - column_id: \"{short}\"  |  title: \"{col.title}\"")
     return "\n".join(lines), col_map
+
+
+def _status_marker_index(text: str) -> int:
+    lower = text.lower()
+    indexes = [
+        lower.find(marker)
+        for marker in _STATUS_SEARCH_MARKERS
+        if marker in lower
+    ]
+    return min(indexes) if indexes else -1
+
+
+def _looks_like_status_query(text: str) -> bool:
+    return _status_marker_index(text) >= 0
+
+
+def _clean_status_search_query(text: str, limit: int = 320) -> str:
+    # Strip formatter metadata like "[ID: ...] [10:00] username:" when the
+    # fallback input is the already formatted batch text.
+    cleaned = re.sub(r"^(?:\[[^\]]*]\s*)+", "", text).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    if ": " in cleaned:
+        prefix, rest = cleaned.split(": ", 1)
+        if len(prefix) <= 80:
+            cleaned = rest
+
+    if len(cleaned) <= limit:
+        return cleaned
+
+    marker_idx = _status_marker_index(cleaned)
+    if marker_idx < 0:
+        return cleaned[:limit].rstrip()
+
+    start = max(0, marker_idx - 120)
+    end = min(len(cleaned), start + limit)
+    return cleaned[start:end].strip()
+
+
+def _dedupe_status_queries(queries: list[str]) -> list[str]:
+    result = []
+    seen = set()
+    for query in queries:
+        cleaned = _clean_status_search_query(query)
+        key = cleaned.lower()
+        if not cleaned or key in seen:
+            continue
+        seen.add(key)
+        result.append(cleaned)
+        if len(result) >= _MAX_STATUS_SEARCH_QUERIES:
+            break
+    return result
+
+
+def _status_queries_from_batch(batch: MessageBatchEvent) -> list[str]:
+    return _dedupe_status_queries([
+        message.text
+        for message in batch.messages
+        if _looks_like_status_query(message.text)
+    ])
+
+
+def _status_queries_from_text(text: str) -> list[str]:
+    pieces = re.split(r"[\n\r]+|(?<=[.!?])\s+", text)
+    status_pieces = [piece for piece in pieces if _looks_like_status_query(piece)]
+    return _dedupe_status_queries(status_pieces)
+
+
+def _merge_status_candidates(
+    merged: dict[str, dict],
+    candidate: dict,
+    query: str,
+) -> None:
+    task_id = candidate.get("task_id")
+    if not task_id:
+        return
+
+    score = float(candidate.get("rank_score") or candidate.get("score") or 0.0)
+    existing = merged.setdefault(task_id, {**candidate, "matched_queries": []})
+
+    existing_score = float(
+        existing.get("rank_score") or existing.get("score") or 0.0
+    )
+    if score > existing_score:
+        existing.update(candidate)
+
+    matched_queries = existing.setdefault("matched_queries", [])
+    if query not in matched_queries:
+        matched_queries.append(query)
+
+
+def _search_status_task_candidates(
+    team_id: str | None,
+    queries: list[str],
+    limit: int = 5,
+) -> list[dict]:
+    if not team_id or not queries:
+        return []
+
+    merged: dict[str, dict] = {}
+    for query in queries:
+        for candidate in search_tasks(query, team_id, limit=limit):
+            _merge_status_candidates(merged, candidate, query)
+
+    return sorted(
+        merged.values(),
+        key=lambda candidate: (
+            float(candidate.get("rank_score") or candidate.get("score") or 0.0),
+            len(candidate.get("matched_queries") or []),
+        ),
+        reverse=True,
+    )[:limit]
 
 
 def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
@@ -94,17 +291,27 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
 
     run_tasks = clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD
     run_statuses = clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD
+    run_decisions = clf.has_decision and clf.confidence_decision >= settings.CLASSIFIER_THRESHOLD
 
-    if run_tasks and run_statuses:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_tasks = executor.submit(_extract_tasks, batch, text, clf.confidence_task)
-            future_statuses = executor.submit(_extract_statuses, batch, text)
-            results.extend(future_tasks.result())
-            results.extend(future_statuses.result())
-    elif run_tasks:
-        results.extend(_extract_tasks(batch, text, clf.confidence_task))
-    elif run_statuses:
-        results.extend(_extract_statuses(batch, text))
+    n_workers = sum([run_tasks, run_statuses, run_decisions])
+    if n_workers >= 2:
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            future_tasks = executor.submit(_extract_tasks, batch, text, clf.confidence_task) if run_tasks else None
+            future_statuses = executor.submit(_extract_statuses, batch, text) if run_statuses else None
+            future_decisions = executor.submit(_extract_decisions, batch, text) if run_decisions else None
+            if future_tasks:
+                results.extend(future_tasks.result())
+            if future_statuses:
+                results.extend(future_statuses.result())
+            if future_decisions:
+                future_decisions.result()
+    else:
+        if run_tasks:
+            results.extend(_extract_tasks(batch, text, clf.confidence_task))
+        elif run_statuses:
+            results.extend(_extract_statuses(batch, text))
+        elif run_decisions:
+            _extract_decisions(batch, text)
 
     return results
 
@@ -112,12 +319,14 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
 def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0) -> List[TaskCreateEvent]:
     try:
         columns_ctx, col_map = format_columns_context(batch)
+        knowledge_items = search_knowledge(text, batch.team_id) if batch.team_id else []
         raw = task_chain.invoke({
             "messages": text,
             "current_datetime": batch.occurred_at.isoformat(),
             "team_context": format_team_context(batch),
             "columns_context": columns_ctx,
             "stickers_context": format_stickers_context(batch),
+            "knowledge_context": format_knowledge_context(knowledge_items),
         })
         extraction_list = TaskExtractionList.model_validate(raw)
 
@@ -162,13 +371,30 @@ def format_task_candidates(candidates: list[dict]) -> str:
         return "TASK CANDIDATES: (none — Qdrant returned no matches)"
     lines = ["TASK CANDIDATES (select task_id ONLY from this list):"]
     for c in candidates:
-        lines.append(f'  - task_id: "{c["task_id"]}"  |  title: "{c["title"]}"')
+        parts = [
+            f'task_id: "{c["task_id"]}"',
+            f'title: "{c["title"]}"',
+        ]
+        if c.get("description"):
+            parts.append(f'description: "{c["description"]}"')
+        if c.get("score") is not None:
+            parts.append(f'score: {c["score"]:.3f}')
+        if c.get("matched_kind"):
+            parts.append(f'matched: {c["matched_kind"]}')
+        if c.get("matched_queries"):
+            queries = "; ".join(c["matched_queries"][:2])
+            parts.append(f'query: "{queries}"')
+        lines.append("  - " + "  |  ".join(parts))
     return "\n".join(lines)
 
 
 def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeEvent]:
     try:
-        candidates = search_tasks(text, batch.team_id, limit=5)
+        candidates = _search_status_task_candidates(
+            batch.team_id,
+            _status_queries_from_batch(batch),
+            limit=5,
+        )
         columns_ctx, col_map = format_columns_context(batch)
 
         raw = status_chain.invoke({
@@ -198,6 +424,27 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
     except Exception as e:
         logger.error(f"Status extraction chain failed (batch={batch.event_id}): {e}")
         return []
+
+
+def _extract_decisions(batch: MessageBatchEvent, text: str) -> None:
+    if not batch.team_id:
+        return
+    try:
+        raw = decision_chain.invoke({"messages": text})
+        extraction_list = DecisionExtractionList.model_validate(raw)
+        for i, extraction in enumerate(extraction_list.decisions):
+            if not extraction.text.strip():
+                continue
+            source_id = f"decision:{batch.event_id}:{i}"
+            store_knowledge(
+                source_id=source_id,
+                team_id=batch.team_id,
+                knowledge_type="decision",
+                content=extraction.text,
+            )
+            logger.info(f"[DECISION] stored: {extraction.text!r} team={batch.team_id}")
+    except Exception as e:
+        logger.error(f"Decision extraction failed (batch={batch.event_id}): {e}")
 
 
 def format_audio_team_context(members: list[AudioTeamMember]) -> str:
@@ -244,13 +491,14 @@ def _process_transcript_chunk(
     team_members: list[AudioTeamMember],
     columns: list[AudioColumnInfo],
     stickers: list[AudioStickerInfo],
-) -> None:
+) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
+    events: List[Union[TaskCreateEvent, StatusChangeEvent]] = []
     try:
         clf_output = classifier_chain.invoke({"messages": chunk})
         clf = ClassificationResult.model_validate(clf_output)
     except Exception as e:
         logger.error(f"Classifier failed for transcript {file_id} chunk {chunk_idx}: {e}")
-        return
+        return events
 
     logger.debug(f"Transcript {file_id} chunk {chunk_idx} classification: {clf}")
 
@@ -279,18 +527,24 @@ def _process_transcript_chunk(
                     task_data["description"] = (
                         task_data["description"] + f"\n\nУверенность ИИ: {audio_confidence:.0%}"
                     )
-                publish(TOPIC_TASKS, TaskCreateEvent(
+                event = TaskCreateEvent(
                     team_id=team_id,
                     source_batch_id=file_id,
+                    confidence=audio_confidence,
                     **task_data,
-                ), key=file_id)
+                )
+                events.append(event)
                 logger.info(f"Transcript task published: {extraction.title!r} (chunk {chunk_idx})")
         except Exception as e:
             logger.error(f"Task extraction failed for transcript {file_id} chunk {chunk_idx}: {e}")
 
     if clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD:
         try:
-            candidates = search_tasks(chunk, team_id, limit=5) if team_id else []
+            candidates = _search_status_task_candidates(
+                team_id,
+                _status_queries_from_text(chunk),
+                limit=5,
+            )
             raw = audio_status_chain.invoke({
                 "messages": chunk,
                 "team_context": team_ctx,
@@ -302,14 +556,25 @@ def _process_transcript_chunk(
                 data = extraction.model_dump()
                 short_id = str(data.get("column_id") or "")
                 data["column_id"] = col_map.get(short_id) or data.get("column_id")
-                publish(TOPIC_STATUS, StatusChangeEvent(
+                event = StatusChangeEvent(
                     team_id=team_id,
                     source_batch_id=file_id,
                     **data,
-                ), key=file_id)
+                )
+                events.append(event)
                 logger.info(f"Transcript status published: {extraction.action} (chunk {chunk_idx})")
         except Exception as e:
             logger.error(f"Status extraction failed for transcript {file_id} chunk {chunk_idx}: {e}")
+
+    return events
+
+
+def _publish_transcript_events(events: List[Union[TaskCreateEvent, StatusChangeEvent]], key: str) -> None:
+    for event in events:
+        if isinstance(event, TaskCreateEvent):
+            publish(TOPIC_TASKS, event, key=key)
+        elif isinstance(event, StatusChangeEvent):
+            publish(TOPIC_STATUS, event, key=key)
 
 
 def process_transcript_text(
@@ -323,10 +588,11 @@ def process_transcript_text(
     chunks = chunk_text(text)
     logger.info(f"Transcript {file_id}: {len(text)} chars → {len(chunks)} chunk(s)")
     for idx, chunk in enumerate(chunks):
-        _process_transcript_chunk(
+        events = _process_transcript_chunk(
             chunk, idx, file_id, team_id,
             team_members or [], columns or [], stickers or [],
         )
+        _publish_transcript_events(events, key=file_id)
 
 
 def generate_file_summary(text: str, file_id: str, team_id: str | None) -> None:
@@ -349,6 +615,15 @@ def generate_file_summary(text: str, file_id: str, team_id: str | None) -> None:
         )
         publish(TOPIC_FILE_SUMMARY, event, key=file_id)
         logger.info(f"File summary published for file_id={file_id} title={title!r}")
+
+        if team_id and summary:
+            store_knowledge(
+                source_id=f"file:{file_id}",
+                team_id=team_id,
+                knowledge_type="file_summary",
+                content=summary,
+                title=title,
+            )
     except Exception as e:
         logger.error(f"File summary generation failed for file_id={file_id}: {e}")
 
@@ -396,3 +671,416 @@ def process_audio(event: AudioNewEvent) -> None:
         stickers=event.stickers,
     )
     generate_file_summary(text, event.file_id, event.team_id)
+
+
+def _meeting_context_after_chunk(meeting_id: str, chunk_index: int, transcript: str) -> tuple[str, bool]:
+    with _meeting_state_lock:
+        state = _meeting_state.setdefault(meeting_id, MeetingTranscriptState())
+        state.transcripts_by_chunk[chunk_index] = transcript
+
+        full_text = "\n".join(
+            text
+            for _, text in sorted(state.transcripts_by_chunk.items())
+            if text.strip()
+        ).strip()
+        context = full_text[-settings.MEETING_CONTEXT_CHARS:]
+        new_chars = max(0, len(full_text) - state.last_extracted_chars)
+        should_extract = (
+            len(context) >= settings.MEETING_EXTRACTION_MIN_CHARS
+            and new_chars >= settings.MEETING_EXTRACTION_STEP_CHARS
+        )
+        if should_extract:
+            state.last_extracted_chars = len(full_text)
+        return context, should_extract
+
+
+def _meeting_full_context(meeting_id: str) -> str:
+    with _meeting_state_lock:
+        state = _meeting_state.setdefault(meeting_id, MeetingTranscriptState())
+        return "\n".join(
+            text
+            for _, text in sorted(state.transcripts_by_chunk.items())
+            if text.strip()
+        ).strip()
+
+
+def _meeting_chunks_prefix(meeting_id: str) -> str:
+    return f"meetings/{meeting_id}/chunks/"
+
+
+def _chunk_index_from_key(key: str) -> int | None:
+    filename = key.rsplit("/", 1)[-1]
+    chunk_number = filename.split("-", 1)[0]
+    try:
+        return int(chunk_number)
+    except ValueError:
+        return None
+
+
+def _meeting_chunk_object_keys(bucket: str, meeting_id: str, final_chunk_index: int | None = None) -> list[str]:
+    keys = list_object_keys(bucket, _meeting_chunks_prefix(meeting_id))
+    keyed_by_index: dict[int, str] = {}
+    skipped_keys: list[str] = []
+
+    for key in keys:
+        index = _chunk_index_from_key(key)
+        if index is None:
+            skipped_keys.append(key)
+            continue
+        if final_chunk_index is not None and index > final_chunk_index:
+            continue
+        keyed_by_index[index] = key
+
+    if skipped_keys:
+        logger.warning(
+            "Skipped meeting chunk objects with unparsable index meeting_id={} keys={}",
+            meeting_id,
+            skipped_keys,
+        )
+
+    return [
+        keyed_by_index[index]
+        for index in sorted(keyed_by_index)
+    ]
+
+
+def _wait_for_meeting_chunk_objects(bucket: str, meeting_id: str, final_chunk_index: int) -> list[str]:
+    expected = set(range(final_chunk_index + 1))
+    deadline = time.monotonic() + settings.MEETING_FINALIZE_WAIT_SECONDS
+    keys: list[str] = []
+
+    while True:
+        try:
+            keys = _meeting_chunk_object_keys(bucket, meeting_id, final_chunk_index)
+        except Exception as e:
+            logger.error(
+                "Failed to list meeting chunks meeting_id={} bucket={}: {}",
+                meeting_id,
+                bucket,
+                e,
+            )
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.2)
+            continue
+
+        indexes = {
+            index
+            for key in keys
+            if (index := _chunk_index_from_key(key)) is not None
+        }
+        if expected.issubset(indexes):
+            return keys
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.2)
+
+    indexes = {
+        index
+        for key in keys
+        if (index := _chunk_index_from_key(key)) is not None
+    }
+    missing_chunks = sorted(expected - indexes)
+
+    logger.warning(
+        "Finalizing meeting with missing MinIO chunks meeting_id={} missing_chunks={}",
+        meeting_id,
+        missing_chunks,
+    )
+    return keys
+
+
+def _mark_meeting_final_extract(meeting_id: str) -> None:
+    with _meeting_state_lock:
+        state = _meeting_state.setdefault(meeting_id, MeetingTranscriptState())
+        state.last_extracted_chars = sum(len(t) for t in state.transcripts_by_chunk.values())
+
+
+def _filter_new_meeting_events(
+    meeting_id: str,
+    events: List[Union[TaskCreateEvent, StatusChangeEvent]],
+) -> List[Union[TaskCreateEvent, StatusChangeEvent]]:
+    result: List[Union[TaskCreateEvent, StatusChangeEvent]] = []
+    with _meeting_state_lock:
+        state = _meeting_state.setdefault(meeting_id, MeetingTranscriptState())
+        for event in events:
+            if isinstance(event, TaskCreateEvent):
+                key = event.title.strip().lower()
+                if not key or key in state.published_task_keys:
+                    continue
+                state.published_task_keys.add(key)
+                result.append(event)
+            elif isinstance(event, StatusChangeEvent):
+                key = "|".join([
+                    event.action,
+                    event.task_id or "",
+                    str(event.assignee_id or ""),
+                    event.column_id or "",
+                ])
+                if key in state.published_status_keys:
+                    continue
+                state.published_status_keys.add(key)
+                result.append(event)
+    return result
+
+
+def _summarize_meeting_context(context: str, meeting_id: str) -> str:
+    if not context.strip():
+        return ""
+    try:
+        raw = file_summary_chain.invoke({"transcript": context})
+        summary = str(raw.get("summary", "")).strip()
+        description = str(raw.get("description", "")).strip()
+        return summary or description
+    except Exception as e:
+        logger.error(f"Meeting summary generation failed meeting_id={meeting_id}: {e}")
+        return context[-1200:]
+
+
+def _generate_meeting_final_summary(full_transcript: str, meeting_id: str) -> tuple[str, str, str]:
+    if not full_transcript.strip():
+        return f"Митинг {meeting_id[:8]}", "", ""
+    try:
+        raw = file_summary_chain.invoke({"transcript": full_transcript})
+        title = str(raw.get("title", "")).strip()[:100] or f"Митинг {meeting_id[:8]}"
+        description = str(raw.get("description", "")).strip()
+        summary = str(raw.get("summary", "")).strip()
+        return title, description, summary
+    except Exception as e:
+        logger.error(f"Final meeting summary generation failed meeting_id={meeting_id}: {e}")
+        return f"Митинг {meeting_id[:8]}", "", full_transcript[-1200:]
+
+
+def _finalize_meeting_recording(event: MeetingAudioChunkEvent) -> MeetingFinalizationResult | None:
+    from infra.audio import merge_audio_chunks, to_whisper_wav
+    from infra.whisper import transcribe
+
+    chunk_keys = _wait_for_meeting_chunk_objects(event.bucket, event.meeting_id, event.chunk_index)
+    if not chunk_keys:
+        logger.warning("No MinIO chunks found for final meeting recording meeting_id={}", event.meeting_id)
+        return None
+
+    audio_chunks = []
+    for key in chunk_keys:
+        try:
+            audio_chunks.append(download_file(event.bucket, key))
+        except Exception as e:
+            logger.error(
+                "Failed to download meeting chunk for final recording meeting_id={} key={}: {}",
+                event.meeting_id,
+                key,
+                e,
+            )
+            return None
+
+    recording_bytes, recording_content_type, extension = merge_audio_chunks(audio_chunks)
+    if not recording_bytes:
+        logger.error("Meeting recording merge returned empty file meeting_id={}", event.meeting_id)
+        return None
+
+    bucket = event.bucket
+    base_key = f"meetings/{event.meeting_id}/final"
+    recording_key = f"{base_key}/recording.{extension}"
+    transcript_key = f"{base_key}/transcript.txt"
+
+    try:
+        upload_file(bucket, recording_key, recording_bytes, content_type=recording_content_type)
+    except Exception as e:
+        logger.error("Failed to upload final meeting recording meeting_id={}: {}", event.meeting_id, e)
+        return None
+
+    try:
+        wav_bytes = to_whisper_wav(recording_bytes)
+        full_transcript = transcribe(wav_bytes, f"meeting-{event.meeting_id}.{extension}").strip()
+    except Exception as e:
+        logger.error("Full meeting transcription failed meeting_id={}: {}", event.meeting_id, e)
+        return None
+
+    try:
+        upload_file(
+            bucket,
+            transcript_key,
+            full_transcript.encode("utf-8"),
+            content_type="text/plain; charset=utf-8",
+        )
+    except Exception as e:
+        logger.error("Failed to upload final meeting transcript meeting_id={}: {}", event.meeting_id, e)
+        return None
+
+    title, description, summary = _generate_meeting_final_summary(full_transcript, event.meeting_id)
+    return MeetingFinalizationResult(
+        title=title,
+        description=description,
+        summary=summary,
+        full_transcript=full_transcript,
+        recording_bucket=bucket,
+        recording_s3_key=recording_key,
+        recording_content_type=recording_content_type,
+        recording_size_bytes=len(recording_bytes),
+        transcript_bucket=bucket,
+        transcript_s3_key=transcript_key,
+        finalized_at=datetime.now(timezone.utc),
+    )
+
+
+def _to_meeting_task_preview(event: TaskCreateEvent) -> MeetingTaskPreview:
+    return MeetingTaskPreview(
+        title=event.title,
+        description=event.description,
+        assignee_id=event.assignee_id,
+        deadline=event.deadline,
+        column_id=event.column_id,
+        confidence=event.confidence,
+    )
+
+
+def _to_meeting_status_preview(event: StatusChangeEvent) -> MeetingStatusPreview:
+    return MeetingStatusPreview(
+        task_id=event.task_id,
+        assignee_id=event.assignee_id,
+        column_id=event.column_id,
+        action=event.action,
+    )
+
+
+def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
+    from infra.audio import to_whisper_wav
+    from infra.whisper import transcribe
+
+    logger.info(
+        "Processing meeting chunk meeting_id={} chunk={} from {}/{}",
+        event.meeting_id,
+        event.chunk_index,
+        event.bucket,
+        event.s3_key,
+    )
+
+    try:
+        audio_bytes = download_file(event.bucket, event.s3_key)
+    except Exception as e:
+        logger.error(f"Failed to download meeting audio {event.s3_key}: {e}")
+        return
+
+    try:
+        wav_bytes = to_whisper_wav(audio_bytes)
+        filename = event.original_filename if event.original_filename.endswith(".wav") else event.original_filename + ".wav"
+        transcript = transcribe(wav_bytes, filename).strip()
+    except Exception as e:
+        logger.error(f"Whisper transcription failed for meeting_id={event.meeting_id} chunk={event.chunk_index}: {e}")
+        return
+
+    context, should_extract = _meeting_context_after_chunk(event.meeting_id, event.chunk_index, transcript)
+    if event.final_chunk:
+        context = _meeting_full_context(event.meeting_id)
+        should_extract = True
+        _mark_meeting_final_extract(event.meeting_id)
+
+    extracted_events: List[Union[TaskCreateEvent, StatusChangeEvent]] = []
+    summary = ""
+    finalization: MeetingFinalizationResult | None = None
+    if should_extract and context:
+        extracted_events = _process_transcript_chunk(
+            context,
+            event.chunk_index,
+            f"{event.meeting_id}:{event.chunk_index}",
+            event.team_id,
+            event.team,
+            event.columns,
+            event.stickers,
+        )
+        extracted_events = _filter_new_meeting_events(event.meeting_id, extracted_events)
+        _publish_transcript_events(extracted_events, key=event.meeting_id)
+        summary = _summarize_meeting_context(context, event.meeting_id)
+
+    hints: list[str] = []
+    if event.team_id is not None:
+        for e in extracted_events:
+            if isinstance(e, TaskCreateEvent):
+                similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.80)
+                if similar:
+                    hints.append(f"Похожая задача уже есть: «{similar[0]['title']}»")
+
+    if event.final_chunk:
+        finalization = _finalize_meeting_recording(event)
+        if finalization is not None:
+            transcript = finalization.full_transcript
+            context = finalization.full_transcript
+            summary = finalization.summary
+            if event.team_id and finalization.summary:
+                store_knowledge(
+                    source_id=f"meeting:{event.meeting_id}",
+                    team_id=event.team_id,
+                    knowledge_type="meeting_summary",
+                    content=finalization.summary,
+                    title=finalization.title,
+                )
+            if finalization.full_transcript:
+                full_events = _process_transcript_chunk(
+                    finalization.full_transcript,
+                    event.chunk_index,
+                    f"{event.meeting_id}:full",
+                    event.team_id,
+                    event.team,
+                    event.columns,
+                    event.stickers,
+                )
+                new_full_events = _filter_new_meeting_events(event.meeting_id, full_events)
+                _publish_transcript_events(new_full_events, key=event.meeting_id)
+                extracted_events = extracted_events + new_full_events
+                if event.team_id is not None:
+                    for e in new_full_events:
+                        if isinstance(e, TaskCreateEvent):
+                            similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.80)
+                            if similar:
+                                hints.append(f"Похожая задача уже есть: «{similar[0]['title']}»")
+                logger.info(
+                    "Full transcript re-extraction meeting_id={} new_events={} total_events={}",
+                    event.meeting_id,
+                    len(new_full_events),
+                    len(extracted_events),
+                )
+
+    tasks = [
+        _to_meeting_task_preview(e)
+        for e in extracted_events
+        if isinstance(e, TaskCreateEvent)
+    ]
+    statuses = [
+        _to_meeting_status_preview(e)
+        for e in extracted_events
+        if isinstance(e, StatusChangeEvent)
+    ]
+
+    publish(
+        TOPIC_MEETING_RESULTS,
+        MeetingLiveResultEvent(
+            meeting_id=event.meeting_id,
+            team_id=event.team_id,
+            chunk_index=event.chunk_index,
+            transcript=transcript,
+            summary=summary,
+            context=context,
+            final_result=finalization is not None,
+            title=finalization.title if finalization is not None else None,
+            description=finalization.description if finalization is not None else None,
+            recording_bucket=finalization.recording_bucket if finalization is not None else None,
+            recording_s3_key=finalization.recording_s3_key if finalization is not None else None,
+            recording_content_type=finalization.recording_content_type if finalization is not None else None,
+            recording_size_bytes=finalization.recording_size_bytes if finalization is not None else None,
+            transcript_bucket=finalization.transcript_bucket if finalization is not None else None,
+            transcript_s3_key=finalization.transcript_s3_key if finalization is not None else None,
+            finalized_at=finalization.finalized_at if finalization is not None else None,
+            tasks=tasks,
+            statuses=statuses,
+            hints=hints,
+        ),
+        key=event.meeting_id,
+    )
+    logger.info(
+        "Meeting result published meeting_id={} chunk={} transcript_chars={} tasks={} statuses={}",
+        event.meeting_id,
+        event.chunk_index,
+        len(transcript),
+        len(tasks),
+        len(statuses),
+    )

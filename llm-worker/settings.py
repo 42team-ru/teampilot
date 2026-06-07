@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_GROUP_ID: str = "llm-worker"
+    KAFKA_GROUP_ID_BATCHES: str = "llm-worker-batches"
+    KAFKA_GROUP_ID_AUDIO: str = "llm-worker-audio"
+    KAFKA_GROUP_ID_MEETING_AUDIO: str = "llm-worker-meeting-audio"
+    KAFKA_GROUP_ID_LIFECYCLE: str = "llm-worker-lifecycle"
 
     # LLM (Ollama OpenAI-compatible по умолчанию)
     LLM_API_BASE: str = "http://localhost:11434/v1"
@@ -20,12 +24,15 @@ class Settings(BaseSettings):
     EMBEDDINGS_MODEL: str = "text-embedding-3-small"
     EMBEDDINGS_DIM: int = 1536
 
+    # HTTP API
+    HTTP_PORT: int = 8001
+
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
-    QDRANT_COLLECTION_BATCHES: str = "message_batches"
     QDRANT_COLLECTION_TASKS: str = "tasks"
+    QDRANT_COLLECTION_KNOWLEDGE: str = "team_knowledge"
     DEDUP_THRESHOLD: float = 0.92
-    STATUS_HINT_THRESHOLD: float = 0.70
+    STATUS_HINT_THRESHOLD: float = 0.50
 
     # Классификатор
     CLASSIFIER_THRESHOLD: float = 0.65
@@ -37,6 +44,10 @@ class Settings(BaseSettings):
     # Чанкинг транскриптов
     TRANSCRIPT_CHUNK_CHARS: int = 6000
     TRANSCRIPT_CHUNK_OVERLAP_CHARS: int = 500
+    MEETING_CONTEXT_CHARS: int = 6000
+    MEETING_EXTRACTION_MIN_CHARS: int = 1000
+    MEETING_EXTRACTION_STEP_CHARS: int = 1500
+    MEETING_FINALIZE_WAIT_SECONDS: int = 120
 
     # MinIO
     MINIO_ENDPOINT: str = "localhost:9000"

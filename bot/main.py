@@ -13,11 +13,13 @@ from loguru import logger
 
 from config import settings
 from handlers.admin import router as admin_router
+from handlers.knowledge import router as knowledge_router
 from handlers.auth import router as auth_router
 from handlers.files import router as files_router
 from handlers.group import router as group_router
 from handlers.manager import router as manager_router
 from handlers.member import router as member_router
+from handlers.profile import router as profile_router
 from handlers.registration import router as registration_router
 from handlers.setup import router as setup_router
 from handlers.sync import router as sync_router
@@ -155,6 +157,8 @@ async def main() -> None:
     dp.include_router(tasks_commands_router)
     dp.include_router(upload_router)
     dp.include_router(files_router)
+    dp.include_router(profile_router)
+    dp.include_router(knowledge_router)
     dp.include_router(group_router)
     dp.include_router(sync_report_router)
 

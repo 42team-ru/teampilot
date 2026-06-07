@@ -258,7 +258,13 @@ public class TeamService {
         }
     }
 
-    private void requireManager(UUID teamId, Long telegramId) {
+    @Transactional
+    public void requireManager(UUID teamId, Long telegramId) {
+        requireManagerMembership(teamId, telegramId);
+    }
+
+    @Transactional(readOnly = true)
+    public TeamUser requireManagerMembership(UUID teamId, Long telegramId) {
         if (telegramId == null) {
             throw AppException.unauthorized(
                     "Telegram user authentication required: provide a valid X-Telegram-Id header"
@@ -267,13 +273,14 @@ public class TeamService {
         if (!teamRepository.existsById(teamId)) {
             throw AppException.notFound("Team with ID %s not found".formatted(teamId));
         }
-        boolean manager = teamUserRepository.findByTeamIdAndUserTelegramId(teamId, telegramId)
-                .map(teamUser -> teamUser.getRole() == TeamRole.MANAGER)
-                .orElse(false);
-        if (!manager) {
+        TeamUser manager = teamUserRepository.findByTeamIdAndUserTelegramId(teamId, telegramId)
+                .filter(teamUser -> teamUser.getRole() == TeamRole.MANAGER)
+                .orElse(null);
+        if (manager == null) {
             throw AppException.forbidden(
                     "Access denied: Telegram user %d is not a manager of team %s".formatted(telegramId, teamId)
             );
         }
+        return manager;
     }
 }

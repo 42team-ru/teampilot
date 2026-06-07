@@ -106,6 +106,26 @@ class BotNotificationEvent(BackendEvent):
         default=None,
         validation_alias=AliasChoices("taskTitle", "task_title"),
     )
+    achievement_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("achievementName", "achievement_name"),
+    )
+    achievement_emoji: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("achievementEmoji", "achievement_emoji"),
+    )
+    xp_gained: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("xpGained", "xp_gained"),
+    )
+    new_total_xp: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("newTotalXp", "new_total_xp"),
+    )
+    new_level_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("newLevelName", "new_level_name"),
+    )
 
 
 class SyncDraftItem(BackendEvent):
