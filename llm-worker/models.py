@@ -229,6 +229,7 @@ class MeetingLiveResultEvent(BaseModel):
     finalized_at: datetime | None = None
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
+    hints: list[str] = Field(default_factory=list)
 
 
 # ── LLM output — валидируем ответ модели ────────────────────────────────────
