@@ -992,6 +992,14 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
         _publish_transcript_events(extracted_events, key=event.meeting_id)
         summary = _summarize_meeting_context(context, event.meeting_id)
 
+    hints: list[str] = []
+    if event.team_id is not None:
+        for e in extracted_events:
+            if isinstance(e, TaskCreateEvent):
+                similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.80)
+                if similar:
+                    hints.append(f"Похожая задача уже есть: «{similar[0]['title']}»")
+
     if event.final_chunk:
         finalization = _finalize_meeting_recording(event)
         if finalization is not None:
@@ -1019,6 +1027,12 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
                 new_full_events = _filter_new_meeting_events(event.meeting_id, full_events)
                 _publish_transcript_events(new_full_events, key=event.meeting_id)
                 extracted_events = extracted_events + new_full_events
+                if event.team_id is not None:
+                    for e in new_full_events:
+                        if isinstance(e, TaskCreateEvent):
+                            similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.80)
+                            if similar:
+                                hints.append(f"Похожая задача уже есть: «{similar[0]['title']}»")
                 logger.info(
                     "Full transcript re-extraction meeting_id={} new_events={} total_events={}",
                     event.meeting_id,
@@ -1058,6 +1072,7 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
             finalized_at=finalization.finalized_at if finalization is not None else None,
             tasks=tasks,
             statuses=statuses,
+            hints=hints,
         ),
         key=event.meeting_id,
     )
