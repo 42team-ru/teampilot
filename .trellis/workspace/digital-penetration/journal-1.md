@@ -39,3 +39,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Evening sync excuse feature
+
+**Date**: 2026-06-07
+**Task**: Evening sync excuse feature
+**Branch**: `master`
+
+### Summary
+
+Added /excuse command: user writes /excuse [reason] in private chat, bot shows inline keyboard to pick team (or all teams), excused users are filtered from evening sync at 18:00, manager summary includes excused list with reasons. Fixed Cyrillic callback_data byte overflow and double-counting bug in summary.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3ea2bb3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
