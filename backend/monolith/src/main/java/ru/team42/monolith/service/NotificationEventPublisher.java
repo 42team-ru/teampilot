@@ -23,11 +23,11 @@ public class NotificationEventPublisher extends AbstractEventPublisher {
 
     private final TaskNotificationRecipientResolver recipientResolver;
 
-    public void publishDeadlineReminder(Task task) {
+    public List<Long> publishDeadlineReminder(Task task) {
         List<Long> recipients = recipientResolver.resolveRecipients(task);
         if (recipients.isEmpty()) {
             log.warn("Skipping deadline reminder for task {}: no DM recipients", task.getId());
-            return;
+            return List.of();
         }
         send(
                 KafkaTopics.BOTS_NOTIFICATIONS,
@@ -39,13 +39,14 @@ public class NotificationEventPublisher extends AbstractEventPublisher {
                         task.getTitle()
                 )
         );
+        return recipients;
     }
 
-    public void publishStaleAlert(Task task) {
+    public List<Long> publishStaleAlert(Task task) {
         List<Long> recipients = recipientResolver.resolveRecipients(task);
         if (recipients.isEmpty()) {
             log.warn("Skipping stale alert for task {}: no DM recipients", task.getId());
-            return;
+            return List.of();
         }
         send(
                 KafkaTopics.BOTS_NOTIFICATIONS,
@@ -57,6 +58,7 @@ public class NotificationEventPublisher extends AbstractEventPublisher {
                         task.getTitle()
                 )
         );
+        return recipients;
     }
 
     public void publishAchievement(User user, AchievementType achievement, long newTotalXp) {

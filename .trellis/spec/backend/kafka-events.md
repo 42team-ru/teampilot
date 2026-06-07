@@ -210,6 +210,113 @@ notificationEventPublisher.publishMeetingSummary(meeting, event);
 
 ---
 
+## Scenario: Reminder Anti-Spam Policy
+
+### 1. Scope / Trigger
+
+Triggered by scheduled deadline and stale task reminders. The bot must avoid
+spamming users or team chats, keep an auditable reminder log, and let managers
+tune reminder frequency from Telegram.
+
+### 2. Signatures
+
+**Team settings columns**:
+```text
+teams.reminder_max_per_task_per_day integer default 1
+teams.reminder_quiet_hours_start integer default 22
+teams.reminder_quiet_hours_end integer default 9
+teams.stale_reminder_hours integer default 24
+teams.deadline_reminder_minutes_before integer default 120
+```
+
+**Notification log table**:
+```text
+notification_logs(
+  id uuid,
+  batch_id uuid,
+  task_id uuid,
+  recipient_telegram_id bigint,
+  type varchar(40),
+  channel varchar(20),
+  status varchar(20),
+  sent_at timestamptz,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+```
+
+**Bot command**:
+```text
+/reminders
+/reminders max 1
+/reminders quiet 22 9
+/reminders stale 24
+/reminders deadline 120
+```
+
+**Bot -> Spring API**:
+```http
+GET /notifications/settings?chatId=-100...&telegramUserId=123
+PATCH /notifications/settings
+X-Bot-Secret: <bot secret>
+```
+
+### 3. Contracts
+
+| Setting | Range | Behavior |
+|---|---:|---|
+| `maxRemindersPerTaskPerDay` | 1..5 | Max queued reminder batches per task/type/local day. |
+| `quietHoursStart` | 0..23 | Start hour in `Europe/Moscow`; equal start/end disables quiet hours. |
+| `quietHoursEnd` | 0..23 | End hour in `Europe/Moscow`; overnight ranges are supported. |
+| `staleReminderHours` | 1..168 | Task is stale only if task update/history is older than this value. |
+| `deadlineReminderMinutesBefore` | 5..1440 | Deadline reminder becomes due after `deadline - minutes`. |
+
+`NotificationEventPublisher.publishDeadlineReminder` and `publishStaleAlert`
+return the resolved recipient list. `NotificationScheduler` records a
+`notification_logs` batch only after the Kafka notification is queued.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| Task is completed/deleted/not ACTIVE | Suppress notification |
+| Current local time is in quiet hours | Suppress notification and log at info level |
+| Daily task/type batch limit reached | Suppress notification and log at info level |
+| Stale task has recent status history or updated timestamp | Suppress stale alert |
+| Deadline reminder is not due yet | Suppress deadline alert |
+| No DM recipients resolved | Publisher returns empty recipients; scheduler does not create log rows |
+| Non-manager calls `/reminders` | Backend returns 403; bot shows manager-only message |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a task is stale for 24h, no reminder sent today -> one `STALE` batch is queued and logged.
+- Base: a deadline is due in the configured window -> one `DEADLINE` batch is queued and task `deadlineNotifiedAt` is set.
+- Bad: stale scheduler runs hourly and sends the same task every hour; this must be blocked by `notification_logs`.
+
+### 6. Tests Required
+
+- Policy suppresses reminders during quiet hours.
+- Policy suppresses second stale reminder after the daily limit.
+- `/reminders` command maps manager settings to the `/notifications/settings` API.
+- Scheduler logs only successfully queued reminder batches.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```java
+notificationEventPublisher.publishStaleAlert(task); // every hourly scheduler run
+```
+
+#### Correct
+```java
+if (notificationPolicyService.shouldSendStaleAlert(task, now)) {
+    List<Long> recipients = notificationEventPublisher.publishStaleAlert(task);
+    notificationPolicyService.recordQueued(task, BotNotificationEvent.TYPE_STALE, recipients, now);
+}
+```
+
+---
+
 ## Scenario: Live Meeting Audio Events
 
 ### 1. Scope / Trigger
