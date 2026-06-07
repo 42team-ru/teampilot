@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from infra.kafka import publish
 from infra.qdrant import is_task_duplicate, search_knowledge, search_tasks, store_knowledge
-from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, decision_chain, file_summary_chain, status_chain, task_chain
+from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, decision_chain, file_summary_chain, speaker_segments_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
     AudioNewEvent,
@@ -24,6 +24,7 @@ from models import (
     FileSummaryEvent,
     MeetingAudioChunkEvent,
     MeetingLiveResultEvent,
+    MeetingSpeakerSegment,
     MeetingStatusPreview,
     MeetingTaskPreview,
     MessageBatchEvent,
@@ -851,6 +852,40 @@ def _generate_meeting_final_summary(full_transcript: str, meeting_id: str) -> tu
         return f"Митинг {meeting_id[:8]}", "", full_transcript[-1200:]
 
 
+def _extract_meeting_speaker_segments(full_transcript: str, meeting_id: str) -> list[MeetingSpeakerSegment]:
+    text = full_transcript.strip()
+    if not text:
+        return []
+    try:
+        raw = speaker_segments_chain.invoke({"transcript": text[:12000]})
+    except Exception as e:
+        logger.error("Speaker segment extraction failed meeting_id={}: {}", meeting_id, e)
+        return []
+
+    items = raw if isinstance(raw, list) else raw.get("speakers") if isinstance(raw, dict) else []
+    if not isinstance(items, list):
+        return []
+
+    result: list[MeetingSpeakerSegment] = []
+    seen: set[str] = set()
+    for idx, item in enumerate(items, 1):
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("speaker_label") or item.get("speakerLabel") or f"SPEAKER_{idx}").strip().upper()
+        if not re.fullmatch(r"SPEAKER_\d{1,2}", label):
+            label = f"SPEAKER_{idx}"
+        if label in seen:
+            continue
+        sample = str(item.get("sample") or item.get("text") or "").strip()
+        if not sample:
+            continue
+        result.append(MeetingSpeakerSegment(speaker_label=label, sample=sample[:180]))
+        seen.add(label)
+        if len(result) >= 6:
+            break
+    return result
+
+
 def _finalize_meeting_recording(event: MeetingAudioChunkEvent) -> MeetingFinalizationResult | None:
     from infra.audio import merge_audio_chunks, to_whisper_wav
     from infra.whisper import transcribe
@@ -978,6 +1013,7 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
     extracted_events: List[Union[TaskCreateEvent, StatusChangeEvent]] = []
     summary = ""
     finalization: MeetingFinalizationResult | None = None
+    speaker_segments: list[MeetingSpeakerSegment] = []
     if should_extract and context:
         extracted_events = _process_transcript_chunk(
             context,
@@ -1006,6 +1042,7 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
             transcript = finalization.full_transcript
             context = finalization.full_transcript
             summary = finalization.summary
+            speaker_segments = _extract_meeting_speaker_segments(finalization.full_transcript, event.meeting_id)
             if event.team_id and finalization.summary:
                 store_knowledge(
                     source_id=f"meeting:{event.meeting_id}",
@@ -1073,6 +1110,7 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
             tasks=tasks,
             statuses=statuses,
             hints=hints,
+            speaker_segments=speaker_segments,
         ),
         key=event.meeting_id,
     )
