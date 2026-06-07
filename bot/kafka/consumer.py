@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from html import escape
 
@@ -13,11 +14,21 @@ from kafka.topics import (
     TOPIC_BOTS_TASKS,
     TOPIC_TASKS_STATE,
 )
+from keyboards.sync import (
+    build_sync_draft_keyboard,
+    build_sync_multi_choice_keyboard,
+    build_task_approval_keyboard,
+    build_proposal_approval_keyboard,
+)
 from models.events import (
     BotNotificationEvent,
+    BotSyncEvent,
     TaskConfirmationEvent,
     TaskStateEvent,
 )
+from services import sync_state
+
+_SYNC_TYPES = {"SYNC_PROMPT", "SYNC_DRAFT", "SYNC_SUMMARY"}
 
 _DISPLAY_TZ = timezone(timedelta(hours=3))
 _BATCH_WINDOW_SECS = 3
@@ -72,8 +83,13 @@ class EventConsumer:
                 await self._queue_state(bot, event)
 
         elif topic == TOPIC_BOTS_NOTIFICATIONS:
-            event = BotNotificationEvent.model_validate_json(payload)
-            await self._send_bot_notification(bot, event)
+            raw = json.loads(payload)
+            if raw.get("type") in _SYNC_TYPES:
+                event = BotSyncEvent.model_validate(raw)
+                await self._handle_sync_notification(bot, event)
+            else:
+                event = BotNotificationEvent.model_validate(raw)
+                await self._send_bot_notification(bot, event)
 
         elif topic == TOPIC_BOTS_TASKS:
             event = TaskConfirmationEvent.model_validate_json(payload)
@@ -98,13 +114,21 @@ class EventConsumer:
         if not events:
             return
         if len(events) == 1:
+            event = events[0]
+            if event.proposal_id:
+                kb = build_proposal_approval_keyboard(event.proposal_id)
+            elif not event.auto_confirmed and event.task_id:
+                kb = build_task_approval_keyboard(event.task_id)
+            else:
+                kb = None
             await self._send_to_recipients(
                 bot,
                 recipient_ids=[recipient_id],
-                text=self._format_task_confirmation(events[0]),
+                text=self._format_task_confirmation(event),
                 parse_mode="HTML",
+                reply_markup=kb,
                 event_name="TaskConfirmationEvent",
-                event_id=events[0].task_id,
+                event_id=event.task_id,
             )
             return
 
@@ -244,6 +268,61 @@ class EventConsumer:
             event_id=event.task_id,
         )
 
+    async def _handle_sync_notification(self, bot: Bot, event: BotSyncEvent) -> None:
+        if event.type == "SYNC_PROMPT":
+            if not event.recipient_telegram_ids:
+                logger.warning("SYNC_PROMPT has no recipient_telegram_ids, skipping")
+            else:
+                for uid in event.recipient_telegram_ids:
+                    try:
+                        await bot.send_message(
+                            chat_id=uid,
+                            text="🌆 <b>Вечерний синк</b>\n\nОпишите каждую выполненную задачу <b>отдельным сообщением</b>.\nКогда закончите — отправьте /ready",
+                            parse_mode="HTML",
+                        )
+                        sync_state.add_sync_user(uid)
+                        logger.info("Sync prompt sent to userId={}", uid)
+                    except TelegramAPIError as e:
+                        logger.warning("Failed to send sync prompt to userId={}: {}", uid, e)
+
+        elif event.type == "SYNC_DRAFT":
+            recipient = event.recipient_telegram_id
+            chat_id = event.chat_id
+            if not recipient:
+                logger.warning("SYNC_DRAFT missing recipientTelegramId, skipping")
+                return
+            matched = [i for i in event.draft if not i.is_new_task and i.task_id]
+            if len(matched) > 1:
+                user_text = escape(event.draft[0].user_text[:120]) if event.draft else ""
+                text = (
+                    f"📋 <b>Нашлось несколько подходящих задач</b> для:\n"
+                    f"<i>{user_text}</i>\n\n"
+                    "Выберите нужную или переформулируйте:"
+                )
+                kb = build_sync_multi_choice_keyboard(matched, chat_id) if chat_id else None
+            else:
+                text = _format_sync_draft(event.draft, recipient)
+                item_index = event.draft[0].index if event.draft else 1
+                kb = build_sync_draft_keyboard(chat_id, item_index=item_index) if chat_id else None
+            if not chat_id:
+                logger.warning("SYNC_DRAFT has no chatId for user={} — sending draft without confirm buttons", recipient)
+            try:
+                await bot.send_message(chat_id=recipient, text=text, parse_mode="HTML", reply_markup=kb)
+                logger.info("Sync draft sent to user={} chatId={} items={}", recipient, chat_id, len(event.draft))
+            except TelegramAPIError as e:
+                logger.warning("Failed to send sync draft to user={}: {}", recipient, e)
+
+        elif event.type == "SYNC_SUMMARY":
+            if not event.recipient_telegram_ids:
+                logger.warning("SYNC_SUMMARY has no recipients")
+                return
+            text = _format_sync_summary(event.summary)
+            for manager_id in event.recipient_telegram_ids:
+                try:
+                    await bot.send_message(chat_id=manager_id, text=text, parse_mode="HTML")
+                except TelegramAPIError as e:
+                    logger.warning("Failed to send sync summary to manager={}: {}", manager_id, e)
+
     async def _send_bot_notification(self, bot: Bot, event: BotNotificationEvent) -> None:
         task_title = escape(event.task_title or "Без названия")
         task_ref = f"\nID: <code>{escape(event.task_id)}</code>" if event.task_id else ""
@@ -281,6 +360,16 @@ class EventConsumer:
         )
 
     def _format_task_confirmation(self, event: TaskConfirmationEvent) -> str:
+        if event.proposal_id:
+            lines = [
+                "📝 <b>Сотрудник предлагает новую задачу:</b>",
+                "",
+                f"<b>{escape(event.title)}</b>",
+            ]
+            if event.assignee_username:
+                lines.append(f"👤 От: {escape(event.assignee_username)}")
+            return "\n".join(lines)
+
         prefix = "🤖 <b>Задача создана автоматически</b>" if event.auto_confirmed else "✅ <b>Задача создана</b>"
         lines = [prefix, "", f"<b>{escape(event.title)}</b>"]
 
@@ -293,7 +382,8 @@ class EventConsumer:
         if event.description:
             lines.extend(["", escape(_clip(event.description, 500))])
 
-        lines.extend(["", f"ID: <code>{escape(event.task_id)}</code>"])
+        if event.task_id:
+            lines.extend(["", f"ID: <code>{escape(event.task_id)}</code>"])
         return "\n".join(lines)
 
     async def _send_task_confirmation(self, bot: Bot, event: TaskConfirmationEvent) -> None:
@@ -343,6 +433,34 @@ class EventConsumer:
             logger.warning("{} {} has no DM recipients", event_name, event_id)
         elif delivered == 0:
             logger.warning("{} {} was not delivered to any DM recipient", event_name, event_id)
+
+
+def _format_sync_draft(items: list, recipient_id: int | None = None) -> str:
+    lines = ["📋 <b>Вечерний синк — проверь, всё ли верно:</b>", ""]
+    for item in items:
+        title = escape(item.task_title or item.user_text or "?")
+        user_text = escape(item.user_text or "")
+        if item.is_new_task:
+            lines.append(f"{item.index}. {user_text} → <i>новая задача:</i> <b>{title}</b>")
+        elif item.task_id:
+            lines.append(f"{item.index}. {user_text} → <b>{title}</b> ✅")
+        else:
+            lines.append(f"{item.index}. {user_text} → <i>не найдено</i> ❓")
+    return "\n".join(lines)
+
+
+def _format_sync_summary(summary) -> str:
+    if summary is None:
+        return "📊 <b>Вечерний синк завершён</b>"
+    responded = ", ".join(summary.responded_usernames) or "никто"
+    not_responded = ", ".join(summary.not_responded_usernames) or "все отчитались"
+    return (
+        "📊 <b>Вечерний синк — итоги</b>\n\n"
+        f"✅ Отчитались: {escape(responded)}\n"
+        f"❌ Не ответили: {escape(not_responded)}\n"
+        f"📌 Задач закрыто: {summary.tasks_completed}\n"
+        f"🕐 На аппруве у менеджера: {summary.new_tasks_pending_approval}"
+    )
 
 
 def _format_deadline(value: datetime) -> str:
