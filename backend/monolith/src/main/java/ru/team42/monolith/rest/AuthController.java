@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,11 +18,14 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
+import ru.team42.monolith.dto.request.ConfirmExtensionLoginRequest;
 import ru.team42.monolith.dto.request.LoginRequest;
 import ru.team42.monolith.dto.request.TelegramOAuthRequest;
 import ru.team42.monolith.dto.request.YouGileAuthRequest;
 import ru.team42.monolith.dto.request.YouGileBoardSelectRequest;
 import ru.team42.monolith.dto.response.AuthResponse;
+import ru.team42.monolith.dto.response.ExtensionLoginStartResponse;
+import ru.team42.monolith.dto.response.ExtensionLoginStatusResponse;
 import ru.team42.monolith.dto.response.InviteResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
 import ru.team42.monolith.dto.response.TelegramAuthResponse;
@@ -50,6 +54,37 @@ public class AuthController {
     @PostMapping("/telegram")
     public ResponseEntity<TelegramAuthResponse> telegramOAuth(@Valid @RequestBody TelegramOAuthRequest request) {
         return ResponseEntity.ok(authService.telegramOAuth(request));
+    }
+
+    @Operation(
+            summary = "Создать одноразовый код входа для расширения",
+            description = "Расширение показывает код пользователю. Пользователь отправляет /start <code> Telegram-боту."
+    )
+    @PostMapping("/extension-login")
+    public ResponseEntity<ExtensionLoginStartResponse> createExtensionLogin() {
+        return ResponseEntity.ok(authService.createExtensionLogin());
+    }
+
+    @Operation(
+            summary = "Проверить статус одноразового кода входа для расширения",
+            description = "Возвращает pending/confirmed/expired. При confirmed содержит JWT для расширения."
+    )
+    @GetMapping("/extension-login/{code}")
+    public ResponseEntity<ExtensionLoginStatusResponse> getExtensionLogin(@PathVariable String code) {
+        return ResponseEntity.ok(authService.getExtensionLogin(code));
+    }
+
+    @Operation(
+            summary = "Подтвердить одноразовый код входа из Telegram-бота",
+            description = "Вызывается только ботом с X-Bot-Secret после /start <code>."
+    )
+    @PreAuthorize("hasRole('BOT')")
+    @PostMapping("/extension-login/{code}/confirm")
+    public ResponseEntity<ExtensionLoginStatusResponse> confirmExtensionLogin(
+            @PathVariable String code,
+            @Valid @RequestBody ConfirmExtensionLoginRequest request
+    ) {
+        return ResponseEntity.ok(authService.confirmExtensionLogin(code, request));
     }
 
     @Operation(
