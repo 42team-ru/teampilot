@@ -11,6 +11,7 @@ import ru.team42.monolith.entity.User;
 import ru.team42.monolith.entity.enums.AchievementType;
 import ru.team42.monolith.event.BotNotificationEvent;
 import ru.team42.monolith.event.BotNotificationEvent.CourseInfo;
+import ru.team42.monolith.event.BotNotificationEvent.SpeakerInfo;
 import ru.team42.monolith.event.MeetingLiveResultEvent;
 
 import java.util.List;
@@ -133,6 +134,12 @@ public class NotificationEventPublisher extends AbstractEventPublisher {
                 .distinct()
                 .limit(5)
                 .toList();
+        List<SpeakerInfo> speakers = event.getSpeakerSegments() == null ? List.of() : event.getSpeakerSegments().stream()
+                .filter(Objects::nonNull)
+                .filter(speaker -> speaker.getSpeakerLabel() != null && speaker.getSample() != null)
+                .map(speaker -> new SpeakerInfo(speaker.getSpeakerLabel(), speaker.getSample()))
+                .limit(6)
+                .toList();
 
         send(
                 KafkaTopics.BOTS_NOTIFICATIONS,
@@ -143,7 +150,8 @@ public class NotificationEventPublisher extends AbstractEventPublisher {
                         event.getTitle(),
                         summary,
                         taskTitles,
-                        hints
+                        hints,
+                        speakers
                 )
         );
     }

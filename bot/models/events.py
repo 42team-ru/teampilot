@@ -147,6 +147,10 @@ class BotNotificationEvent(BackendEvent):
         default_factory=list,
         validation_alias=AliasChoices("meetingHints", "meeting_hints"),
     )
+    meeting_speakers: list[dict] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("meetingSpeakers", "meeting_speakers"),
+    )
 
 
 class SyncDraftItem(BackendEvent):
