@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/06-07-fix-webm-duration-metadata-with-ts-ebml/research/webm-duration-fixup.md","reason":"проверить что используется fix-webm-duration, не ts-ebml; durationMs передаётся корректно"}
+{"file":".trellis/tasks/06-07-fix-webm-duration-metadata-with-ts-ebml/prd.md","reason":"acceptance criteria для проверки"}

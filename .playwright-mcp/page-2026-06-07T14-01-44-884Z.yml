@@ -1,0 +1,36 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - heading "Расширения" [level=1] [ref=e9]
+      - generic [ref=e12]:
+        - button [ref=e13] [cursor=pointer]
+        - generic [ref=e14]:
+          - generic [ref=e15]: Поиск расширений
+          - searchbox "Поиск расширений" [ref=e16]
+      - generic [ref=e19]:
+        - generic [ref=e20]: Режим разработчика
+        - button "Режим разработчика" [ref=e21] [cursor=pointer]
+  - generic [ref=e24]:
+    - navigation [ref=e26]:
+      - menu [ref=e27]:
+        - generic:
+          - menuitem "Мои расширения" [ref=e28] [cursor=pointer]:
+            - generic:
+              - img
+            - text: Мои расширения
+          - menuitem "Быстрые клавиши" [ref=e29] [cursor=pointer]:
+            - generic:
+              - img
+            - text: Быстрые клавиши
+      - generic [ref=e31]:
+        - generic:
+          - img
+        - generic [ref=e32]:
+          - text: Ещё больше расширений и тем можно найти в
+          - link "интернет-магазине Chrome" [ref=e33] [cursor=pointer]:
+            - /url: https://chromewebstore.google.com/category/extensions?utm_source=ext_sidebar&hl=ru
+    - main [ref=e34]:
+      - generic [ref=e39]:
+        - text: Найдите полезные расширения и приложения в
+        - link "Интернет-магазине Chrome" [ref=e40] [cursor=pointer]:
+          - /url: https://chrome.google.com/webstore/category/extensions
