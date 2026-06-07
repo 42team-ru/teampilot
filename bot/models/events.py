@@ -126,6 +126,31 @@ class BotNotificationEvent(BackendEvent):
         default=None,
         validation_alias=AliasChoices("newLevelName", "new_level_name"),
     )
+    courses: list[dict] | None = Field(default=None)
+    meeting_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("meetingId", "meeting_id"),
+    )
+    meeting_title: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("meetingTitle", "meeting_title"),
+    )
+    meeting_summary: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("meetingSummary", "meeting_summary"),
+    )
+    meeting_tasks: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("meetingTasks", "meeting_tasks"),
+    )
+    meeting_hints: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("meetingHints", "meeting_hints"),
+    )
+    meeting_speakers: list[dict] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("meetingSpeakers", "meeting_speakers"),
+    )
 
 
 class SyncDraftItem(BackendEvent):

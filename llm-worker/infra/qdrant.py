@@ -10,6 +10,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
+    MinShould,
     PayloadSchemaType,
     PointIdsList,
     PointStruct,
@@ -148,7 +149,7 @@ def _query_task_points(
         collection_name=settings.QDRANT_COLLECTION_TASKS,
         query=vector,
         limit=max(limit * len(_TASK_VECTOR_KINDS) * 2, limit),
-        score_threshold=None,
+        score_threshold=score_threshold,
         query_filter=Filter(
             must=[FieldCondition(key="team_id", match=MatchValue(value=team_id))]
         ),
@@ -164,7 +165,11 @@ def _query_task_points(
             score_threshold,
             top_scores,
         )
-    return [p for p in all_points if score_threshold is None or p.score >= score_threshold]
+    return [
+        p
+        for p in all_points
+        if score_threshold is None or p.score >= score_threshold
+    ]
 
 
 def _aggregate_task_points(points: list, limit: int) -> list[dict]:
@@ -222,7 +227,10 @@ def _aggregate_task_points(points: list, limit: int) -> list[dict]:
 
 def ensure_collections() -> None:
     client = get_qdrant_client()
-    for name in [settings.QDRANT_COLLECTION_TASKS, settings.QDRANT_COLLECTION_KNOWLEDGE]:
+    for name in [
+        settings.QDRANT_COLLECTION_TASKS,
+        settings.QDRANT_COLLECTION_KNOWLEDGE,
+    ]:
         if not client.collection_exists(name):
             client.create_collection(
                 collection_name=name,
@@ -384,7 +392,12 @@ def store_knowledge(
                 )
             ],
         )
-        logger.debug("store_knowledge source_id={} type={} team={}", source_id, knowledge_type, team_id)
+        logger.debug(
+            "store_knowledge source_id={} type={} team={}",
+            source_id,
+            knowledge_type,
+            team_id,
+        )
     except Exception as e:
         logger.opt(exception=True).warning(
             "store_knowledge failed (source_id={}): {}",
@@ -413,20 +426,49 @@ def search_knowledge(
     team_id: str,
     knowledge_type: str | None = None,
     limit: int = 3,
+    extra_team_ids: list[str] | None = None,
 ) -> list[dict]:
     try:
         normalized = _normalize_text(query)
         if not normalized:
             return []
         vector = _embedder().embed_query(normalized)
-        must = [FieldCondition(key="team_id", match=MatchValue(value=team_id))]
-        if knowledge_type:
-            must.append(FieldCondition(key="type", match=MatchValue(value=knowledge_type)))
+
+        if extra_team_ids:
+            all_team_ids = [team_id] + list(extra_team_ids)
+            team_conditions = [
+                FieldCondition(key="team_id", match=MatchValue(value=tid))
+                for tid in all_team_ids
+            ]
+            min_should = MinShould(conditions=team_conditions, min_count=1)
+            if knowledge_type:
+                query_filter = Filter(
+                    must=[
+                        FieldCondition(
+                            key="type",
+                            match=MatchValue(value=knowledge_type),
+                        )
+                    ],
+                    min_should=min_should,
+                )
+            else:
+                query_filter = Filter(min_should=min_should)
+        else:
+            must = [FieldCondition(key="team_id", match=MatchValue(value=team_id))]
+            if knowledge_type:
+                must.append(
+                    FieldCondition(
+                        key="type",
+                        match=MatchValue(value=knowledge_type),
+                    )
+                )
+            query_filter = Filter(must=must)
+
         response = get_qdrant_client().query_points(
             collection_name=settings.QDRANT_COLLECTION_KNOWLEDGE,
             query=vector,
             limit=limit,
-            query_filter=Filter(must=must),
+            query_filter=query_filter,
         )
         results = [
             {
@@ -443,9 +485,20 @@ def search_knowledge(
             scores_summary = ", ".join(
                 f"{r['type']}:{r['score']:.3f} {r['title'][:30]!r}" for r in results
             )
-            logger.debug("knowledge search query={!r} team={} hits=[{}]", query[:80], team_id, scores_summary)
+            logger.debug(
+                "knowledge search query={!r} team={} extra_teams={} hits=[{}]",
+                query[:80],
+                team_id,
+                extra_team_ids,
+                scores_summary,
+            )
         else:
-            logger.debug("knowledge search query={!r} team={} hits=[]", query[:80], team_id)
+            logger.debug(
+                "knowledge search query={!r} team={} extra_teams={} hits=[]",
+                query[:80],
+                team_id,
+                extra_team_ids,
+            )
         return results
     except Exception as e:
         logger.opt(exception=True).warning(

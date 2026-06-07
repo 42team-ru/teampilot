@@ -25,7 +25,8 @@ public record MeetingLiveResultResponse(
         Instant finalizedAt,
         List<TaskDto> tasks,
         List<StatusDto> statuses,
-        List<String> hints
+        List<String> hints,
+        List<SpeakerSegmentDto> speakerSegments
 ) {
     public static MeetingLiveResultResponse from(MeetingLiveResultEvent event) {
         return new MeetingLiveResultResponse(
@@ -45,9 +46,10 @@ public record MeetingLiveResultResponse(
                 event.getTranscriptBucket(),
                 event.getTranscriptS3Key(),
                 event.getFinalizedAt(),
-                event.getTasks().stream().map(TaskDto::from).toList(),
-                event.getStatuses().stream().map(StatusDto::from).toList(),
-                event.getHints()
+                event.getTasks() == null ? List.of() : event.getTasks().stream().map(TaskDto::from).toList(),
+                event.getStatuses() == null ? List.of() : event.getStatuses().stream().map(StatusDto::from).toList(),
+                event.getHints() == null ? List.of() : event.getHints(),
+                event.getSpeakerSegments() == null ? List.of() : event.getSpeakerSegments().stream().map(SpeakerSegmentDto::from).toList()
         );
     }
 
@@ -83,6 +85,18 @@ public record MeetingLiveResultResponse(
                     status.getAssigneeId(),
                     status.getColumnId(),
                     status.getAction()
+            );
+        }
+    }
+
+    public record SpeakerSegmentDto(
+            String speakerLabel,
+            String sample
+    ) {
+        static SpeakerSegmentDto from(MeetingLiveResultEvent.SpeakerSegmentDto speaker) {
+            return new SpeakerSegmentDto(
+                    speaker.getSpeakerLabel(),
+                    speaker.getSample()
             );
         }
     }

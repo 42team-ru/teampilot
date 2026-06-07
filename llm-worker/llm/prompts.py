@@ -932,6 +932,39 @@ file_summary_prompt = ChatPromptTemplate.from_messages([
 ])
 
 # ==========================================
+# MEETING SPEAKER SEGMENT PROMPT
+# ==========================================
+
+SPEAKER_SEGMENTS_SYSTEM = """<role>
+You prepare a safe speaker-label review for a team meeting transcript.
+</role>
+
+<task>
+Split the transcript into a small list of anonymous speaker labels and short representative samples.
+Do NOT identify real people. Do NOT infer biometrics. Use labels SPEAKER_1, SPEAKER_2, ...
+Output ONLY a JSON array.
+</task>
+
+<rules>
+- This is NOT voice identification. Only produce anonymous labels for manual manager confirmation.
+- If the transcript already contains labels like SPEAKER_1, preserve them.
+- If the transcript contains clear dialogue cues, direct address, or alternating replies, separate likely speakers.
+- If speaker boundaries are unclear, return one item: SPEAKER_1 with the most useful sample.
+- Return at most 6 speakers.
+- sample: 1 short quote in Russian, max 180 characters, useful for a manager to recognize who spoke.
+- Never output a real person's name as speaker_label.
+</rules>
+
+<output_format>
+[{"speaker_label": "SPEAKER_1", "sample": "..."}, ...]
+</output_format>"""
+
+speaker_segments_prompt = ChatPromptTemplate.from_messages([
+    ("system", SPEAKER_SEGMENTS_SYSTEM),
+    ("human", "{transcript}"),
+])
+
+# ==========================================
 # DECISION PROMPT
 # ==========================================
 

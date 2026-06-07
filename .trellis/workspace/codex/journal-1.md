@@ -170,3 +170,36 @@ Added HTTP phase tracing, IPv4-first backend connector defaults, event-loop lag 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Fix AudioContext auto-suspend in offscreen recording
+
+**Date**: 2026-06-07
+**Task**: Fix AudioContext auto-suspend in offscreen recording
+**Branch**: `master`
+
+### Summary
+
+Diagnosed and fixed AudioContext auto-suspension in Chrome extension offscreen document. Root cause: silent oscillator only connected to MediaStreamAudioDestinationNode, not hardware output — Chrome suspended the context, making all recordings silent. Fix: added gainNode.connect(audioContext.destination) at gain=0 to create a real hardware audio path. Verified with 440Hz diagnostic tone: blob.size 483KB, tone audible in recordings.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `26b655b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

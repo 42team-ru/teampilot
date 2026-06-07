@@ -109,10 +109,26 @@ public class SyncController {
         return ResponseUtils.noContent();
     }
 
+    /** Ручной триггер из Telegram — запускает вечерний синк только для одного чата */
+    @PostMapping("/trigger-chat")
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<?> triggerSyncForChat(@RequestBody SyncChatRequest request) {
+        eveningSyncService.startSyncForChat(request.chatId(), request.telegramUserId());
+        return ResponseUtils.noContent();
+    }
+
     /** Ручной триггер закрытия окна — отправляет summary прямо сейчас */
     @PostMapping("/trigger-summary")
     public ResponseEntity<?> triggerSummary() {
         eveningSyncService.closeSyncAndSendSummary();
+        return ResponseUtils.noContent();
+    }
+
+    /** Ручной триггер из Telegram — закрывает sync-окно только для одного чата */
+    @PostMapping("/trigger-summary-chat")
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<?> triggerSummaryForChat(@RequestBody SyncChatRequest request) {
+        eveningSyncService.closeSyncAndSendSummaryForChat(request.chatId(), request.telegramUserId());
         return ResponseUtils.noContent();
     }
 
@@ -177,6 +193,11 @@ public class SyncController {
     public record SyncSubmitRequest(
             Long telegramUserId,
             String text
+    ) {}
+
+    public record SyncChatRequest(
+            Long chatId,
+            Long telegramUserId
     ) {}
 
     public record TaskActionRequest(

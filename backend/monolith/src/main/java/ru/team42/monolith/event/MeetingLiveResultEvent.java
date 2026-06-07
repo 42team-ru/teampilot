@@ -42,6 +42,8 @@ public class MeetingLiveResultEvent extends BaseEvent {
     private List<StatusDto> statuses = List.of();
     @Builder.Default
     private List<String> hints = List.of();
+    @Builder.Default
+    private List<SpeakerSegmentDto> speakerSegments = List.of();
 
     @Getter
     @Builder
@@ -69,5 +71,16 @@ public class MeetingLiveResultEvent extends BaseEvent {
         private Long assigneeId;
         private String columnId;
         private String action;
+    }
+
+    @Getter
+    @Builder
+    @Jacksonized
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class SpeakerSegmentDto {
+        private String speakerLabel;
+        private String sample;
     }
 }

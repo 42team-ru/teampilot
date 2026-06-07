@@ -40,7 +40,7 @@ The exception is `KafkaConsumerConfig` on the Spring side which uses `SNAKE_CASE
 | `tasks.state` | Spring | Bot | Task DM notifications (CREATED / UPDATED / COLUMN_CHANGED / CANCELLED) |
 | `tasks.lifecycle` | Spring | LLM Worker | Qdrant sync (CONFIRMED / UPDATED / CANCELLED) |
 | `bots.tasks` | Spring | Bot | Confirmed task DM notifications |
-| `bots.notifications` | Spring | Bot | Scheduled task DM notifications (deadline / stale) |
+| `bots.notifications` | Spring | Bot | Bot notifications (deadline / stale / course recommendation / meeting summary) |
 | `messages.batches` | Spring | LLM Worker | Batches for LLM analysis |
 | `audio.new` | Spring | LLM Worker | Uploaded audio/video file transcription |
 | `llm.tasks.create` | LLM Worker | Spring | Create task from LLM |
@@ -48,6 +48,364 @@ The exception is `KafkaConsumerConfig` on the Spring side which uses `SNAKE_CASE
 | `files.transcript_ready` | LLM Worker | Spring | File summary after audio transcription |
 | `meetings.audio.chunks` | Spring | LLM Worker | Live meeting audio chunks stored in MinIO |
 | `meetings.live.results` | LLM Worker | Spring | Live transcript/task/status/summary payload for WebSocket broadcast |
+
+---
+
+## Scenario: Team-Scoped Telegram Sync Command
+
+### 1. Scope / Trigger
+
+Triggered when a manager sends `/sync`, `/sync start`, or `/sync close` in a
+registered Telegram team chat. The bot must operate on that chat's team only;
+manager demo commands must not accidentally start or close sync for every team.
+
+### 2. Signatures
+
+**Bot command**:
+```text
+/sync
+/sync start
+/sync close
+```
+
+**Bot -> Spring API**:
+```http
+POST /sync/trigger-chat
+POST /sync/trigger-summary-chat
+X-Bot-Secret: <bot secret>
+
+{
+  "chatId": -1001234567890,
+  "telegramUserId": 123456789
+}
+```
+
+### 3. Contracts
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `chatId` | long | no | Telegram group/supergroup chat ID. Negative IDs are valid. |
+| `telegramUserId` | long | no | User who sent the command. Must be a `MANAGER` member of the team bound to `chatId`. |
+
+The backend resolves `Team` by `telegram_chat_id` first, then checks manager
+membership. The bot maps response codes to user-facing Telegram replies.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| Command sent in private chat | Bot replies that `/sync` works in a team chat |
+| `chatId` is not bound to an active team | Backend returns 404; bot says chat is not linked |
+| User is not a team manager | Backend returns 403; bot says only manager can control sync |
+| `/sync close` without active session | Backend returns 400 |
+| Valid manager starts sync | Backend opens one session for that team and publishes `SYNC_PROMPT` |
+| Valid manager closes sync | Backend sends manager summary and closes that team's session |
+
+### 5. Good/Base/Bad Cases
+
+- Good: manager sends `/sync` in the team chat -> only that team's employees receive the sync prompt.
+- Base: manager sends `/sync close` after reports -> only that team's managers receive the summary.
+- Bad: using `/sync/trigger` for the public command starts sync for all active teams and is forbidden for normal bot UX.
+
+### 6. Tests Required
+
+- Bot command parsing: empty/start aliases -> start, close aliases -> close, unknown argument -> usage.
+- API authorization: non-manager receives 403.
+- Team scoping: trigger by chat ID opens/closes only that team's session.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```python
+await sync_service.trigger_sync()  # calls /sync/trigger for all teams
+```
+
+#### Correct
+```python
+await sync_service.trigger_sync_for_chat(message.chat.id, message.from_user.id)
+```
+
+---
+
+## Scenario: Meeting Summary Telegram Notification
+
+### 1. Scope / Trigger
+
+Triggered when LLM Worker publishes a final `meetings.live.results` event and
+Spring stores the final meeting summary. The team chat should receive a compact
+post-meeting summary without creating a separate Kafka topic.
+
+### 2. Signatures
+
+**Spring subtype on `bots.notifications`**:
+```java
+BotNotificationEvent.meetingSummary(
+    Long telegramChatId,
+    String meetingId,
+    String meetingTitle,
+    String meetingSummary,
+    List<String> meetingTasks,
+    List<String> meetingHints,
+    List<SpeakerInfo> meetingSpeakers
+)
+```
+
+**Python consumer fields**:
+```python
+meeting_id: str | None = Field(alias="meetingId")
+meeting_title: str | None = Field(alias="meetingTitle")
+meeting_summary: str | None = Field(alias="meetingSummary")
+meeting_tasks: list[str] = Field(alias="meetingTasks")
+meeting_hints: list[str] = Field(alias="meetingHints")
+meeting_speakers: list[dict] = Field(alias="meetingSpeakers")
+```
+
+### 3. Contracts
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `recipientTelegramIds` | long[] | no | Contains the Telegram team chat ID, not a DM user ID. Negative chat IDs are valid. |
+| `type` | string | no | Must be `MEETING_SUMMARY`. |
+| `meetingId` | string UUID | no | Local `Meeting.id`. |
+| `meetingTitle` | string | yes | Bot falls back to "Itogi vstrechi" wording if absent. |
+| `meetingSummary` | string | no | Empty summaries are skipped by Spring. |
+| `meetingTasks` | string[] | no | Compact task-title preview, max 10 items at publisher. |
+| `meetingHints` | string[] | no | Similar-task or duplicate hints, max 5 items at publisher. |
+| `meetingSpeakers` | object[] | no | Anonymous speaker labels and sample snippets for manual mapping. |
+
+Spring stores `meetings.telegram_summary_sent_at` before publishing so repeated
+final Kafka events do not post duplicate Telegram summaries.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| `Meeting.team.telegramChatId` is null | Spring logs and skips notification |
+| Final summary is blank | Spring logs and skips notification |
+| `telegram_summary_sent_at` already set | Spring does not publish again |
+| Telegram send fails | Bot logs delivery failure; meeting remains marked as sent |
+
+### 5. Good/Base/Bad Cases
+
+- Good: final meeting result with summary and tasks -> team chat receives summary, tasks, hints, and meeting ID.
+- Base: summary exists but no tasks -> bot sends summary without task block.
+- Base: speaker snippets exist -> bot adds buttons to map `SPEAKER_N` to team members.
+- Bad: publishing from each live chunk would spam the chat; only `finalResult=true` through `MeetingService.updateFinalResult` may publish.
+
+### 6. Tests Required
+
+- Spring publisher maps `MeetingLiveResultEvent.tasks/hints` to compact strings.
+- Spring publisher maps `MeetingLiveResultEvent.speakerSegments` to `meetingSpeakers`.
+- `MeetingService.updateFinalResult` sets `telegramSummarySentAt` once.
+- Bot parses camelCase meeting fields from Spring and formats `MEETING_SUMMARY`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```java
+messagingTemplate.convertAndSend("/topic/meetings/%s/results".formatted(id), response);
+// WebSocket only: Telegram chat never receives final summary.
+```
+
+#### Correct
+```java
+meeting.setTelegramSummarySentAt(Instant.now());
+notificationEventPublisher.publishMeetingSummary(meeting, event);
+```
+
+---
+
+## Scenario: Manual Meeting Speaker Mapping Without Voice Embeddings
+
+### 1. Scope / Trigger
+
+Triggered after a final meeting transcript is available. The system may produce
+anonymous `SPEAKER_1`, `SPEAKER_2`, ... snippets for manager review, but it must
+not identify people by voice and must not store voice embeddings in Qdrant for
+the MVP.
+
+### 2. Signatures
+
+**LLM Worker -> Spring (`meetings.live.results`)**:
+```python
+class MeetingSpeakerSegment(BaseModel):
+    speaker_label: str
+    sample: str
+```
+
+**Bot callbacks**:
+```text
+msel:<meeting_uuid_hex>:<speaker_number>
+mss:<meeting_uuid_hex>:<speaker_number>:<participant_telegram_id>
+```
+
+**Bot -> Spring API**:
+```http
+GET /meetings/{meetingId}/speaker-candidates?telegramUserId=123
+POST /meetings/{meetingId}/speaker-mappings
+X-Bot-Secret: <bot secret>
+
+{
+  "speakerLabel": "SPEAKER_1",
+  "participantTelegramId": 123456789,
+  "telegramUserId": 987654321
+}
+```
+
+### 3. Contracts
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `speakerLabel` | string | no | Must be an anonymous label like `SPEAKER_1`. |
+| `sample` | string | no | Short representative quote for human recognition, not biometric data. |
+| `participantTelegramId` | long | yes | `null` means guest / not a team member. |
+| `telegramUserId` | long | no | Manager who confirms mapping. |
+
+Mappings are persisted in `meeting_speaker_mappings` with a unique
+`(meeting_id, speaker_label)` constraint, so repeated mapping edits update the
+same logical assignment.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| User is not a manager of the meeting team | Backend returns 403 |
+| Participant is not in the meeting team | Backend returns 404 |
+| Speaker extraction cannot infer boundaries | Worker may return one `SPEAKER_1` sample |
+| Manager selects guest | Mapping is stored with `team_user_id = null` |
+| Callback payload exceeds Telegram limit | Use compact `msel`/`mss` payloads with UUID hex and speaker number |
+
+### 5. Good/Base/Bad Cases
+
+- Good: final summary shows `SPEAKER_1: sample`, manager maps it to `@ivan`, mapping is saved.
+- Base: only one speaker is detected; mapping still works but does not claim automatic identity.
+- Bad: storing voiceprint vectors in Qdrant without explicit consent; this is out of MVP scope.
+
+### 6. Tests Required
+
+- Bot parses compact callback payload and restores UUID.
+- Backend allows only meeting-team managers to map speakers.
+- Backend upserts mapping by `(meeting_id, speaker_label)`.
+- Worker produces no more than 6 anonymous speaker labels.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```python
+payload = {"speaker_label": "@ivan", "voice_embedding": embedding}
+```
+
+#### Correct
+```python
+payload = {"speaker_label": "SPEAKER_1", "sample": "Я возьму /sync и напоминания"}
+```
+
+---
+
+## Scenario: Reminder Anti-Spam Policy
+
+### 1. Scope / Trigger
+
+Triggered by scheduled deadline and stale task reminders. The bot must avoid
+spamming users or team chats, keep an auditable reminder log, and let managers
+tune reminder frequency from Telegram.
+
+### 2. Signatures
+
+**Team settings columns**:
+```text
+teams.reminder_max_per_task_per_day integer default 1
+teams.reminder_quiet_hours_start integer default 22
+teams.reminder_quiet_hours_end integer default 9
+teams.stale_reminder_hours integer default 24
+teams.deadline_reminder_minutes_before integer default 120
+```
+
+**Notification log table**:
+```text
+notification_logs(
+  id uuid,
+  batch_id uuid,
+  task_id uuid,
+  recipient_telegram_id bigint,
+  type varchar(40),
+  channel varchar(20),
+  status varchar(20),
+  sent_at timestamptz,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+```
+
+**Bot command**:
+```text
+/reminders
+/reminders max 1
+/reminders quiet 22 9
+/reminders stale 24
+/reminders deadline 120
+```
+
+**Bot -> Spring API**:
+```http
+GET /notifications/settings?chatId=-100...&telegramUserId=123
+PATCH /notifications/settings
+X-Bot-Secret: <bot secret>
+```
+
+### 3. Contracts
+
+| Setting | Range | Behavior |
+|---|---:|---|
+| `maxRemindersPerTaskPerDay` | 1..5 | Max queued reminder batches per task/type/local day. |
+| `quietHoursStart` | 0..23 | Start hour in `Europe/Moscow`; equal start/end disables quiet hours. |
+| `quietHoursEnd` | 0..23 | End hour in `Europe/Moscow`; overnight ranges are supported. |
+| `staleReminderHours` | 1..168 | Task is stale only if task update/history is older than this value. |
+| `deadlineReminderMinutesBefore` | 5..1440 | Deadline reminder becomes due after `deadline - minutes`. |
+
+`NotificationEventPublisher.publishDeadlineReminder` and `publishStaleAlert`
+return the resolved recipient list. `NotificationScheduler` records a
+`notification_logs` batch only after the Kafka notification is queued.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| Task is completed/deleted/not ACTIVE | Suppress notification |
+| Current local time is in quiet hours | Suppress notification and log at info level |
+| Daily task/type batch limit reached | Suppress notification and log at info level |
+| Stale task has recent status history or updated timestamp | Suppress stale alert |
+| Deadline reminder is not due yet | Suppress deadline alert |
+| No DM recipients resolved | Publisher returns empty recipients; scheduler does not create log rows |
+| Non-manager calls `/reminders` | Backend returns 403; bot shows manager-only message |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a task is stale for 24h, no reminder sent today -> one `STALE` batch is queued and logged.
+- Base: a deadline is due in the configured window -> one `DEADLINE` batch is queued and task `deadlineNotifiedAt` is set.
+- Bad: stale scheduler runs hourly and sends the same task every hour; this must be blocked by `notification_logs`.
+
+### 6. Tests Required
+
+- Policy suppresses reminders during quiet hours.
+- Policy suppresses second stale reminder after the daily limit.
+- `/reminders` command maps manager settings to the `/notifications/settings` API.
+- Scheduler logs only successfully queued reminder batches.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```java
+notificationEventPublisher.publishStaleAlert(task); // every hourly scheduler run
+```
+
+#### Correct
+```java
+if (notificationPolicyService.shouldSendStaleAlert(task, now)) {
+    List<Long> recipients = notificationEventPublisher.publishStaleAlert(task);
+    notificationPolicyService.recordQueued(task, BotNotificationEvent.TYPE_STALE, recipients, now);
+}
+```
 
 ---
 
@@ -119,6 +477,7 @@ class MeetingLiveResultEvent(BaseModel):
     finalized_at: datetime | None = None
     tasks: list[MeetingTaskPreview] = Field(default_factory=list)
     statuses: list[MeetingStatusPreview] = Field(default_factory=list)
+    speaker_segments: list[MeetingSpeakerSegment] = Field(default_factory=list)
 ```
 
 ### 3. Contracts
@@ -168,6 +527,7 @@ than blocking all meetings globally.
 | `finalized_at` | ISO-8601 datetime | yes | When final recording/transcript were produced |
 | `tasks` | array | no | Preview of newly extracted task events |
 | `statuses` | array | no | Preview of newly extracted status-change events |
+| `speaker_segments` | array | no | Anonymous `SPEAKER_N` snippets for manual mapping. No voice embeddings or identity claims. |
 
 ### 4. Validation & Error Matrix
 
