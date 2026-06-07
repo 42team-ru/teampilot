@@ -35,18 +35,15 @@ def init_collections() -> None:
 
 
 def store_task(task_id: str, title: str, description: str, team_id: str) -> None:
-    try:
-        vector = _embedder().embed_query(f"{title}\n{description}")
-        get_qdrant_client().upsert(
-            collection_name=settings.QDRANT_COLLECTION_TASKS,
-            points=[PointStruct(
-                id=task_id,
-                vector=vector,
-                payload={"task_id": task_id, "title": title, "team_id": team_id},
-            )],
-        )
-    except Exception as e:
-        logger.opt(exception=True).warning(f"store_task failed (task_id={task_id}): {e}")
+    vector = _embedder().embed_query(f"{title}\n{description}")
+    get_qdrant_client().upsert(
+        collection_name=settings.QDRANT_COLLECTION_TASKS,
+        points=[PointStruct(
+            id=task_id,
+            vector=vector,
+            payload={"task_id": task_id, "title": title, "team_id": team_id},
+        )],
+    )
 
 
 def delete_task(task_id: str) -> None:
