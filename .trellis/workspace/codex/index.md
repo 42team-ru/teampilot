@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
-- **Last Active**: 2026-06-06
+- **Total Sessions**: 6
+- **Last Active**: 2026-06-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~172 | Active |
+| `journal-1.md` | ~205 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-06-07 | Fix AudioContext auto-suspend in offscreen recording | `26b655b` | `master` |
 | 5 | 2026-06-06 | Diagnose slow bot backend requests | `910a305` | `master` |
 | 4 | 2026-06-06 | Bot button-first panel UX | `cffc82f` | `master` |
 | 3 | 2026-06-06 | Kafka bot notifications and manager task approval | `a359e1d` | `master` |
