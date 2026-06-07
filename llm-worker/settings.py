@@ -24,15 +24,12 @@ class Settings(BaseSettings):
     EMBEDDINGS_MODEL: str = "text-embedding-3-small"
     EMBEDDINGS_DIM: int = 1536
 
-    # HTTP API
-    HTTP_PORT: int = 8001
-
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_COLLECTION_BATCHES: str = "message_batches"
     QDRANT_COLLECTION_TASKS: str = "tasks"
-    QDRANT_COLLECTION_KNOWLEDGE: str = "team_knowledge"
     DEDUP_THRESHOLD: float = 0.92
-    STATUS_HINT_THRESHOLD: float = 0.50
+    STATUS_HINT_THRESHOLD: float = 0.70
 
     # Классификатор
     CLASSIFIER_THRESHOLD: float = 0.65

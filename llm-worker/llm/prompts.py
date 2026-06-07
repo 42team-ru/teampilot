@@ -26,96 +26,77 @@ Analyze the message batch and output a single JSON object. Raw JSON only — no 
 - Cancellation: "не актуально", "отменяем", "снимаем с повестки"
 </has_status_change_true>
 
-<has_decision_true>
-A team decision is a clear, agreed-upon choice, rule, or commitment — not a task assignment and not a status report.
-- Process agreements: "решили что релиз каждую пятницу", "договорились: стендап в 10:00"
-- Technical choices: "будем использовать PostgreSQL", "выбрали YouGile"
-- Role/responsibility rules: "Вова отвечает за деплой", "QA проверяет перед мержем"
-- Policy agreements: "код-ревью обязателен для всех PR"
-NOT a decision: vague ideas ("было бы неплохо"), single-person statements without confirmation, task assignments, status reports.
-</has_decision_true>
-
 <noise>
-Greetings, emojis, lunch plans, off-topic discussion, bare links without context, "+1", single "ок" — set all flags to false.
+Greetings, emojis, lunch plans, off-topic discussion, bare links without context, "+1", single "ок" — set both flags to false.
 </noise>
 </signals>
 
 <calibration>
-- 0.95–1.00: unambiguous signal
-- 0.75–0.94: clear but indirect signal
-- 0.50–0.74: ambiguous — context is weak
-- 0.01–0.49: noise or past tense, no actual signal
+- 0.95–1.00: unambiguous signal ("нужно сделать", "взял задачу", "готово, смотри в PR")
+- 0.75–0.94: clear but indirect signal (nickname confirms without @mention, role-only assignment)
+- 0.50–0.74: ambiguous — possible task/status but context is weak
+- 0.01–0.49: noise or past tense, no actual assignment
 Use 0.01–0.05 for definite false, 0.95–0.99 for definite true.
 </calibration>
 
 <output_format>
-{{"has_task": true|false, "confidence_task": 0.0–1.0, "has_status_change": true|false, "confidence_status": 0.0–1.0, "has_decision": true|false, "confidence_decision": 0.0–1.0}}
+{{"has_task": true|false, "confidence_task": 0.0–1.0, "has_status_change": true|false, "confidence_status": 0.0–1.0}}
 </output_format>
 
 <examples>
 <example>
 <input>Кирилл, нужно до завтра сделать ручку загрузки файлов</input>
-<output>{{"has_task": true, "confidence_task": 0.97, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.97, "has_status_change": false, "confidence_status": 0.02}}</output>
 </example>
 
 <example>
 <input>Всё, авторизация готова, смотри в мастере</input>
-<output>{{"has_task": false, "confidence_task": 0.03, "has_status_change": true, "confidence_status": 0.95, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": false, "confidence_task": 0.03, "has_status_change": true, "confidence_status": 0.95}}</output>
 </example>
 
 <example>
 <input>Ок, займусь</input>
-<output>{{"has_task": true, "confidence_task": 0.75, "has_status_change": false, "confidence_status": 0.05, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.75, "has_status_change": false, "confidence_status": 0.05}}</output>
 </example>
 
 <example>
 <input>Кто идёт на обед?</input>
-<output>{{"has_task": false, "confidence_task": 0.02, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.01}}</output>
+<output>{{"has_task": false, "confidence_task": 0.02, "has_status_change": false, "confidence_status": 0.02}}</output>
 </example>
 
 <example>
 <input>Блин, надо пересоздать коллекцию qdrant  →  Вов, возьмёшь?  →  Ок, сегодня гляну</input>
-<output>{{"has_task": true, "confidence_task": 0.92, "has_status_change": false, "confidence_status": 0.05, "has_decision": false, "confidence_decision": 0.03}}</output>
+<output>{{"has_task": true, "confidence_task": 0.92, "has_status_change": false, "confidence_status": 0.05}}</output>
 </example>
 
 <example>
 <input>Закрываем таску с онбордингом, больше не актуально</input>
-<output>{{"has_task": false, "confidence_task": 0.05, "has_status_change": true, "confidence_status": 0.93, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": false, "confidence_task": 0.05, "has_status_change": true, "confidence_status": 0.93}}</output>
 </example>
 
 <example>
 <input>Есть и то и то — новая задача и статус старой</input>
-<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": true, "confidence_status": 0.85, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": true, "confidence_status": 0.85}}</output>
 </example>
 
 <example>
 <input>Мишаня, посмотришь на баг с авторизацией?</input>
-<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02}}</output>
 </example>
 
 <example>
 <input>Пусть фронт займётся этим багом.</input>
-<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02}}</output>
 </example>
 
 <example>
 <input>Кстати, нужно было бы когда-нибудь рефакторнуть этот модуль.</input>
-<output>{{"has_task": false, "confidence_task": 0.20, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
+<output>{{"has_task": false, "confidence_task": 0.20, "has_status_change": false, "confidence_status": 0.02}}</output>
 </example>
 
 <example>
 <input>Никто не займётся логами сегодня? → Ладно, возьму я.</input>
-<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": false, "confidence_status": 0.03, "has_decision": false, "confidence_decision": 0.02}}</output>
-</example>
-
-<example>
-<input>Окей, решили: релиз каждую пятницу в 18:00, Дима отвечает за деплой. Договорились!</input>
-<output>{{"has_task": false, "confidence_task": 0.03, "has_status_change": false, "confidence_status": 0.02, "has_decision": true, "confidence_decision": 0.97}}</output>
-</example>
-
-<example>
-<input>Ребята, давайте будем использовать YouGile для ведения задач. → Ок, принято.</input>
-<output>{{"has_task": false, "confidence_task": 0.04, "has_status_change": false, "confidence_status": 0.02, "has_decision": true, "confidence_decision": 0.93}}</output>
+<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": false, "confidence_status": 0.03}}</output>
 </example>
 </examples>"""
 
@@ -360,7 +341,7 @@ Role "девопс" → 1 DevOps match → @ops_sasha → telegram_id 666001. fr
 
 task_prompt = ChatPromptTemplate.from_messages([
     ("system", TASK_SYSTEM),
-    ("human", "{columns_context}\n\n{stickers_context}\n\n{knowledge_context}\n\n{messages}"),
+    ("human", "{columns_context}\n\n{stickers_context}\n\n{messages}"),
 ])
 
 # ==========================================
@@ -832,66 +813,6 @@ audio_status_prompt = ChatPromptTemplate.from_messages([
 ])
 
 # ==========================================
-# SYNC MATCH PROMPT
-# ==========================================
-
-SYNC_MATCH_SYSTEM = """<role>
-You are a task-matcher for an evening stand-up sync. A team member just wrote what they accomplished today. Your job is to match their report to their open tasks.
-</role>
-
-<task>
-Given a user's report and a list of their active tasks, return a JSON array of task IDs that are EXPLICITLY and UNAMBIGUOUSLY referenced in the report.
-First reason briefly in <thinking>...</thinking> tags, then output raw JSON only — no markdown, no prose.
-</task>
-
-<matching_rules>
-- Include a task ONLY if the user's text directly references it by name, topic, or clear paraphrase.
-- Indirect hints ("поработал над бэкендом") are NOT enough — the task must be clearly identifiable.
-- If the text mentions one specific action → return at most ONE task ID.
-- If the text is vague or generic ("сделал кое-что", "немного поработал") → return [].
-- Never guess. When in doubt — exclude.
-</matching_rules>
-
-<output_format>
-JSON array of matched task IDs. If nothing matches — return [].
-</output_format>
-
-<examples>
-<example>
-<user_report>Закрыл задачу по авторизации через JWT, всё работает</user_report>
-<active_tasks>[{{"id": "uuid-1", "title": "Реализовать авторизацию через JWT"}}, {{"id": "uuid-2", "title": "Настроить CI/CD pipeline"}}]</active_tasks>
-<thinking>"авторизации через JWT" — direct match to uuid-1. CI/CD is not mentioned.</thinking>
-<output>["uuid-1"]</output>
-</example>
-
-<example>
-<user_report>Поработал немного, устал</user_report>
-<active_tasks>[{{"id": "uuid-1", "title": "Написать тесты для модуля оплаты"}}, {{"id": "uuid-2", "title": "Обновить документацию"}}]</active_tasks>
-<thinking>Vague report — no specific task is mentioned. Cannot match anything.</thinking>
-<output>[]</output>
-</example>
-
-<example>
-<user_report>Написал юнит-тесты для модуля оплаты и обновил доки по API</user_report>
-<active_tasks>[{{"id": "uuid-1", "title": "Написать тесты для модуля оплаты"}}, {{"id": "uuid-2", "title": "Обновить документацию по API"}}]</active_tasks>
-<thinking>"тесты для модуля оплаты" → uuid-1; "обновил доки по API" → uuid-2. Both explicitly mentioned.</thinking>
-<output>["uuid-1", "uuid-2"]</output>
-</example>
-
-<example>
-<user_report>Разобрался с багом на /users/me — 500 больше не падает</user_report>
-<active_tasks>[{{"id": "uuid-1", "title": "Исправить баг с 500 на /users/me"}}, {{"id": "uuid-2", "title": "Рефакторинг модуля авторизации"}}]</active_tasks>
-<thinking>"баг на /users/me — 500 больше не падает" → direct match to uuid-1. Refactoring is not mentioned.</thinking>
-<output>["uuid-1"]</output>
-</example>
-</examples>"""
-
-sync_match_prompt = ChatPromptTemplate.from_messages([
-    ("system", SYNC_MATCH_SYSTEM),
-    ("human", "User report: {text}\n\nActive tasks:\n{tasks}"),
-])
-
-# ==========================================
 # FILE SUMMARY PROMPT
 # ==========================================
 
@@ -929,102 +850,4 @@ Output ONLY a JSON object with exactly these three keys. No markdown, no prose, 
 file_summary_prompt = ChatPromptTemplate.from_messages([
     ("system", FILE_SUMMARY_SYSTEM),
     ("human", "{transcript}"),
-])
-
-# ==========================================
-# MEETING SPEAKER SEGMENT PROMPT
-# ==========================================
-
-SPEAKER_SEGMENTS_SYSTEM = """<role>
-You prepare a safe speaker-label review for a team meeting transcript.
-</role>
-
-<task>
-Split the transcript into a small list of anonymous speaker labels and short representative samples.
-Do NOT identify real people. Do NOT infer biometrics. Use labels SPEAKER_1, SPEAKER_2, ...
-Output ONLY a JSON array.
-</task>
-
-<rules>
-- This is NOT voice identification. Only produce anonymous labels for manual manager confirmation.
-- If the transcript already contains labels like SPEAKER_1, preserve them.
-- If the transcript contains clear dialogue cues, direct address, or alternating replies, separate likely speakers.
-- If speaker boundaries are unclear, return one item: SPEAKER_1 with the most useful sample.
-- Return at most 6 speakers.
-- sample: 1 short quote in Russian, max 180 characters, useful for a manager to recognize who spoke.
-- Never output a real person's name as speaker_label.
-</rules>
-
-<output_format>
-[{"speaker_label": "SPEAKER_1", "sample": "..."}, ...]
-</output_format>"""
-
-speaker_segments_prompt = ChatPromptTemplate.from_messages([
-    ("system", SPEAKER_SEGMENTS_SYSTEM),
-    ("human", "{transcript}"),
-])
-
-# ==========================================
-# DECISION PROMPT
-# ==========================================
-
-DECISION_SYSTEM = """<role>
-You are a decision extractor for an IT team's Telegram chat. Extract only clear, agreed-upon team decisions — not tasks, not status reports, not vague ideas.
-</role>
-
-<task>
-Return a JSON array of decision objects. Raw JSON only — no markdown, no prose.
-</task>
-
-<what_is_a_decision>
-A decision is a concrete agreement, choice, or rule the team committed to together.
-
-INCLUDE:
-- Process rules: "решили проводить стендап в 10:00 каждый день"
-- Technical choices: "выбрали PostgreSQL для хранения данных"
-- Responsibility agreements: "Вова отвечает за деплой на прод"
-- Policy decisions: "код-ревью обязателен перед мержем любого PR"
-
-EXCLUDE:
-- Task assignments ("сделай X", "возьми Y") — those are tasks
-- Status reports ("сделал X", "готово") — those are statuses
-- Vague ideas without confirmation ("было бы неплохо", "можно было бы")
-- Single-person proposals without any agreement signal
-- Off-topic chat
-</what_is_a_decision>
-
-<agreement_signals>
-A real decision usually has at least one: "решили", "договорились", "принято", "ок принято", "договор", "будем", "выбираем", "договорились что", or a clear confirmation reply to a proposal.
-</agreement_signals>
-
-<output_format>
-[{{"text": "Краткое, чёткое изложение решения на русском"}}]
-Return [] if no clear decisions found.
-</output_format>
-
-<examples>
-<example>
-<input>Окей, решили: релиз каждую пятницу в 18:00. Дима отвечает за деплой.</input>
-<output>[{{"text": "Релиз проекта проводится каждую пятницу в 18:00"}}, {{"text": "Дима отвечает за деплой на прод"}}]</output>
-</example>
-
-<example>
-<input>Давайте будем использовать YouGile для ведения задач → Ок, принято.</input>
-<output>[{{"text": "Команда использует YouGile для ведения задач"}}]</output>
-</example>
-
-<example>
-<input>Было бы неплохо когда-нибудь перейти на микросервисы.</input>
-<output>[]</output>
-</example>
-
-<example>
-<input>Кирилл, сделай ручку для загрузки файлов. Готово, смотри в PR.</input>
-<output>[]</output>
-</example>
-</examples>"""
-
-decision_prompt = ChatPromptTemplate.from_messages([
-    ("system", DECISION_SYSTEM),
-    ("human", "{messages}"),
 ])
