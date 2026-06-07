@@ -56,6 +56,13 @@
 * Retry-механизм для YouGile API
 * Алерты / метрики недоступности YouGile
 
+## Decision
+
+**Context**: два места в `syncTeam` могут молча отменять задачи/колонки при недоступности YouGile.
+**Decision**: Подход A + оба места (задачи и колонки). `fetchAllTasksForBoard` и `fetchColumns`
+бросают исключение при сетевой ошибке; `syncTeam` ловит и выходит без reconcile.
+**Consequences**: минимальные изменения, нет ложных удалений при даунтайме YouGile.
+
 ## Technical Notes
 
 * Файлы: `kanban/YouGileService.java`, `service/YouGileBoardSyncService.java`
