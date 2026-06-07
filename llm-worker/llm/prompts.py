@@ -26,77 +26,96 @@ Analyze the message batch and output a single JSON object. Raw JSON only — no 
 - Cancellation: "не актуально", "отменяем", "снимаем с повестки"
 </has_status_change_true>
 
+<has_decision_true>
+A team decision is a clear, agreed-upon choice, rule, or commitment — not a task assignment and not a status report.
+- Process agreements: "решили что релиз каждую пятницу", "договорились: стендап в 10:00"
+- Technical choices: "будем использовать PostgreSQL", "выбрали YouGile"
+- Role/responsibility rules: "Вова отвечает за деплой", "QA проверяет перед мержем"
+- Policy agreements: "код-ревью обязателен для всех PR"
+NOT a decision: vague ideas ("было бы неплохо"), single-person statements without confirmation, task assignments, status reports.
+</has_decision_true>
+
 <noise>
-Greetings, emojis, lunch plans, off-topic discussion, bare links without context, "+1", single "ок" — set both flags to false.
+Greetings, emojis, lunch plans, off-topic discussion, bare links without context, "+1", single "ок" — set all flags to false.
 </noise>
 </signals>
 
 <calibration>
-- 0.95–1.00: unambiguous signal ("нужно сделать", "взял задачу", "готово, смотри в PR")
-- 0.75–0.94: clear but indirect signal (nickname confirms without @mention, role-only assignment)
-- 0.50–0.74: ambiguous — possible task/status but context is weak
-- 0.01–0.49: noise or past tense, no actual assignment
+- 0.95–1.00: unambiguous signal
+- 0.75–0.94: clear but indirect signal
+- 0.50–0.74: ambiguous — context is weak
+- 0.01–0.49: noise or past tense, no actual signal
 Use 0.01–0.05 for definite false, 0.95–0.99 for definite true.
 </calibration>
 
 <output_format>
-{{"has_task": true|false, "confidence_task": 0.0–1.0, "has_status_change": true|false, "confidence_status": 0.0–1.0}}
+{{"has_task": true|false, "confidence_task": 0.0–1.0, "has_status_change": true|false, "confidence_status": 0.0–1.0, "has_decision": true|false, "confidence_decision": 0.0–1.0}}
 </output_format>
 
 <examples>
 <example>
 <input>Кирилл, нужно до завтра сделать ручку загрузки файлов</input>
-<output>{{"has_task": true, "confidence_task": 0.97, "has_status_change": false, "confidence_status": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.97, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Всё, авторизация готова, смотри в мастере</input>
-<output>{{"has_task": false, "confidence_task": 0.03, "has_status_change": true, "confidence_status": 0.95}}</output>
+<output>{{"has_task": false, "confidence_task": 0.03, "has_status_change": true, "confidence_status": 0.95, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Ок, займусь</input>
-<output>{{"has_task": true, "confidence_task": 0.75, "has_status_change": false, "confidence_status": 0.05}}</output>
+<output>{{"has_task": true, "confidence_task": 0.75, "has_status_change": false, "confidence_status": 0.05, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Кто идёт на обед?</input>
-<output>{{"has_task": false, "confidence_task": 0.02, "has_status_change": false, "confidence_status": 0.02}}</output>
+<output>{{"has_task": false, "confidence_task": 0.02, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.01}}</output>
 </example>
 
 <example>
 <input>Блин, надо пересоздать коллекцию qdrant  →  Вов, возьмёшь?  →  Ок, сегодня гляну</input>
-<output>{{"has_task": true, "confidence_task": 0.92, "has_status_change": false, "confidence_status": 0.05}}</output>
+<output>{{"has_task": true, "confidence_task": 0.92, "has_status_change": false, "confidence_status": 0.05, "has_decision": false, "confidence_decision": 0.03}}</output>
 </example>
 
 <example>
 <input>Закрываем таску с онбордингом, больше не актуально</input>
-<output>{{"has_task": false, "confidence_task": 0.05, "has_status_change": true, "confidence_status": 0.93}}</output>
+<output>{{"has_task": false, "confidence_task": 0.05, "has_status_change": true, "confidence_status": 0.93, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Есть и то и то — новая задача и статус старой</input>
-<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": true, "confidence_status": 0.85}}</output>
+<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": true, "confidence_status": 0.85, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Мишаня, посмотришь на баг с авторизацией?</input>
-<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Пусть фронт займётся этим багом.</input>
-<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02}}</output>
+<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Кстати, нужно было бы когда-нибудь рефакторнуть этот модуль.</input>
-<output>{{"has_task": false, "confidence_task": 0.20, "has_status_change": false, "confidence_status": 0.02}}</output>
+<output>{{"has_task": false, "confidence_task": 0.20, "has_status_change": false, "confidence_status": 0.02, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
 <input>Никто не займётся логами сегодня? → Ладно, возьму я.</input>
-<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": false, "confidence_status": 0.03}}</output>
+<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": false, "confidence_status": 0.03, "has_decision": false, "confidence_decision": 0.02}}</output>
+</example>
+
+<example>
+<input>Окей, решили: релиз каждую пятницу в 18:00, Дима отвечает за деплой. Договорились!</input>
+<output>{{"has_task": false, "confidence_task": 0.03, "has_status_change": false, "confidence_status": 0.02, "has_decision": true, "confidence_decision": 0.97}}</output>
+</example>
+
+<example>
+<input>Ребята, давайте будем использовать YouGile для ведения задач. → Ок, принято.</input>
+<output>{{"has_task": false, "confidence_task": 0.04, "has_status_change": false, "confidence_status": 0.02, "has_decision": true, "confidence_decision": 0.93}}</output>
 </example>
 </examples>"""
 
@@ -341,7 +360,7 @@ Role "девопс" → 1 DevOps match → @ops_sasha → telegram_id 666001. fr
 
 task_prompt = ChatPromptTemplate.from_messages([
     ("system", TASK_SYSTEM),
-    ("human", "{columns_context}\n\n{stickers_context}\n\n{messages}"),
+    ("human", "{columns_context}\n\n{stickers_context}\n\n{knowledge_context}\n\n{messages}"),
 ])
 
 # ==========================================
@@ -850,4 +869,69 @@ Output ONLY a JSON object with exactly these three keys. No markdown, no prose, 
 file_summary_prompt = ChatPromptTemplate.from_messages([
     ("system", FILE_SUMMARY_SYSTEM),
     ("human", "{transcript}"),
+])
+
+# ==========================================
+# DECISION PROMPT
+# ==========================================
+
+DECISION_SYSTEM = """<role>
+You are a decision extractor for an IT team's Telegram chat. Extract only clear, agreed-upon team decisions — not tasks, not status reports, not vague ideas.
+</role>
+
+<task>
+Return a JSON array of decision objects. Raw JSON only — no markdown, no prose.
+</task>
+
+<what_is_a_decision>
+A decision is a concrete agreement, choice, or rule the team committed to together.
+
+INCLUDE:
+- Process rules: "решили проводить стендап в 10:00 каждый день"
+- Technical choices: "выбрали PostgreSQL для хранения данных"
+- Responsibility agreements: "Вова отвечает за деплой на прод"
+- Policy decisions: "код-ревью обязателен перед мержем любого PR"
+
+EXCLUDE:
+- Task assignments ("сделай X", "возьми Y") — those are tasks
+- Status reports ("сделал X", "готово") — those are statuses
+- Vague ideas without confirmation ("было бы неплохо", "можно было бы")
+- Single-person proposals without any agreement signal
+- Off-topic chat
+</what_is_a_decision>
+
+<agreement_signals>
+A real decision usually has at least one: "решили", "договорились", "принято", "ок принято", "договор", "будем", "выбираем", "договорились что", or a clear confirmation reply to a proposal.
+</agreement_signals>
+
+<output_format>
+[{{"text": "Краткое, чёткое изложение решения на русском"}}]
+Return [] if no clear decisions found.
+</output_format>
+
+<examples>
+<example>
+<input>Окей, решили: релиз каждую пятницу в 18:00. Дима отвечает за деплой.</input>
+<output>[{{"text": "Релиз проекта проводится каждую пятницу в 18:00"}}, {{"text": "Дима отвечает за деплой на прод"}}]</output>
+</example>
+
+<example>
+<input>Давайте будем использовать YouGile для ведения задач → Ок, принято.</input>
+<output>[{{"text": "Команда использует YouGile для ведения задач"}}]</output>
+</example>
+
+<example>
+<input>Было бы неплохо когда-нибудь перейти на микросервисы.</input>
+<output>[]</output>
+</example>
+
+<example>
+<input>Кирилл, сделай ручку для загрузки файлов. Готово, смотри в PR.</input>
+<output>[]</output>
+</example>
+</examples>"""
+
+decision_prompt = ChatPromptTemplate.from_messages([
+    ("system", DECISION_SYSTEM),
+    ("human", "{messages}"),
 ])

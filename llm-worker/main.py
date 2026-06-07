@@ -7,7 +7,7 @@ from typing import Any
 from loguru import logger
 
 from infra.kafka import BatchConsumer, flush, publish
-from infra.qdrant import delete_task, init_collections, store_task
+from infra.qdrant import delete_knowledge, delete_task, ensure_collections, store_knowledge, store_task
 from models import (
     AudioNewEvent,
     MeetingAudioChunkEvent,
@@ -57,9 +57,17 @@ def run_lifecycle_consumer(stop_event: threading.Event) -> None:
                 event = TaskLifecycleEvent.model_validate_json(msg.value().decode())
                 if event.type in ("CONFIRMED", "UPDATED"):
                     store_task(event.task_id, event.title, event.description or "", event.team_id)
+                    store_knowledge(
+                        source_id=f"task:{event.task_id}",
+                        team_id=event.team_id,
+                        knowledge_type="task_archive",
+                        content=f"{event.title}. {event.description or ''}".strip(". "),
+                        title=event.title,
+                    )
                     logger.info(f"Stored/updated task {event.task_id!r} in Qdrant")
                 elif event.type == "CANCELLED":
                     delete_task(event.task_id)
+                    delete_knowledge(f"task:{event.task_id}")
             except Exception as e:
                 logger.error(f"Error processing lifecycle event: {e}")
             finally:
@@ -144,9 +152,19 @@ def run_meeting_audio_consumer(stop_event: threading.Event) -> None:
             consumer.close()
 
 
+def _run_http_server() -> None:
+    import uvicorn
+    from api import app
+    uvicorn.run(app, host="0.0.0.0", port=settings.HTTP_PORT, log_level="warning")
+
+
 def main() -> None:
     logger.info("LLM Worker starting in Kafka Consumer mode...")
-    init_collections()
+    ensure_collections()
+
+    http_thread = threading.Thread(target=_run_http_server, daemon=True, name="http-server")
+    http_thread.start()
+    logger.info("HTTP API started on port {}", settings.HTTP_PORT)
 
     stop_event = threading.Event()
     audio_thread = threading.Thread(
