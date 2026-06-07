@@ -56,5 +56,7 @@ public class BotSyncEvent extends BaseEvent {
         private final List<String> notRespondedUsernames;
         private final int tasksCompleted;
         private final int newTasksPendingApproval;
+        /** List of "Name — reason" strings for users who submitted /excuse */
+        private final List<String> excusedEntries;
     }
 }

@@ -58,6 +58,12 @@ public class SyncEventPublisher extends AbstractEventPublisher {
     public void publishSyncSummary(List<Long> managerTelegramIds, UUID teamId,
                                    List<String> responded, List<String> notResponded,
                                    int completed, int pending) {
+        publishSyncSummary(managerTelegramIds, teamId, responded, notResponded, completed, pending, List.of());
+    }
+
+    public void publishSyncSummary(List<Long> managerTelegramIds, UUID teamId,
+                                   List<String> responded, List<String> notResponded,
+                                   int completed, int pending, List<String> excused) {
         send(KafkaTopics.BOTS_NOTIFICATIONS, teamId.toString(),
                 BotSyncEvent.builder()
                         .type(BotSyncEvent.TYPE_SYNC_SUMMARY)
@@ -67,6 +73,7 @@ public class SyncEventPublisher extends AbstractEventPublisher {
                                 .notRespondedUsernames(notResponded)
                                 .tasksCompleted(completed)
                                 .newTasksPendingApproval(pending)
+                                .excusedEntries(excused)
                                 .build())
                         .build());
         log.info("Sync summary sent to {} manager(s) for team={}", managerTelegramIds.size(), teamId);

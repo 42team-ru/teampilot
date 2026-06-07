@@ -158,6 +158,10 @@ class SyncSummary(BackendEvent):
         default=0,
         validation_alias=AliasChoices("newTasksPendingApproval", "new_tasks_pending_approval"),
     )
+    excused_entries: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("excusedEntries", "excused_entries"),
+    )
 
 
 class BotSyncEvent(BackendEvent):

@@ -3,11 +3,18 @@ package ru.team42.monolith.rest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.service.EveningSyncService;
+import ru.team42.monolith.service.ExcuseService;
 import ru.team42.monolith.service.SyncStateService;
+import ru.team42.monolith.repository.TeamUserRepository;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/sync")
@@ -16,6 +23,8 @@ public class SyncController {
 
     private final EveningSyncService eveningSyncService;
     private final SyncStateService syncStateService;
+    private final ExcuseService excuseService;
+    private final TeamUserRepository teamUserRepository;
 
     /**
      * Бот вызывает этот endpoint когда пользователь нажимает кнопки в вечернем синке.
@@ -106,6 +115,55 @@ public class SyncController {
         return ResponseUtils.noContent();
     }
 
+    /** Возвращает список команд пользователя для выбора при /excuse */
+    @GetMapping("/excuse/teams")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getExcuseTeams(@RequestParam Long telegramUserId) {
+        List<Map<String, String>> teams = teamUserRepository.findAllByUserTelegramIdWithTeam(telegramUserId)
+                .stream()
+                .map(tu -> {
+                    String name = tu.getTeam().getChatTitle() != null
+                            ? tu.getTeam().getChatTitle()
+                            : tu.getTeam().getId().toString();
+                    return Map.of("teamId", tu.getTeam().getId().toString(), "teamName", name);
+                })
+                .toList();
+        return ResponseUtils.ok(teams);
+    }
+
+    /** Пользователь отписывается от вечернего синка для одной или всех команд */
+    @PostMapping("/excuse")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> excuse(@RequestBody ExcuseRequest request) {
+        if (request.teamId() != null) {
+            excuseService.excuse(request.telegramUserId(), request.teamId(), request.reason());
+            // If sync is currently active for this team, mark the user as EXCUSED
+            syncStateService.getSession(request.teamId()).ifPresent(session -> {
+                if (session.userStates().containsKey(request.telegramUserId())) {
+                    syncStateService.updateUserStatus(request.teamId(), request.telegramUserId(),
+                            SyncStateService.UserSyncStatus.EXCUSED);
+                }
+            });
+        } else {
+            // excuse from all teams
+            List<UUID> teamIds = teamUserRepository.findAllByUserTelegramIdWithTeam(request.telegramUserId())
+                    .stream()
+                    .map(tu -> tu.getTeam().getId())
+                    .toList();
+            excuseService.excuseAllTeams(request.telegramUserId(), teamIds, request.reason());
+            // Mark user EXCUSED in all active sessions
+            for (UUID teamId : teamIds) {
+                syncStateService.getSession(teamId).ifPresent(session -> {
+                    if (session.userStates().containsKey(request.telegramUserId())) {
+                        syncStateService.updateUserStatus(teamId, request.telegramUserId(),
+                                SyncStateService.UserSyncStatus.EXCUSED);
+                    }
+                });
+            }
+        }
+        return ResponseUtils.noContent();
+    }
+
     public record SyncConfirmRequest(
             Long chatId,
             Long telegramUserId,
@@ -128,5 +186,11 @@ public class SyncController {
     public record ProposalActionRequest(
             String proposalId,
             Long telegramUserId
+    ) {}
+
+    public record ExcuseRequest(
+            Long telegramUserId,
+            UUID teamId,
+            String reason
     ) {}
 }
