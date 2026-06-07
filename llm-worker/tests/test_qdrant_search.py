@@ -138,6 +138,40 @@ def test_duplicate_detection_uses_dedup_threshold(monkeypatch):
     assert client.query_calls[0]["score_threshold"] == settings.DEDUP_THRESHOLD
 
 
+def test_search_knowledge_includes_extra_team_ids(monkeypatch):
+    client = FakeClient(points=[
+        SimpleNamespace(
+            score=0.91,
+            payload={
+                "source_id": "course-1",
+                "title": "Python",
+                "content": "Python basics",
+                "team_id": "GLOBAL",
+                "type": "course",
+            },
+        ),
+    ])
+    monkeypatch.setattr(qdrant, "_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(qdrant, "get_qdrant_client", lambda: client)
+
+    result = qdrant.search_knowledge(
+        "python",
+        "team-1",
+        knowledge_type="course",
+        extra_team_ids=["GLOBAL"],
+        limit=5,
+    )
+
+    query_filter = client.query_calls[0]["query_filter"]
+    conditions = query_filter.min_should.conditions
+
+    assert [item["source_id"] for item in result] == ["course-1"]
+    assert query_filter.min_should.min_count == 1
+    assert {condition.match.value for condition in conditions} == {"team-1", "GLOBAL"}
+    assert query_filter.must[0].key == "type"
+    assert query_filter.must[0].match.value == "course"
+
+
 def test_format_task_candidates_includes_retrieval_context():
     from processor import format_task_candidates
 

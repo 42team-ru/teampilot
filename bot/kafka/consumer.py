@@ -355,6 +355,10 @@ class EventConsumer:
                 f"🎉 Ты достиг уровня <b>{level_name}</b>!\n"
                 f"⭐ XP: {new_total_xp}"
             )
+        elif event.type == "COURSE_RECOMMENDATION":
+            text = _format_course_recommendation(event)
+        elif event.type == "MEETING_SUMMARY":
+            text = _format_meeting_summary(event)
         else:
             text = (
                 "🔔 <b>Уведомление по задаче</b>\n\n"
@@ -509,3 +513,56 @@ def _unique_ids(values: list[int]) -> list[int]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def _format_course_recommendation(event: "BotNotificationEvent") -> str:
+    task_title = escape(event.task_title or "Без названия")
+    lines = [
+        f"<b>Задача просрочена: «{task_title}»</b>",
+        "",
+        "Вот материалы, которые помогут в будущем:",
+        "",
+    ]
+    courses = event.courses or []
+    for i, course in enumerate(courses, 1):
+        title = escape(course.get("title") or "Курс")
+        url = escape(course.get("url") or "")
+        description = course.get("description") or ""
+        desc_preview = escape(description[:100]) if description else ""
+        lines.append(f"{i}. <b>{title}</b>")
+        if desc_preview:
+            lines.append(f"   {desc_preview}")
+        if url:
+            lines.append(f"   🔗 {url}")
+        lines.append("")
+    if not courses:
+        lines.append("Подходящих курсов пока не найдено.")
+    return "\n".join(lines)
+
+
+def _format_meeting_summary(event: "BotNotificationEvent") -> str:
+    title = escape(event.meeting_title or "Итоги встречи")
+    summary = escape(_clip(event.meeting_summary or "Summary не сформировано.", 1800))
+    lines = [
+        "📝 <b>Summary встречи</b>",
+        "",
+        f"<b>{title}</b>",
+        "",
+        summary,
+    ]
+
+    tasks = [task for task in event.meeting_tasks if task]
+    if tasks:
+        lines.extend(["", "<b>Найденные задачи:</b>"])
+        for task in tasks[:10]:
+            lines.append(f"• {escape(_clip(task, 140))}")
+
+    hints = [hint for hint in event.meeting_hints if hint]
+    if hints:
+        lines.extend(["", "<b>Подсказки:</b>"])
+        for hint in hints[:5]:
+            lines.append(f"• {escape(_clip(hint, 160))}")
+
+    if event.meeting_id:
+        lines.extend(["", f"Meeting ID: <code>{escape(event.meeting_id)}</code>"])
+    return "\n".join(lines)

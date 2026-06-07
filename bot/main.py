@@ -13,6 +13,7 @@ from loguru import logger
 
 from config import settings
 from handlers.admin import router as admin_router
+from handlers.courses import router as courses_router
 from handlers.knowledge import router as knowledge_router
 from handlers.auth import router as auth_router
 from handlers.files import router as files_router
@@ -149,6 +150,7 @@ async def main() -> None:
     dp.include_router(registration_router)
     dp.include_router(setup_router)
     dp.include_router(admin_router)
+    dp.include_router(courses_router)
     dp.include_router(manager_router)
     dp.include_router(member_router)
     dp.include_router(auth_router)
