@@ -10,17 +10,69 @@ import SettingsScreen from '../../components/popup/SettingsScreen'
 import PostMeetingScreen from '../../components/post-meeting/PostMeetingScreen'
 import { useAuthSession } from '../../hooks/useAuthSession'
 import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
+import { getMicSettings } from '../../services/micSettings'
+import {
+  clearPendingRecordingTarget,
+  getPendingRecordingTarget,
+  openMicrophonePermissionPage,
+  setPendingRecordingTarget,
+  type PendingRecordingTarget,
+} from '../../services/micPermission'
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const auth = useAuthSession()
-  const { state, startRecording, stopRecording, pauseRecording, resumeRecording, toggleMic, resetRecording } =
+  const {
+    state,
+    ensureMicrophonePermission,
+    startRecording,
+    stopRecording,
+    pauseRecording,
+    resumeRecording,
+    toggleMic,
+    resetRecording,
+  } =
     useRecordingState()
 
+  const buildRecordingTarget = async (): Promise<PendingRecordingTarget | null> => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.id) return null
+
+    const micSettings = await getMicSettings()
+    return {
+      tabId: tab.id,
+      tabUrl: tab.url,
+      tabTitle: tab.title,
+      micDeviceId: micSettings?.deviceId,
+    }
+  }
+
   const handleStart = async () => {
+    const target = await buildRecordingTarget()
+    if (!target) return
+
+    await setPendingRecordingTarget(target)
+    const micReady = await ensureMicrophonePermission()
+    if (!micReady) return
+
     const session = auth.session ?? (await auth.login())
     if (!session) return
-    await startRecording()
+
+    try {
+      await startRecording(target)
+    } catch (e) {
+      console.warn('Failed to start recording:', e)
+    } finally {
+      await clearPendingRecordingTarget().catch(() => {})
+    }
+  }
+
+  const handleRetry = async () => {
+    const target = (await getPendingRecordingTarget()) ?? (await buildRecordingTarget())
+    if (!target) return
+
+    await setPendingRecordingTarget(target)
+    await openMicrophonePermissionPage()
   }
 
   if (!auth.session) {
@@ -78,7 +130,7 @@ export default function App() {
       return (
         <ErrorScreen
           error={state.error ?? 'Неизвестная ошибка'}
-          onRetry={handleStart}
+          onRetry={handleRetry}
         />
       )
     case 'done':

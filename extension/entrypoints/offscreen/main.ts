@@ -72,77 +72,77 @@ async function startCapture(
   await stopCapture();
 
   currentMeetingId = meetingId;
-  currentMimeType = resolveMimeType();
-  audioContext = new AudioContext();
-
-  // Resume immediately before any source connections — new AudioContexts start
-  // suspended in extension contexts and must be explicitly resumed.
-  if (audioContext.state === "suspended") {
-    await audioContext.resume();
-  }
-
-  const destination = audioContext.createMediaStreamDestination();
-
-  analyser = audioContext.createAnalyser();
-  analyser.fftSize = 256;
-
-  // AnalyserNode needs a downstream connection to stay active in Chrome's audio graph
-  // (nodes with no path to the destination may be de-activated). Route through a
-  // silent gain node into destination so the analyser is always in the pull chain.
-  const analyserSink = audioContext.createGain();
-  analyserSink.gain.value = 0;
-  analyser.connect(analyserSink);
-  analyserSink.connect(destination);
-
-  // Silent oscillator keeps the AudioContext from auto-suspending between chunks.
   try {
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    gainNode.gain.value = 0;
-    oscillator.connect(gainNode);
-    gainNode.connect(destination);
-    gainNode.connect(audioContext.destination); // hardware path keeps Chrome from suspending
-    oscillator.start();
-  } catch (oscErr) {
-    console.warn("[offscreen] Failed to start silent oscillator:", oscErr);
-  }
+    currentMimeType = resolveMimeType();
+    audioContext = new AudioContext();
 
-  tabStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId },
-    } as unknown as MediaTrackConstraints,
-    video: false,
-  });
+    // Resume immediately before any source connections — new AudioContexts start
+    // suspended in extension contexts and must be explicitly resumed.
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
 
-  const tabTracks = tabStream.getAudioTracks();
-  console.log(
-    "[offscreen] Tab audio tracks:",
-    tabTracks.map((t) => ({
-      readyState: t.readyState,
-      muted: t.muted,
-      enabled: t.enabled,
-      label: t.label,
-    })),
-  );
-  console.log("[offscreen] Tab track settings:", tabTracks[0]?.getSettings());
+    const destination = audioContext.createMediaStreamDestination();
 
-  if (
-    tabTracks.length === 0 ||
-    tabTracks.every((t) => t.readyState === "ended")
-  ) {
-    console.error(
-      "[offscreen] Tab capture returned no live tracks — stream ID may have expired",
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+
+    // AnalyserNode needs a downstream connection to stay active in Chrome's audio graph
+    // (nodes with no path to the destination may be de-activated). Route through a
+    // silent gain node into destination so the analyser is always in the pull chain.
+    const analyserSink = audioContext.createGain();
+    analyserSink.gain.value = 0;
+    analyser.connect(analyserSink);
+    analyserSink.connect(destination);
+
+    // Silent oscillator keeps the AudioContext from auto-suspending between chunks.
+    try {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 0;
+      oscillator.connect(gainNode);
+      gainNode.connect(destination);
+      gainNode.connect(audioContext.destination); // hardware path keeps Chrome from suspending
+      oscillator.start();
+    } catch (oscErr) {
+      console.warn("[offscreen] Failed to start silent oscillator:", oscErr);
+    }
+
+    tabStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId },
+      } as unknown as MediaTrackConstraints,
+      video: false,
+    });
+
+    const tabTracks = tabStream.getAudioTracks();
+    console.log(
+      "[offscreen] Tab audio tracks:",
+      tabTracks.map((t) => ({
+        readyState: t.readyState,
+        muted: t.muted,
+        enabled: t.enabled,
+        label: t.label,
+      })),
     );
-  }
+    console.log("[offscreen] Tab track settings:", tabTracks[0]?.getSettings());
 
-  const tabSource = audioContext.createMediaStreamSource(tabStream);
-  tabSource.connect(destination);
-  tabSource.connect(analyser);
-  // Route tab audio to hardware output so the user hears the tab during recording,
-  // and so the AudioContext has a real hardware sink that prevents auto-suspend.
-  tabSource.connect(audioContext.destination);
+    if (
+      tabTracks.length === 0 ||
+      tabTracks.every((t) => t.readyState === "ended")
+    ) {
+      throw new Error(
+        "[offscreen] Tab capture returned no live tracks — stream ID may have expired",
+      );
+    }
 
-  try {
+    const tabSource = audioContext.createMediaStreamSource(tabStream);
+    tabSource.connect(destination);
+    tabSource.connect(analyser);
+    // Route tab audio to hardware output so the user hears the tab during recording,
+    // and so the AudioContext has a real hardware sink that prevents auto-suspend.
+    tabSource.connect(audioContext.destination);
+
     const audioConstraints: MediaTrackConstraints = micDeviceId
       ? { deviceId: { exact: micDeviceId } }
       : {};
@@ -164,20 +164,22 @@ async function startCapture(
     const micSource = audioContext.createMediaStreamSource(micStream);
     micSource.connect(destination);
     micSource.connect(analyser);
-  } catch (micErr) {
-    console.warn("[offscreen] Failed to capture microphone:", micErr);
-    micStream = null;
+
+    mixedStream = destination.stream;
+    running = true;
+    paused = false;
+    stopping = false;
+    finalSent = false;
+
+    startLevelReporting();
+
+    loopPromise = runChunkLoop();
+  } catch (error) {
+    mixedStream = null;
+    finalSent = true;
+    await stopCapture();
+    throw error;
   }
-
-  mixedStream = destination.stream;
-  running = true;
-  paused = false;
-  stopping = false;
-  finalSent = false;
-
-  startLevelReporting();
-
-  loopPromise = runChunkLoop();
 }
 
 function startLevelReporting() {
@@ -217,7 +219,17 @@ async function resumeCapture() {
 }
 
 async function stopCapture() {
-  if (!running && !mixedStream) return;
+  if (
+    !running &&
+    !mixedStream &&
+    !audioContext &&
+    !tabStream &&
+    !micStream &&
+    !currentRecorder &&
+    !currentMeetingId
+  ) {
+    return;
+  }
 
   stopping = true;
   paused = false;
@@ -280,7 +292,7 @@ async function recordSingleChunk(durationMs: number): Promise<Blob> {
       `[offscreen] AudioContext is '${audioContext.state}' before chunk — resuming`,
     );
     await audioContext.resume();
-    if (audioContext.state !== "running") {
+    if (String(audioContext.state) !== "running") {
       console.error(
         "[offscreen] AudioContext failed to resume — chunk will be silent",
       );

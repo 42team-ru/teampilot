@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { type RecordingState, defaultRecordingState } from '../types/recording'
 import { getRecordingState, watchRecordingState } from '../services/storage'
 import { sendToBackground } from '../services/messages'
-import { getMicSettings } from '../services/micSettings'
+import type { PendingRecordingTarget } from '../services/micPermission'
 
 export function useRecordingState() {
   const [state, setState] = useState<RecordingState>(defaultRecordingState())
@@ -13,26 +13,32 @@ export function useRecordingState() {
     return watchRecordingState(setState)
   }, [])
 
-  const startRecording = useCallback(async () => {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
-    const tab = tabs[0]
-    if (!tab?.id) return
-
+  const ensureMicrophonePermission = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach((track) => track.stop())
+      return true
     } catch (err) {
-      console.warn('Microphone permission check failed or denied:', err)
+      const message = err instanceof Error ? err.message : String(err)
+      await sendToBackground({
+        type: 'RECORDING_ERROR',
+        error: `Не удалось получить доступ к микрофону: ${message}`,
+      }).catch(() => {})
+      return false
     }
+  }, [])
 
-    const micSettings = await getMicSettings()
-    await sendToBackground({
+  const startRecording = useCallback(async (target: PendingRecordingTarget) => {
+    const response = await sendToBackground({
       type: 'START_RECORDING',
-      tabId: tab.id,
-      tabUrl: tab.url,
-      tabTitle: tab.title,
-      micDeviceId: micSettings?.deviceId,
+      tabId: target.tabId,
+      tabUrl: target.tabUrl,
+      tabTitle: target.tabTitle,
+      micDeviceId: target.micDeviceId,
     })
+    if (response && typeof response === 'object' && 'error' in response) {
+      throw new Error(String((response as { error?: unknown }).error ?? 'Failed to start recording'))
+    }
   }, [])
 
   const stopRecording = useCallback(() => sendToBackground({ type: 'STOP_RECORDING' }), [])
@@ -41,5 +47,14 @@ export function useRecordingState() {
   const toggleMic = useCallback(() => sendToBackground({ type: 'TOGGLE_MIC' }), [])
   const resetRecording = useCallback(() => sendToBackground({ type: 'RESET_RECORDING' }), [])
 
-  return { state, startRecording, stopRecording, pauseRecording, resumeRecording, toggleMic, resetRecording }
+  return {
+    state,
+    ensureMicrophonePermission,
+    startRecording,
+    stopRecording,
+    pauseRecording,
+    resumeRecording,
+    toggleMic,
+    resetRecording,
+  }
 }

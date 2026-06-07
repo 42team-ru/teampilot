@@ -1,5 +1,9 @@
 import { getMeetingByUrl } from '../services/api'
 import { requireAuthSession } from '../services/auth'
+import {
+  clearPendingRecordingTarget,
+  getPendingRecordingTarget,
+} from '../services/micPermission'
 import { connectMeetingSocket, disconnectMeetingSocket, sendMeetingChunk } from '../services/meetingSocket'
 import {
   applyMeetingLiveResult,
@@ -20,6 +24,7 @@ const BACKGROUND_MESSAGE_TYPES = new Set([
   'ENSURE_OFFSCREEN',
   'AUDIO_CHUNK',
   'RECORDING_ERROR',
+  'MIC_PERMISSION_GRANTED',
   'REQUEST_TEST_AUDIO',
   'AUDIO_LEVEL',
 ])
@@ -30,10 +35,10 @@ export default defineBackground(() => {
     // Keeps the MV3 service worker warm while audio is streaming.
   })
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!isBackgroundMessage(msg)) return false
 
-    handleMessage(msg).then(sendResponse).catch(async (e: unknown) => {
+    handleMessage(msg, sender).then(sendResponse).catch(async (e: unknown) => {
       const error = e instanceof Error ? e.message : String(e)
       await updateState({ status: 'error', error })
       sendResponse({ error })
@@ -46,7 +51,7 @@ export default defineBackground(() => {
     await setRecordingState({ ...current, ...patch })
   }
 
-  async function handleMessage(msg: ExtMessage) {
+  async function handleMessage(msg: ExtMessage, sender: chrome.runtime.MessageSender) {
     switch (msg.type) {
       case 'START_RECORDING':
         await startRecording(
@@ -87,6 +92,10 @@ export default defineBackground(() => {
 
       case 'RECORDING_ERROR':
         await updateState({ status: 'error', error: msg.error })
+        return { ok: true }
+
+      case 'MIC_PERMISSION_GRANTED':
+        await handleMicPermissionGranted(sender)
         return { ok: true }
 
       case 'REQUEST_TEST_AUDIO':
@@ -162,6 +171,7 @@ export default defineBackground(() => {
     const streamId = await getTabStreamId(tabId)
 
     let success = false
+    let fatalError: Error | null = null
     for (let i = 0; i < 10; i++) {
       try {
         const response = (await chrome.runtime.sendMessage({
@@ -174,10 +184,18 @@ export default defineBackground(() => {
           success = true
           break
         }
+        if (response?.error) {
+          fatalError = new Error(response.error)
+          break
+        }
       } catch (e) {
         // ignore and retry
       }
       await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+
+    if (fatalError) {
+      throw fatalError
     }
 
     if (!success) {
@@ -229,6 +247,28 @@ export default defineBackground(() => {
     await new Promise((resolve) => setTimeout(resolve, 3000))
     await disconnectMeetingSocket()
     await updateState({ status: 'done' })
+  }
+
+  async function handleMicPermissionGranted(sender: chrome.runtime.MessageSender) {
+    const pending = await getPendingRecordingTarget()
+    if (!pending) {
+      throw new Error('Нет ожидающего старта записи после разрешения микрофона')
+    }
+
+    if (sender.tab?.id !== undefined) {
+      chrome.tabs.remove(sender.tab.id).catch(() => {})
+    }
+
+    try {
+      await startRecording(
+        pending.tabId,
+        pending.tabUrl ?? '',
+        pending.tabTitle ?? '',
+        pending.micDeviceId
+      )
+    } finally {
+      await clearPendingRecordingTarget()
+    }
   }
 
   async function publishChunk(msg: Extract<ExtMessage, { type: 'AUDIO_CHUNK' }>) {
