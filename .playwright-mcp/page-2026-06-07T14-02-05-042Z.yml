@@ -1,0 +1,51 @@
+- generic [active] [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - heading "Расширения" [level=1] [ref=e9]
+      - generic [ref=e12]:
+        - button [ref=e13] [cursor=pointer]
+        - generic [ref=e14]:
+          - generic [ref=e15]: Поиск расширений
+          - searchbox "Поиск расширений" [ref=e16]
+      - generic [ref=e19]:
+        - generic [ref=e20]: Режим разработчика
+        - button "Режим разработчика" [pressed] [ref=e21] [cursor=pointer]
+    - generic [ref=e42]:
+      - button "Загрузить распакованное расширение" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]:
+          - generic: Загрузить распакованное расширение
+      - button "Упаковать расширение" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]:
+          - generic: Упаковать расширение
+      - button "Обновить" [ref=e47] [cursor=pointer]:
+        - generic [ref=e48]:
+          - generic: Обновить
+  - generic [ref=e24]:
+    - navigation [ref=e26]:
+      - menu [ref=e27]:
+        - generic:
+          - menuitem "Мои расширения" [ref=e28] [cursor=pointer]:
+            - generic:
+              - img
+            - text: Мои расширения
+          - menuitem "Быстрые клавиши" [ref=e29] [cursor=pointer]:
+            - generic:
+              - img
+            - text: Быстрые клавиши
+      - generic [ref=e51]:
+        - text: Вы создаете расширения? Следите за новостями в документации для разработчиков расширений Chrome на странице
+        - link "Что нового" [ref=e52] [cursor=pointer]:
+          - /url: https://developer.chrome.com/docs/extensions/whats-new?utm_source=ext_sidebar&hl=ru
+        - text: .
+      - generic [ref=e31]:
+        - generic:
+          - img
+        - generic [ref=e32]:
+          - text: Ещё больше расширений и тем можно найти в
+          - link "интернет-магазине Chrome" [ref=e53] [cursor=pointer]:
+            - /url: https://chromewebstore.google.com/category/extensions?utm_source=ext_sidebar&hl=ru
+    - main [ref=e34]:
+      - generic [ref=e39]:
+        - text: Найдите полезные расширения и приложения в
+        - link "Интернет-магазине Chrome" [ref=e40] [cursor=pointer]:
+          - /url: https://chrome.google.com/webstore/category/extensions

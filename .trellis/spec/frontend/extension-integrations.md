@@ -19,7 +19,7 @@
 - STOMP connect endpoint: `/ws`
 - STOMP send destination: `/app/meetings/{meetingId}/chunks`
 - STOMP subscribe destination: `/topic/meetings/{meetingId}/results`
-- Extension audio chunk cadence: record/send one standalone WebM chunk about every `15_000 ms`.
+- Extension audio chunk cadence: record/send one standalone WebM chunk about every `30_000 ms`.
 - Backend WebSocket/STOMP text message limit: must be high enough for base64 JSON audio chunks; current target is `4 MiB`.
 
 ### 3. Contracts

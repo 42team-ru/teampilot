@@ -9,6 +9,7 @@ export function useRecordingState() {
 
   useEffect(() => {
     getRecordingState().then(setState)
+    sendToBackground({ type: 'ENSURE_OFFSCREEN' }).catch(() => {})
     return watchRecordingState(setState)
   }, [])
 
@@ -16,6 +17,14 @@ export function useRecordingState() {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
     const tab = tabs[0]
     if (!tab?.id) return
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((track) => track.stop())
+    } catch (err) {
+      console.warn('Microphone permission check failed or denied:', err)
+    }
+
     const micSettings = await getMicSettings()
     await sendToBackground({
       type: 'START_RECORDING',
@@ -30,6 +39,7 @@ export function useRecordingState() {
   const pauseRecording = useCallback(() => sendToBackground({ type: 'PAUSE_RECORDING' }), [])
   const resumeRecording = useCallback(() => sendToBackground({ type: 'RESUME_RECORDING' }), [])
   const toggleMic = useCallback(() => sendToBackground({ type: 'TOGGLE_MIC' }), [])
+  const resetRecording = useCallback(() => sendToBackground({ type: 'RESET_RECORDING' }), [])
 
-  return { state, startRecording, stopRecording, pauseRecording, resumeRecording, toggleMic }
+  return { state, startRecording, stopRecording, pauseRecording, resumeRecording, toggleMic, resetRecording }
 }

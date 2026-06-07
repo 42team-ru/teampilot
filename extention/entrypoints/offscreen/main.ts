@@ -65,7 +65,7 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
 
   currentMeetingId = meetingId
   currentMimeType = resolveMimeType()
-  audioContext = new AudioContext({ sampleRate: 48000 })
+  audioContext = new AudioContext()
 
   // Resume immediately before any source connections — new AudioContexts start
   // suspended in extension contexts and must be explicitly resumed.
@@ -113,6 +113,7 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
     enabled: t.enabled,
     label: t.label,
   })))
+  console.log('[offscreen] Tab track settings:', tabTracks[0]?.getSettings())
 
   if (tabTracks.length === 0 || tabTracks.every((t) => t.readyState === 'ended')) {
     console.error('[offscreen] Tab capture returned no live tracks — stream ID may have expired')
@@ -121,6 +122,9 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
   const tabSource = audioContext.createMediaStreamSource(tabStream)
   tabSource.connect(destination)
   tabSource.connect(analyser)
+  // Route tab audio to hardware output so the user hears the tab during recording,
+  // and so the AudioContext has a real hardware sink that prevents auto-suspend.
+  tabSource.connect(audioContext.destination)
 
   try {
     const audioConstraints: MediaTrackConstraints = micDeviceId
@@ -137,6 +141,7 @@ async function startCapture(streamId: string, meetingId: string, micDeviceId?: s
       enabled: t.enabled,
       label: t.label,
     })))
+    console.log('[offscreen] Mic track settings:', micTracks[0]?.getSettings())
     const micSource = audioContext.createMediaStreamSource(micStream)
     micSource.connect(destination)
     micSource.connect(analyser)
@@ -164,6 +169,7 @@ function startLevelReporting() {
     analyser.getByteFrequencyData(buf)
     const sum = buf.reduce((a, b) => a + b, 0)
     const level = Math.round((sum / buf.length / 255) * 100)
+    console.log(`[offscreen] ctx=${audioContext?.state ?? 'null'} level=${level}`)
     chrome.runtime.sendMessage({ type: 'AUDIO_LEVEL', level } satisfies ExtMessage).catch(() => {})
   }, LEVEL_INTERVAL_MS)
 }
@@ -239,9 +245,21 @@ async function runChunkLoop() {
   }
 }
 
-function recordSingleChunk(durationMs: number): Promise<Blob> {
+async function recordSingleChunk(durationMs: number): Promise<Blob> {
   if (!mixedStream) {
-    return Promise.resolve(new Blob([], { type: currentMimeType }))
+    return new Blob([], { type: currentMimeType })
+  }
+
+  if (audioContext && audioContext.state !== 'running') {
+    console.warn(`[offscreen] AudioContext is '${audioContext.state}' before chunk — resuming`)
+    await audioContext.resume()
+    if (audioContext.state !== 'running') {
+      console.error('[offscreen] AudioContext failed to resume — chunk will be silent')
+      chrome.runtime.sendMessage({
+        type: 'RECORDING_ERROR',
+        error: `AudioContext stuck in '${audioContext.state}' — audio may be silent`,
+      } satisfies ExtMessage).catch(() => {})
+    }
   }
 
   return new Promise<Blob>((resolve, reject) => {

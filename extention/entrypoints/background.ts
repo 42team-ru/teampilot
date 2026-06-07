@@ -16,8 +16,12 @@ const BACKGROUND_MESSAGE_TYPES = new Set([
   'PAUSE_RECORDING',
   'RESUME_RECORDING',
   'TOGGLE_MIC',
+  'RESET_RECORDING',
+  'ENSURE_OFFSCREEN',
   'AUDIO_CHUNK',
   'RECORDING_ERROR',
+  'REQUEST_TEST_AUDIO',
+  'AUDIO_LEVEL',
 ])
 
 export default defineBackground(() => {
@@ -69,12 +73,29 @@ export default defineBackground(() => {
         await toggleMic()
         return { ok: true }
 
+      case 'RESET_RECORDING':
+        await setRecordingState(defaultRecordingState())
+        return { ok: true }
+
+      case 'ENSURE_OFFSCREEN':
+        await ensureOffscreenDocument()
+        return { ok: true }
+
       case 'AUDIO_CHUNK':
         await publishChunk(msg)
         return { ok: true }
 
       case 'RECORDING_ERROR':
         await updateState({ status: 'error', error: msg.error })
+        return { ok: true }
+
+      case 'REQUEST_TEST_AUDIO':
+        return await chrome.runtime.sendMessage({ type: 'OFFSCREEN_TEST_AUDIO' } satisfies ExtMessage)
+
+      case 'AUDIO_LEVEL':
+        // Offscreen can only message the service worker — relay via session storage
+        // so the popup can watch chrome.storage.onChanged and get real-time levels.
+        chrome.storage.session.set({ audioLevel: msg.level }).catch(() => {})
         return { ok: true }
     }
   }
@@ -135,15 +156,33 @@ export default defineBackground(() => {
 
     await updateState({ startingStep: 2 })
 
-    const streamId = await getTabStreamId(tabId)
+    // Ensure offscreen doc is fully ready BEFORE getting streamId — the stream ID
+    // from tabCapture has a short lifetime and must be used immediately after retrieval.
     await ensureOffscreenDocument()
+    const streamId = await getTabStreamId(tabId)
 
-    await chrome.runtime.sendMessage({
-      type: 'OFFSCREEN_START',
-      streamId,
-      meetingId: meeting.id,
-      micDeviceId,
-    } satisfies ExtMessage)
+    let success = false
+    for (let i = 0; i < 10; i++) {
+      try {
+        const response = (await chrome.runtime.sendMessage({
+          type: 'OFFSCREEN_START',
+          streamId,
+          meetingId: meeting.id,
+          micDeviceId,
+        } satisfies ExtMessage)) as { ok?: boolean; error?: string } | undefined
+        if (response?.ok) {
+          success = true
+          break
+        }
+      } catch (e) {
+        // ignore and retry
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+
+    if (!success) {
+      throw new Error('Не удалось запустить захват звука в фоновом документе (таймаут соединения)')
+    }
 
     await updateState({
       status: 'recording',
@@ -233,8 +272,11 @@ export default defineBackground(() => {
 
     await chrome.offscreen.createDocument({
       url: chrome.runtime.getURL('offscreen.html'),
-      reasons: [chrome.offscreen.Reason.USER_MEDIA],
-      justification: 'Tab audio capture for meeting recording',
+      reasons: [
+        chrome.offscreen.Reason.USER_MEDIA,
+        chrome.offscreen.Reason.AUDIO_PLAYBACK,
+      ],
+      justification: 'Tab audio capture and playback for meeting recording',
     })
   }
 })

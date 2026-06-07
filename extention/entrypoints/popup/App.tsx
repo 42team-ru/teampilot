@@ -14,7 +14,7 @@ import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
 export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const auth = useAuthSession()
-  const { state, startRecording, stopRecording, pauseRecording, resumeRecording, toggleMic } =
+  const { state, startRecording, stopRecording, pauseRecording, resumeRecording, toggleMic, resetRecording } =
     useRecordingState()
 
   const handleStart = async () => {
@@ -82,7 +82,7 @@ export default function App() {
         />
       )
     case 'done':
-      return <PostMeetingScreen meetingId={state.meetingId!} />
+      return <PostMeetingScreen meetingId={state.meetingId!} onReset={resetRecording} />
     default:
       return (
         <IdleScreen
