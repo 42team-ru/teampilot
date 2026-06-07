@@ -1,4 +1,5 @@
 import type { ExtMessage } from '../../types/messages'
+import fixWebmDuration from 'fix-webm-duration'
 
 const CHUNK_DURATION_MS = 30000
 const FINAL_CHUNK_DURATION_MS = 250
@@ -252,6 +253,7 @@ function recordSingleChunk(durationMs: number): Promise<Blob> {
     currentRecorder = recorder
 
     const timeout = window.setTimeout(() => stopRecorder(recorder), durationMs)
+    const startTime = Date.now()
 
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunks.push(event.data)
@@ -263,7 +265,9 @@ function recordSingleChunk(durationMs: number): Promise<Blob> {
     recorder.onstop = () => {
       window.clearTimeout(timeout)
       if (currentRecorder === recorder) currentRecorder = null
-      resolve(new Blob(chunks, { type: currentMimeType }))
+      const actualDurationMs = Date.now() - startTime
+      const blob = new Blob(chunks, { type: currentMimeType })
+      fixWebmDuration(blob, actualDurationMs, { logger: false }).then(resolve).catch(() => resolve(blob))
     }
 
     // timeslice ensures ondataavailable fires periodically, not only on stop
