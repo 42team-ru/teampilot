@@ -11,6 +11,7 @@ import PostMeetingScreen from '../../components/post-meeting/PostMeetingScreen'
 import { useAuthSession } from '../../hooks/useAuthSession'
 import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
 import { getMicSettings } from '../../services/micSettings'
+import { useExtensionTheme } from '../../hooks/useExtensionTheme'
 import {
   clearPendingRecordingTarget,
   getPendingRecordingTarget,
@@ -20,6 +21,8 @@ import {
 } from '../../services/micPermission'
 
 export default function App() {
+  useExtensionTheme()
+
   const [showSettings, setShowSettings] = useState(false)
   const auth = useAuthSession()
   const {

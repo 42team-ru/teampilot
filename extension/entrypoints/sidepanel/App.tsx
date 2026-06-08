@@ -10,8 +10,11 @@ import SettingsScreen from '../../components/popup/SettingsScreen'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs'
 import { useAuthSession } from '../../hooks/useAuthSession'
 import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
+import { useExtensionTheme } from '../../hooks/useExtensionTheme'
 
 export default function App() {
+  useExtensionTheme()
+
   const [showSettings, setShowSettings] = useState(false)
   const auth = useAuthSession()
   const { state, pauseRecording, stopRecording, resumeRecording, toggleMic, resetRecording } = useRecordingState()

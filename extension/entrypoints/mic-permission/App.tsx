@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, Mic, RefreshCw } from 'lucide-react'
 import { Button } from '../../components/ui/button'
+import { useExtensionTheme } from '../../hooks/useExtensionTheme'
 import type { ExtMessage } from '../../types/messages'
 
 type PermissionStatus = 'requesting' | 'granted' | 'failed'
 
 export default function App() {
+  useExtensionTheme()
+
   const [status, setStatus] = useState<PermissionStatus>('requesting')
   const [error, setError] = useState<string | null>(null)
 
