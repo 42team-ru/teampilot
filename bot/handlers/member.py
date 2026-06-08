@@ -96,16 +96,19 @@ async def member_teams_overview(callback: CallbackQuery, state: FSMContext) -> N
         await callback.answer()
         return
 
+    managed_ids = {str(t.get("id")) for t in manager_teams}
+    member_only = [t for t in member_teams if str(t.get("id")) not in managed_ids]
+
     lines = ["<b>Мои команды</b>\n"]
     if manager_teams:
         lines.append("🔑 <b>Вы менеджер:</b>")
         for t in manager_teams:
             lines.append(f"  · {escape(t.get('chatTitle') or t.get('id') or '—')}")
-    if member_teams:
+    if member_only:
         if manager_teams:
             lines.append("")
         lines.append("👤 <b>Вы участник:</b>")
-        for t in member_teams:
+        for t in member_only:
             lines.append(f"  · {escape(t.get('chatTitle') or t.get('id') or '—')}")
     lines.append("\nВыберите команду:")
 
@@ -487,14 +490,21 @@ async def _show_file_detail(callback, team_id: str, f) -> None:
         lines.append(f"\n📋 <b>Резюме встречи</b>\n{escape(summary)}")
     if not description and not summary:
         lines.append("\n<i>AI-анализ ещё не готов — обработка аудио занимает время.</i>")
+
+    keyboard_rows = []
     if download_url:
-        lines.append(f"\n⬇️ <a href=\"{download_url}\">Скачать файл</a>")
+        is_public = download_url.startswith("https://") or (
+            download_url.startswith("http://") and "localhost" not in download_url and "127.0.0.1" not in download_url
+        )
+        if is_public:
+            keyboard_rows.append([InlineKeyboardButton(text="⬇️ Скачать файл", url=download_url)])
+        else:
+            lines.append(f"\n⬇️ <a href=\"{download_url}\">Скачать файл</a>")
+    keyboard_rows.append([InlineKeyboardButton(text="← К списку файлов", callback_data=f"team_ctx:files_list:{team_id}")])
 
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="← К списку файлов", callback_data=f"team_ctx:files_list:{team_id}")],
-        ]),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
         disable_web_page_preview=True,
     )
     await callback.answer()
@@ -604,6 +614,8 @@ def _member_panel_text(
 ) -> str:
     managed = manager_teams or []
     member = member_teams or []
+    managed_ids = {str(t.get("id")) for t in managed}
+    member_only = [t for t in member if str(t.get("id")) not in managed_ids]
 
     name = ""
     if user:
@@ -620,8 +632,8 @@ def _member_panel_text(
 
     if managed:
         lines.append(f"🔑 Менеджер в {len(managed)} команд(е)")
-    if member:
-        lines.append(f"👤 Участник в {len(member)} команд(е)")
+    if member_only:
+        lines.append(f"👤 Участник в {len(member_only)} команд(е)")
     if not managed and not member:
         lines.append("Вы пока не состоите в командах.")
 

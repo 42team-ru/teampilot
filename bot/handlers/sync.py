@@ -46,57 +46,6 @@ async def cmd_test_sync_summary(message: Message) -> None:
     await message.answer("✅ Summary отправлен менеджерам")
 
 
-@router.message(Command("sync"))
-async def cmd_sync(message: Message) -> None:
-    if message.from_user is None:
-        return
-    if message.chat.type not in {"group", "supergroup"}:
-        await message.answer("Команда /sync работает в командном чате.")
-        return
-
-    action = _parse_sync_action(message.text or "")
-    if action is None:
-        await message.answer("Используйте /sync start или /sync close")
-        return
-
-    try:
-        if action == "close":
-            await message.answer("⏳ Закрываю окно вечернего синка...")
-            resp = await sync_service.trigger_summary_for_chat(message.chat.id, message.from_user.id)
-        else:
-            await message.answer("⏳ Запускаю вечерний синк...")
-            resp = await sync_service.trigger_sync_for_chat(message.chat.id, message.from_user.id)
-    except Exception:
-        await message.answer("❌ Не удалось связаться с backend.")
-        return
-
-    if resp.status_code == 204:
-        if action == "close":
-            await message.answer("✅ Окно синка закрыто, summary отправлен менеджерам")
-        else:
-            await message.answer("✅ Синк запущен — бот отправил промпт участникам")
-    elif resp.status_code == 403:
-        await message.answer("⛔ Запускать и закрывать sync может только менеджер команды")
-    elif resp.status_code == 400:
-        await message.answer("⚠️ Не получилось выполнить sync-команду: проверьте, что sync сейчас активен")
-    elif resp.status_code == 404:
-        await message.answer("⚠️ Этот чат не привязан к активной команде")
-    else:
-        await message.answer(f"❌ Backend вернул ошибку {resp.status_code}")
-
-
-def _parse_sync_action(text: str) -> str | None:
-    parts = text.split(maxsplit=1)
-    if len(parts) == 1:
-        return "start"
-    arg = parts[1].strip().lower()
-    if arg in {"", "start", "run", "open", "начать", "запуск"}:
-        return "start"
-    if arg in {"close", "summary", "finish", "stop", "закрыть", "итоги"}:
-        return "close"
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Excuse handlers
 # ---------------------------------------------------------------------------

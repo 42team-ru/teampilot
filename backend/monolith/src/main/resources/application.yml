@@ -16,6 +16,7 @@ app:
         region: ${S3_REGION:us-east-1}
         default-bucket: ${S3_DEFAULT_BUCKET:audio}
         presigned-url-expiry: ${S3_PRESIGNED_URL_EXPIRY:15m}
+        presigned-endpoint: ${S3_PRESIGNED_ENDPOINT:http://localhost:9000}
     llm:
         auto-confirm-threshold: ${LLM_AUTO_CONFIRM_THRESHOLD:0.90}
 
@@ -57,5 +58,5 @@ management:
         web:
             exposure:
                 include: health,info
-debug: true
+#debug: true
 
