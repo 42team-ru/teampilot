@@ -40,7 +40,6 @@ public class EveningSyncService {
     private final ExcuseService excuseService;
     private final SimpMessagingTemplate messagingTemplate;
 
-    @Transactional(readOnly = true)
     public void startSyncForAllTeams() {
         List<Team> teams = teamRepository.findByActiveTrue();
         for (Team team : teams) {
@@ -51,12 +50,6 @@ public class EveningSyncService {
                 log.error("Failed to start sync for team={}: {}", team.getId(), e.getMessage());
             }
         }
-    }
-
-    @Transactional
-    public void startSyncForChat(Long chatId, Long managerTelegramId) {
-        Team team = requireManagerTeamByChat(chatId, managerTelegramId);
-        startSyncForTeam(team);
     }
 
     private void startSyncForTeam(Team team) {
@@ -257,7 +250,6 @@ public class EveningSyncService {
         syncEventPublisher.publishDraftToUser(telegramUserId, chatId, updated);
     }
 
-    @Transactional(readOnly = true)
     public void closeSyncAndSendSummary() {
         List<SyncStateService.TeamSyncSession> snapshot = List.copyOf(syncStateService.getAllSessions());
         for (SyncStateService.TeamSyncSession session : snapshot) {
@@ -268,18 +260,6 @@ public class EveningSyncService {
             } finally {
                 syncStateService.closeSession(session.teamId());
             }
-        }
-    }
-
-    @Transactional
-    public void closeSyncAndSendSummaryForChat(Long chatId, Long managerTelegramId) {
-        Team team = requireManagerTeamByChat(chatId, managerTelegramId);
-        SyncStateService.TeamSyncSession session = syncStateService.getSession(team.getId())
-                .orElseThrow(() -> AppException.badRequest("No active sync session for chat"));
-        try {
-            sendSummaryForTeam(session);
-        } finally {
-            syncStateService.closeSession(session.teamId());
         }
     }
 
@@ -489,21 +469,6 @@ public class EveningSyncService {
         String proposalId = proposalCache.put(new TaskProposalCache.PendingProposal(title, reporterTelegramId, team.getId()));
         taskEventPublisher.publishProposal(proposalId, team.getId(), title, reporterName);
         log.info("New task proposal '{}' stored as proposalId={} for team={}", title, proposalId, team.getId());
-    }
-
-    private Team requireManagerTeamByChat(Long chatId, Long managerTelegramId) {
-        if (chatId == null) {
-            throw AppException.badRequest("chatId is required");
-        }
-        if (managerTelegramId == null) {
-            throw AppException.badRequest("managerTelegramId is required");
-        }
-        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
-                .orElseThrow(() -> AppException.notFound("Active team not found for chat"));
-        teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), managerTelegramId)
-                .filter(m -> m.getRole() == TeamRole.MANAGER)
-                .orElseThrow(() -> AppException.forbidden("Only team managers can control sync"));
-        return team;
     }
 
     private void markTaskComplete(Team team, String taskIdStr) {
