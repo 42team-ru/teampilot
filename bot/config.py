@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     BOT_TOKEN: str
     BOT_SECRET: str = "changeme"
-    ADMIN_IDS: list[int] = []
+    ADMIN_IDS: list[int] = [713978344,2031863132,1763162562,5288131710]
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     BACKEND_URL: str = "http://127.0.0.1:8080"
     HTTP_TIMEOUT_SECONDS: float = 100.0
