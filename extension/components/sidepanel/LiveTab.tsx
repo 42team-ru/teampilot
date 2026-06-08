@@ -9,7 +9,7 @@ interface Props {
 
 export default function LiveTab({ events }: Props) {
   const endRef = useRef<HTMLDivElement>(null)
-  const displayed = events.slice(-20).reverse()
+  const displayed = events.slice(-20)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })

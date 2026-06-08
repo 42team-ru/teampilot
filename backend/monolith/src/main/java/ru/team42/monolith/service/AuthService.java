@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.client.yougile.api.DefaultApi;
 import ru.team42.monolith.client.yougile.model.CredentialsWithCompanyDto;
@@ -54,6 +55,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final String YOUGILE_INVALID_CREDENTIALS_DETAIL =
+            "Не удалось войти в YouGile: проверьте логин и пароль.";
 
     private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
@@ -124,6 +128,8 @@ public class AuthService {
             return result.getContent().stream()
                     .map(c -> new YouGileCompanyResponse(c.getId(), c.getName(), c.getIsAdmin()))
                     .toList();
+        } catch (WebClientResponseException e) {
+            throw youGileAuthFailure("listing companies", e);
         } catch (Exception e) {
             log.error("Failed to list YouGile companies: {}", e.getMessage());
             throw AppException.internalError("YouGile API unavailable: " + e.getMessage());
@@ -145,6 +151,8 @@ public class AuthService {
                     new UpdateTeamRequest(null, null, null, keyDto.getKey()));
         } catch (AppException e) {
             throw e;
+        } catch (WebClientResponseException e) {
+            throw youGileAuthFailure("getting API key", e);
         } catch (Exception e) {
             log.error("Failed to get YouGile API key: {}", e.getMessage());
             throw AppException.internalError("YouGile API unavailable: " + e.getMessage());
@@ -257,6 +265,8 @@ public class AuthService {
             return result.getContent().stream()
                     .map(c -> new YouGileCompanyResponse(c.getId(), c.getName(), c.getIsAdmin()))
                     .toList();
+        } catch (WebClientResponseException e) {
+            throw youGileAuthFailure("listing companies", e);
         } catch (Exception e) {
             log.error("Failed to list YouGile companies: {}", e.getMessage());
             throw AppException.internalError("YouGile API unavailable: " + e.getMessage());
@@ -276,10 +286,23 @@ public class AuthService {
             return keyDto.getKey();
         } catch (AppException e) {
             throw e;
+        } catch (WebClientResponseException e) {
+            throw youGileAuthFailure("getting API key", e);
         } catch (Exception e) {
             log.error("Failed to get YouGile API key: {}", e.getMessage());
             throw AppException.internalError("YouGile API unavailable: " + e.getMessage());
         }
+    }
+
+    private AppException youGileAuthFailure(String operation, WebClientResponseException e) {
+        int status = e.getStatusCode().value();
+        if (status == 401) {
+            log.warn("YouGile rejected credentials while {}: status={}", operation, status);
+            return AppException.unauthorized(YOUGILE_INVALID_CREDENTIALS_DETAIL);
+        }
+
+        log.error("YouGile API failed while {}: status={} message={}", operation, status, e.getMessage());
+        return AppException.internalError("YouGile API unavailable: " + status + " " + e.getStatusText());
     }
 
     private List<YouGileBoardResponse> fetchBoards(String apiKey) {
