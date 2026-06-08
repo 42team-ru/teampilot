@@ -871,7 +871,7 @@ async def team_ctx_meeting_start(callback: CallbackQuery, state: FSMContext) -> 
     await state.set_state(ManagerMeetingStates.waiting_for_url)
 
     await callback.message.edit_text(
-        f"🎙 <b>Созвон/b>\n\n"
+        f"🎙 <b>Созвон</b>\n\n"
         "Пришлите ссылку на созвон одним сообщением.\n"
         "Подойдут ссылки вида <code>https://telemost.yandex.ru/...</code>, Zoom, Google Meet и другие http/https-ссылки.",
         reply_markup=_meeting_url_keyboard(team_id),
