@@ -19,10 +19,6 @@ app:
     llm:
         auto-confirm-threshold: ${LLM_AUTO_CONFIRM_THRESHOLD:0.90}
 
-    batching:
-        min-messages: 3
-        max-age-minutes: 5
-
 spring:
     application:
         name: monolith
@@ -58,4 +54,3 @@ management:
             exposure:
                 include: health,info
 debug: true
-

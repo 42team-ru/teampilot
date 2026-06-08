@@ -2,7 +2,6 @@ package ru.team42.monolith.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,11 +24,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ChatMessageBatchingService {
 
-    @Value("${app.batching.min-messages}")
-    private int minMessages;
-
-    @Value("${app.batching.max-age-minutes}")
-    private int maxAgeMinutes;
+    private static final int MIN_MESSAGES = 10;
+    private static final Duration MAX_AGE = Duration.ofMinutes(5);
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatMessageBatchPublisher batchPublisher;
@@ -50,8 +46,8 @@ public class ChatMessageBatchingService {
             if (messages.isEmpty()) continue;
 
             Instant oldestMessageTime = messages.getFirst().getMessageTimestamp();
-            boolean sizeThresholdReached = messages.size() >= minMessages;
-            boolean timeThresholdReached = Duration.between(oldestMessageTime, now).compareTo(Duration.ofMinutes(maxAgeMinutes)) >= 0;
+            boolean sizeThresholdReached = messages.size() >= MIN_MESSAGES;
+            boolean timeThresholdReached = Duration.between(oldestMessageTime, now).compareTo(MAX_AGE) >= 0;
 
             if (!sizeThresholdReached && !timeThresholdReached) continue;
 

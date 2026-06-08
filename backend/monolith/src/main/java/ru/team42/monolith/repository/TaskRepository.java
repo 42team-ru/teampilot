@@ -67,7 +67,6 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     List<Task> findByTeamIdAndExternalIdIsNotNullAndLocalStatusNotIn(
             UUID teamId, Collection<TaskLocalStatus> excludedStatuses);
 
-
     List<Task> findByLocalStatusAndDeadlineBetweenAndDeadlineNotifiedAtIsNull(
             TaskLocalStatus localStatus,
             Instant from,

@@ -25,10 +25,8 @@ from keyboards.member import (
 )
 from services.task_service import get_team_columns
 from services.admin_service import get_user_by_telegram_id
-from services.backend_error import BackendApiError
 from services.task_service import get_tasks_page
-from services.team_service import get_member_teams, get_my_teams, get_team_files, update_yougile_profile
-from states.auth import UpdateYouGileStates
+from services.team_service import get_member_teams, get_my_teams, get_team_files
 
 router = Router()
 
@@ -537,63 +535,6 @@ async def team_ctx_upload(callback: CallbackQuery, state: FSMContext) -> None:
     )
     await callback.answer()
 
-
-
-@router.callback_query(F.data.startswith("team_ctx:member_yougile:"))
-async def team_ctx_member_yougile(callback: CallbackQuery, state: FSMContext) -> None:
-    team_id = callback.data.split(":", 2)[2]
-    await state.update_data(update_yougile_team_id=team_id)
-    await state.set_state(UpdateYouGileStates.waiting_for_yougile_login)
-    await callback.message.answer(
-        "Введи <b>логин</b> от YouGile-аккаунта:\n\n/cancel — отменить",
-        parse_mode="HTML",
-    )
-    await callback.answer()
-
-
-@router.message(UpdateYouGileStates.waiting_for_yougile_login, F.text)
-async def process_update_yougile_login(message: Message, state: FSMContext) -> None:
-    login = (message.text or "").strip()
-    if not login:
-        await message.answer("Пришли логин от YouGile текстом.")
-        return
-    await state.update_data(update_yougile_login=login)
-    await state.set_state(UpdateYouGileStates.waiting_for_yougile_password)
-    await message.answer("Теперь введи <b>пароль</b> от YouGile:", parse_mode="HTML")
-
-
-@router.message(UpdateYouGileStates.waiting_for_yougile_password, F.text)
-async def process_update_yougile_password(message: Message, state: FSMContext) -> None:
-    password = (message.text or "").strip()
-    if not password:
-        await message.answer("Пришли пароль YouGile текстом.")
-        return
-
-    try:
-        await message.delete()
-    except Exception:
-        pass
-
-    data = await state.get_data()
-    team_id: str = data["update_yougile_team_id"]
-    login: str = data["update_yougile_login"]
-    await state.clear()
-
-    checking_msg = await message.answer("⏳ Обновляю данные YouGile...")
-
-    try:
-        await update_yougile_profile(team_id, login, password, message.from_user.id)
-    except BackendApiError as e:
-        await checking_msg.edit_text(
-            f"❌ Не удалось обновить данные.\n{e.user_message()}\n\nПроверь логин/пароль и попробуй снова."
-        )
-        return
-
-    await checking_msg.edit_text(
-        "✅ YouGile-профиль обновлён!\n\n"
-        "Задачи теперь будут назначаться на тебя.",
-        reply_markup=home_keyboard(),
-    )
 
 
 def _member_panel_text(

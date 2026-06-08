@@ -34,5 +34,4 @@ public class AppProperties {
     public static class Llm {
         private float autoConfirmThreshold = 0.90f;
     }
-
 }

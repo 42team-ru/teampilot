@@ -277,47 +277,7 @@ async def process_board_selection(callback: CallbackQuery, state: FSMContext, bo
     await callback.answer()
 
 
-# ── 7. New human member added to a configured group ─────────────────────────
-# Uses new_chat_members service message — works without bot being admin.
-
-@router.message(F.new_chat_members, F.chat.type.in_({"group", "supergroup"}))
-async def new_members_in_group(message: Message, bot: Bot) -> None:
-    team_id = await get_team_id(message.chat.id)
-    if not team_id:
-        return
-
-    bot_info = await bot.get_me()
-    deep_link = f"https://t.me/{bot_info.username}?start=join_{team_id}"
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🚀 Вступить в команду", url=deep_link)
-    ]])
-
-    for new_member in message.new_chat_members:
-        if new_member.is_bot:
-            continue
-        try:
-            await bot.send_message(
-                chat_id=new_member.id,
-                text=(
-                    f"👋 Привет, <b>{new_member.first_name}</b>!\n\n"
-                    "Тебя добавили в рабочий чат команды.\n"
-                    "Нажми кнопку ниже, чтобы получить доступ к задачам:"
-                ),
-                reply_markup=kb,
-            )
-        except TelegramForbiddenError:
-            mention = f'<a href="tg://user?id={new_member.id}">{new_member.first_name}</a>'
-            try:
-                await message.answer(
-                    f"👋 {mention}, добро пожаловать в команду!\n\n"
-                    "Нажми кнопку ниже, чтобы начать получать задачи:",
-                    reply_markup=kb,
-                )
-            except TelegramForbiddenError:
-                logger.warning(f"Cannot send welcome to group {message.chat.id} for new member {new_member.id}")
-
-
-# ── 8. Bot removed from group ────────────────────────────────────────────────
+# ── 7. Bot removed from group ────────────────────────────────────────────────
 
 @router.my_chat_member(ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))
 async def bot_removed_from_group(event: ChatMemberUpdated) -> None:
@@ -325,7 +285,7 @@ async def bot_removed_from_group(event: ChatMemberUpdated) -> None:
     logger.info(f"Bot removed from group {event.chat.id} ({event.chat.title})")
 
 
-# ── 9. /setup command in group ───────────────────────────────────────────────
+# ── 8. /setup command in group ───────────────────────────────────────────────
 
 @router.message(Command("setup"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> None:

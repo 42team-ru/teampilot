@@ -10,8 +10,3 @@ class RegistrationStates(StatesGroup):
 class JoinTeamStates(StatesGroup):
     waiting_for_yougile_login = State()
     waiting_for_yougile_password = State()
-
-
-class UpdateYouGileStates(StatesGroup):
-    waiting_for_yougile_login = State()
-    waiting_for_yougile_password = State()
