@@ -15,6 +15,7 @@ from loguru import logger
 
 from config import settings
 from keyboards.task import build_companies_keyboard, build_projects_keyboard
+from services.backend_error import BackendApiError
 from services.team_service import (
     create_pending_team_chat,
     deactivate_team,
@@ -26,6 +27,12 @@ from services.team_service import (
 from states.setup import GroupSetupStates
 
 router = Router()
+
+_YOUGILE_CREDENTIALS_RETRY_TEXT = (
+    "❌ Не удалось войти в YouGile.\n"
+    "Проверь логин и пароль и введи логин ещё раз.\n\n"
+    "/cancel — отменить"
+)
 
 
 @router.message(Command("cancel"), F.chat.type == "private")
@@ -205,7 +212,13 @@ async def process_yougile_password(message: Message, state: FSMContext) -> None:
 
     checking_msg = await message.answer("⏳ Подключаюсь к YouGile...")
 
-    result = await yougile_auth(chat_id, login, password, telegram_id=message.from_user.id)
+    try:
+        result = await yougile_auth(chat_id, login, password, telegram_id=message.from_user.id)
+    except BackendApiError as error:
+        if _is_yougile_credentials_error(error):
+            await _show_yougile_credentials_retry(checking_msg, state)
+            return
+        raise
 
     if result is None:
         await checking_msg.edit_text(
@@ -230,11 +243,18 @@ async def process_company_selection(callback: CallbackQuery, state: FSMContext) 
 
     await callback.message.edit_text("⏳ Получаю список досок...")
 
-    result = await yougile_auth(
-        chat_id, login, password,
-        company_id=company_id,
-        telegram_id=callback.from_user.id,
-    )
+    try:
+        result = await yougile_auth(
+            chat_id, login, password,
+            company_id=company_id,
+            telegram_id=callback.from_user.id,
+        )
+    except BackendApiError as error:
+        if _is_yougile_credentials_error(error):
+            await _show_yougile_credentials_retry(callback.message, state)
+            await callback.answer()
+            return
+        raise
 
     if result is None:
         await callback.message.edit_text("❌ Ошибка подключения. Попробуй /cancel и начни заново.")
@@ -383,6 +403,23 @@ async def cmd_setup_in_group(message: Message, bot: Bot, state: FSMContext) -> N
 
 
 # ── Internal helper ──────────────────────────────────────────────────────────
+
+def _is_yougile_credentials_error(error: BackendApiError) -> bool:
+    detail = (error.detail or "").lower()
+    return (
+        error.status == 401 and "yougile" in detail
+    ) or (
+        error.status == 500
+        and "yougile" in detail
+        and "401 unauthorized" in detail
+    )
+
+
+async def _show_yougile_credentials_retry(msg: Message, state: FSMContext) -> None:
+    await state.update_data(yougile_password=None)
+    await state.set_state(GroupSetupStates.waiting_for_login)
+    await msg.edit_text(_YOUGILE_CREDENTIALS_RETRY_TEXT)
+
 
 async def _handle_auth_result(msg: Message, state: FSMContext, result: dict) -> None:
     """Processes YouGileAuthResponse: shows companies or boards."""
