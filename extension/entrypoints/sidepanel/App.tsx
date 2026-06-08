@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle2, XCircle, Info, X } from 'lucide-react'
 import { useRecordingState } from '../../hooks/useRecordingState'
 import { useMeetingResults } from '../../hooks/useMeetingResults'
 import SidePanelHeader from '../../components/sidepanel/SidePanelHeader'
@@ -11,14 +12,59 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/ta
 import { useAuthSession } from '../../hooks/useAuthSession'
 import AuthRequiredScreen from '../../components/popup/AuthRequiredScreen'
 import { useExtensionTheme } from '../../hooks/useExtensionTheme'
+import type { TaskStatusUpdate, Toast } from '../../types/recording'
 
 export default function App() {
   useExtensionTheme()
 
   const [showSettings, setShowSettings] = useState(false)
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const toastTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
   const auth = useAuthSession()
   const { state, pauseRecording, stopRecording, resumeRecording, toggleMic, resetRecording } = useRecordingState()
   const { results } = useMeetingResults(state.meetingId)
+
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'PANEL_OPENED' }).catch(() => {})
+
+    const handler = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if (!('pendingToasts' in changes)) return
+      const incoming = (changes['pendingToasts'].newValue as TaskStatusUpdate[]) ?? []
+      if (incoming.length === 0) return
+
+      const newToasts: Toast[] = incoming.map((event) => ({
+        id: `${event.taskId}-${Date.now()}-${Math.random()}`,
+        title: toastTitle(event),
+        description: event.title,
+        variant: toastVariant(event.status),
+      }))
+
+      setToasts((prev) => [...prev, ...newToasts].slice(-3))
+
+      newToasts.forEach((toast) => {
+        const timer = setTimeout(() => dismissToast(toast.id), 4000)
+        toastTimers.current.set(toast.id, timer)
+      })
+
+      chrome.storage.session.set({ pendingToasts: [] }).catch(() => {})
+    }
+
+    chrome.storage.session.onChanged.addListener(handler)
+    return () => {
+      chrome.storage.session.onChanged.removeListener(handler)
+      toastTimers.current.forEach((t) => clearTimeout(t))
+    }
+  }, [])
+
+  function dismissToast(id: string) {
+    const timer = toastTimers.current.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      toastTimers.current.delete(id)
+    }
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }
 
   if (!auth.session) {
     return (
@@ -50,7 +96,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden relative">
       <SidePanelHeader
         state={state}
         onPause={pauseRecording}
@@ -89,6 +135,56 @@ export default function App() {
           <SummaryTab summary={results?.summary} meetingId={state.meetingId} />
         </TabsContent>
       </Tabs>
+
+      {toasts.length > 0 && (
+        <div className="absolute bottom-4 right-3 left-3 flex flex-col gap-2 z-50 pointer-events-none">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-start gap-2 rounded-lg px-3 py-2.5 shadow-lg pointer-events-auto text-sm
+                ${toast.variant === 'success' ? 'bg-green-50 border border-green-200 text-green-900' : ''}
+                ${toast.variant === 'destructive' ? 'bg-red-50 border border-red-200 text-red-900' : ''}
+                ${toast.variant === 'default' ? 'bg-white border border-border text-foreground' : ''}
+              `}
+            >
+              <span className="flex-shrink-0 mt-0.5">
+                {toast.variant === 'success' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                {toast.variant === 'destructive' && <XCircle className="h-4 w-4 text-red-600" />}
+                {toast.variant === 'default' && <Info className="h-4 w-4 text-muted-foreground" />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium leading-tight">{toast.title}</p>
+                {toast.description && (
+                  <p className="text-xs opacity-70 truncate mt-0.5">{toast.description}</p>
+                )}
+              </div>
+              <button
+                onClick={() => dismissToast(toast.id)}
+                className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
+}
+
+function toastTitle(event: TaskStatusUpdate): string {
+  switch (event.status) {
+    case 'CREATED': return 'Новая задача обнаружена'
+    case 'APPROVED': return event.actorName ? `Одобрено: ${event.actorName}` : 'Задача одобрена'
+    case 'REJECTED': return event.actorName ? `Отклонено: ${event.actorName}` : 'Задача отклонена'
+    default: return 'Обновление задачи'
+  }
+}
+
+function toastVariant(status: TaskStatusUpdate['status']): Toast['variant'] {
+  switch (status) {
+    case 'APPROVED': return 'success'
+    case 'REJECTED': return 'destructive'
+    default: return 'default'
+  }
 }

@@ -1,17 +1,20 @@
 import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import { getWebSocketUrl } from './config'
-import type { MeetingAudioChunkPayload, MeetingLiveResult } from '../types/recording'
+import type { MeetingAudioChunkPayload, MeetingLiveResult, TaskStatusUpdate } from '../types/recording'
 
 interface ConnectOptions {
   meetingId: string
+  teamId: string
   token: string
   onResult: (event: MeetingLiveResult) => void | Promise<void>
+  onTaskUpdate?: (event: TaskStatusUpdate) => void | Promise<void>
   onDisconnect?: () => void | Promise<void>
   onError?: (error: Error) => void | Promise<void>
 }
 
 let client: Client | null = null
-let subscription: StompSubscription | null = null
+let meetingSubscription: StompSubscription | null = null
+let teamSubscription: StompSubscription | null = null
 let activeMeetingId: string | null = null
 
 export async function connectMeetingSocket(options: ConnectOptions): Promise<void> {
@@ -34,10 +37,16 @@ export async function connectMeetingSocket(options: ConnectOptions): Promise<voi
       debug: () => {},
       onConnect: () => {
         if (!client) return
-        subscription = client.subscribe(
+        meetingSubscription = client.subscribe(
           `/topic/meetings/${options.meetingId}/results`,
-          (message) => handleMessage(message, options)
+          (message) => handleMeetingMessage(message, options)
         )
+        if (options.onTaskUpdate) {
+          teamSubscription = client.subscribe(
+            `/topic/teams/${options.teamId}/task-updates`,
+            (message) => handleTaskUpdateMessage(message, options)
+          )
+        }
         settled = true
         resolve()
       },
@@ -79,8 +88,10 @@ export function sendMeetingChunk(meetingId: string, payload: MeetingAudioChunkPa
 }
 
 export async function disconnectMeetingSocket(): Promise<void> {
-  subscription?.unsubscribe()
-  subscription = null
+  meetingSubscription?.unsubscribe()
+  meetingSubscription = null
+  teamSubscription?.unsubscribe()
+  teamSubscription = null
   activeMeetingId = null
 
   if (!client) return
@@ -91,10 +102,20 @@ export async function disconnectMeetingSocket(): Promise<void> {
   }
 }
 
-function handleMessage(message: IMessage, options: ConnectOptions) {
+function handleMeetingMessage(message: IMessage, options: ConnectOptions) {
   try {
     const event = JSON.parse(message.body) as MeetingLiveResult
     options.onResult(event)
+  } catch (e) {
+    const error = e instanceof Error ? e : new Error(String(e))
+    options.onError?.(error)
+  }
+}
+
+function handleTaskUpdateMessage(message: IMessage, options: ConnectOptions) {
+  try {
+    const event = JSON.parse(message.body) as TaskStatusUpdate
+    options.onTaskUpdate?.(event)
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e))
     options.onError?.(error)

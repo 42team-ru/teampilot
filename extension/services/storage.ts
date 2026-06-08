@@ -62,8 +62,11 @@ export async function applyMeetingLiveResult(event: MeetingLiveResult): Promise<
   if (event.transcript?.trim()) {
     liveEvents.push(toTranscriptLiveEvent(event))
   }
+  if (event.context?.trim()) {
+    liveEvents.push(toContextLiveEvent(event))
+  }
   for (const status of event.statuses ?? []) {
-    liveEvents.push(toStatusLiveEvent(event, status.action ?? 'STATUS'))
+    liveEvents.push(toStatusLiveEvent(event, status))
   }
 
   const tasks = mergeTasks(base.tasks, event)
@@ -105,14 +108,36 @@ function toTranscriptLiveEvent(event: MeetingLiveResult): LiveEvent {
   }
 }
 
-function toStatusLiveEvent(event: MeetingLiveResult, action: string): LiveEvent {
-  const chunk = event.chunkIndex !== undefined ? `chunk ${event.chunkIndex}` : 'live'
+function toContextLiveEvent(event: MeetingLiveResult): LiveEvent {
   return {
-    id: `status-${chunk}-${action}-${Date.now()}`,
+    id: `context-${event.chunkIndex ?? Date.now()}-${Date.now()}`,
     time: formatClock(),
-    text: `Обновление статуса задачи: ${action}`,
+    text: event.context ?? '',
+    type: 'context',
+  }
+}
+
+function toStatusLiveEvent(event: MeetingLiveResult, status: { action?: string; taskId?: string }): LiveEvent {
+  const action = status.action ?? 'STATUS'
+  const chunk = event.chunkIndex !== undefined ? `chunk-${event.chunkIndex}` : 'live'
+  return {
+    id: `status-${chunk}-${action}-${status.taskId ?? ''}-${Date.now()}`,
+    time: formatClock(),
+    text: formatStatusAction(action),
     type: 'alert',
   }
+}
+
+function formatStatusAction(action: string): string {
+  const map: Record<string, string> = {
+    CREATED: 'Задача создана',
+    APPROVED: 'Задача одобрена менеджером',
+    REJECTED: 'Задача отклонена',
+    COLUMN_CHANGED: 'Задача перемещена в другую колонку',
+    UPDATED: 'Задача обновлена',
+    CANCELLED: 'Задача отменена',
+  }
+  return map[action] ?? `Статус задачи: ${action}`
 }
 
 function toSummary(text: string): Summary {
