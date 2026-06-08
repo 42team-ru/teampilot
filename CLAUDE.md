@@ -1,4 +1,4 @@
-# Digital Penetration — AI PM Bot
+# TeamPilot
 
 ## О проекте
 
@@ -35,7 +35,7 @@ LLM Worker (Python)
 ### Kafka-топики
 
 | Топик                | Направление  | Описание                               |
-|----------------------|--------------|----------------------------------------|
+| -------------------- | ------------ | -------------------------------------- |
 | `messages.raw`       | Bot → Spring | Батчи сообщений из чата                |
 | `users.events`       | Bot → Spring | Регистрация пользователя               |
 | `audio.new`          | Bot → Spring | Новое аудио в MinIO                    |
@@ -89,6 +89,7 @@ make ps             # статус контейнеров
 ## Соглашения по коду
 
 ### Соглашения по Spring
+
 Не добавляй в RequestMapping /api. Пиши /auth, /user, /tasks. Не пиши /api/users, /api/tasks
 Не пиши Flyway миграции. Все работает через ddl-auto: update.
 
@@ -160,7 +161,7 @@ String presignedUrl = s3Service.presignedGetUrl(bucket, key, Duration.ofMinutes(
 ## Технологический стек
 
 | Слой             | Технология                                  |
-|------------------|---------------------------------------------|
+| ---------------- | ------------------------------------------- |
 | Backend          | Java 21, Spring Boot 3, Gradle 9            |
 | БД               | PostgreSQL + Flyway-миграции                |
 | Очередь          | Redpanda (Kafka-совместимый)                |

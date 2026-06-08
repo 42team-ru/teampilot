@@ -1,13 +1,13 @@
-import { Copy, ExternalLink, LogIn, Radio } from 'lucide-react'
-import { Button } from '../ui/button'
-import type { ExtensionLoginChallenge } from '../../types/recording'
+import { Copy, ExternalLink, LogIn, Radio } from "lucide-react";
+import { Button } from "../ui/button";
+import type { ExtensionLoginChallenge } from "../../types/recording";
 
 interface Props {
-  loading: boolean
-  challenge?: ExtensionLoginChallenge | null
-  error?: string | null
-  fullHeight?: boolean
-  onLogin: () => void | Promise<unknown>
+  loading: boolean;
+  challenge?: ExtensionLoginChallenge | null;
+  error?: string | null;
+  fullHeight?: boolean;
+  onLogin: () => void | Promise<unknown>;
 }
 
 export default function AuthRequiredScreen({
@@ -17,22 +17,22 @@ export default function AuthRequiredScreen({
   fullHeight,
   onLogin,
 }: Props) {
-  const command = challenge ? `/start ${challenge.code}` : ''
+  const command = challenge ? `/start ${challenge.code}` : "";
   const botUrl = challenge
     ? `https://t.me/${challenge.botUsername}?start=${challenge.code}`
-    : ''
+    : "";
 
   const copyCommand = () => {
-    if (command) navigator.clipboard.writeText(command).catch(() => {})
-  }
+    if (command) navigator.clipboard.writeText(command).catch(() => {});
+  };
 
   return (
     <div
-      className={`w-[360px] p-4 space-y-4 ${fullHeight ? 'h-screen flex flex-col justify-center' : ''}`}
+      className={`w-[360px] p-4 space-y-4 ${fullHeight ? "h-screen flex flex-col justify-center" : ""}`}
     >
       <div className="flex items-center gap-2">
         <Radio className="h-5 w-5 text-primary" />
-        <span className="font-semibold text-sm">AI PM Assistant</span>
+        <span className="font-semibold text-sm">TeamPilot</span>
       </div>
 
       <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
@@ -70,7 +70,8 @@ export default function AuthRequiredScreen({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              После сообщения бот подтвердит вход, а расширение войдёт автоматически.
+              После сообщения бот подтвердит вход, а расширение войдёт
+              автоматически.
             </p>
           </div>
         ) : (
@@ -81,10 +82,18 @@ export default function AuthRequiredScreen({
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
 
-      <Button className="w-full gap-1.5" onClick={() => void onLogin()} disabled={loading}>
+      <Button
+        className="w-full gap-1.5"
+        onClick={() => void onLogin()}
+        disabled={loading}
+      >
         <LogIn className="h-3.5 w-3.5" />
-        {loading ? 'Проверяем вход...' : challenge ? 'Получить новый код' : 'Получить код входа'}
+        {loading
+          ? "Проверяем вход..."
+          : challenge
+            ? "Получить новый код"
+            : "Получить код входа"}
       </Button>
     </div>
-  )
+  );
 }

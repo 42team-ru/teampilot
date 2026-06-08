@@ -59,7 +59,21 @@ export interface LiveEvent {
   id: string
   time: string
   text: string
-  type: 'event' | 'alert'
+  type: 'event' | 'alert' | 'context'
+}
+
+export interface TaskStatusUpdate {
+  taskId: string
+  title: string
+  status: 'CREATED' | 'APPROVED' | 'REJECTED'
+  actorName?: string
+}
+
+export interface Toast {
+  id: string
+  title: string
+  description?: string
+  variant: 'default' | 'success' | 'destructive'
 }
 
 export interface Summary {

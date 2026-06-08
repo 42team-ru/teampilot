@@ -28,3 +28,4 @@ export type ExtMessage =
   | { type: 'RECORDING_ERROR'; error: string }
   | { type: 'PROCESSING_DONE'; meetingId: string }
   | { type: 'STATE_UPDATE'; state: RecordingState }
+  | { type: 'PANEL_OPENED' }

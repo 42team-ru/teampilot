@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, FileText } from 'lucide-react'
 import { ScrollArea } from '../ui/scroll-area'
 import type { LiveEvent } from '../../types/recording'
 
@@ -9,7 +9,7 @@ interface Props {
 
 export default function LiveTab({ events }: Props) {
   const endRef = useRef<HTMLDivElement>(null)
-  const displayed = events.slice(-20).reverse()
+  const displayed = events.slice(-20)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -41,9 +41,16 @@ export default function LiveTab({ events }: Props) {
       <ScrollArea className="flex-1 px-3 py-2">
         <div className="space-y-3">
           {displayed.map((event) => (
-            <div key={event.id} className={`space-y-0.5 ${event.type === 'alert' ? 'opacity-60' : ''}`}>
+            <div key={event.id} className="space-y-0.5">
               <p className="text-xs text-muted-foreground">{event.time}</p>
-              <p className="text-sm">{event.text}</p>
+              {event.type === 'context' ? (
+                <div className="flex items-start gap-1.5">
+                  <FileText className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted-foreground italic leading-relaxed">{event.text}</p>
+                </div>
+              ) : (
+                <p className={`text-sm ${event.type === 'alert' ? 'opacity-60' : ''}`}>{event.text}</p>
+              )}
             </div>
           ))}
         </div>

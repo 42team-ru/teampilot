@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/extension-integrations.md", "why": "проверить соответствие STOMP паттернам расширения"}
+{"file": ".trellis/spec/frontend/type-safety.md", "why": "проверить типы TaskStatusUpdate и новых событий"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "why": "проверить качество фронтенд кода"}
+{"file": ".trellis/spec/backend/kafka-events.md", "why": "проверить корректность STOMP broadcast паттерна"}
+{"file": ".trellis/spec/backend/error-handling.md", "why": "проверить отсутствие прямых RuntimeException"}
+{"file": ".trellis/tasks/06-09-extension-realtime-events-ux/prd.md", "why": "сверить реализацию с acceptance criteria"}
