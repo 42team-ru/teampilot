@@ -10,7 +10,7 @@ export default function DecisionsTab({ decisions }: Props) {
   if (decisions.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        Решения появятся после обработки встречи
+        Решения появятся по мере обсуждения...
       </div>
     )
   }
