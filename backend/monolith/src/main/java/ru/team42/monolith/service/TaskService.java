@@ -4,12 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.config.AppProperties;
+import ru.team42.monolith.dto.response.TaskUpdateMessage;
 import ru.team42.monolith.entity.*;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
@@ -49,6 +51,7 @@ public class TaskService {
     private final LlmTaskUpdateMapper llmTaskUpdateMapper;
     private final AppProperties appProperties;
     private final GamificationService gamificationService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional
     public Task createFromLlmEvent(LlmTaskCreateEvent event) {
@@ -105,6 +108,10 @@ public class TaskService {
             });
             taskEventPublisher.publishConfirmation(saved, true);
             taskEventPublisher.publishCreated(saved);
+            messagingTemplate.convertAndSend(
+                    "/topic/teams/%s/task-updates".formatted(saved.getTeam().getId()),
+                    TaskUpdateMessage.created(saved.getId(), saved.getTitle())
+            );
             log.info("Auto-confirmed task '{}' (confidence={})", saved.getTitle(), event.getConfidence());
             return saved;
         }

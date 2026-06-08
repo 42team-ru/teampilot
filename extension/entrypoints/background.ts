@@ -11,7 +11,7 @@ import {
   resetMeetingResults,
   setRecordingState,
 } from '../services/storage'
-import { defaultRecordingState, type MeetingAudioChunkPayload, type RecordingState } from '../types/recording'
+import { defaultRecordingState, type MeetingAudioChunkPayload, type RecordingState, type TaskStatusUpdate } from '../types/recording'
 import type { ExtMessage } from '../types/messages'
 
 const BACKGROUND_MESSAGE_TYPES = new Set([
@@ -27,7 +27,10 @@ const BACKGROUND_MESSAGE_TYPES = new Set([
   'MIC_PERMISSION_GRANTED',
   'REQUEST_TEST_AUDIO',
   'AUDIO_LEVEL',
+  'PANEL_OPENED',
 ])
+
+let badgeCount = 0
 
 export default defineBackground(() => {
   chrome.alarms.create('keepalive', { periodInMinutes: 0.4 })
@@ -106,7 +109,22 @@ export default defineBackground(() => {
         // so the popup can watch chrome.storage.onChanged and get real-time levels.
         chrome.storage.session.set({ audioLevel: msg.level }).catch(() => {})
         return { ok: true }
+
+      case 'PANEL_OPENED':
+        badgeCount = 0
+        chrome.action.setBadgeText({ text: '' }).catch(() => {})
+        chrome.storage.session.set({ pendingToasts: [] }).catch(() => {})
+        return { ok: true }
     }
+  }
+
+  async function notifyTaskUpdate(event: TaskStatusUpdate) {
+    const result = await chrome.storage.session.get('pendingToasts')
+    const existing = (result['pendingToasts'] as TaskStatusUpdate[]) ?? []
+    await chrome.storage.session.set({ pendingToasts: [...existing, event] })
+    badgeCount++
+    chrome.action.setBadgeText({ text: String(badgeCount) }).catch(() => {})
+    chrome.action.setBadgeBackgroundColor({ color: '#ef4444' }).catch(() => {})
   }
 
   async function startRecording(
@@ -150,6 +168,7 @@ export default defineBackground(() => {
 
     await connectMeetingSocket({
       meetingId: meeting.id,
+      teamId: meeting.teamId,
       token: auth.token,
       onResult: async (event) => {
         await applyMeetingLiveResult(event)
@@ -157,6 +176,9 @@ export default defineBackground(() => {
         if (state.status === 'processing') {
           await updateState({ status: 'done' })
         }
+      },
+      onTaskUpdate: async (event) => {
+        await notifyTaskUpdate(event)
       },
       onError: async (error) => {
         await updateState({ error: error.message })

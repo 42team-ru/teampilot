@@ -30,7 +30,6 @@ def my_tasks_team_keyboard(
     managed_teams: list[dict],
     member_teams: list[dict],
 ) -> InlineKeyboardMarkup:
-    managed_ids = {str(t.get("id")) for t in managed_teams}
     buttons: list[list[InlineKeyboardButton]] = []
     team_buttons: list[InlineKeyboardButton] = []
     for team in managed_teams[:_MAX_TEAMS]:
@@ -40,8 +39,6 @@ def my_tasks_team_keyboard(
             callback_data=f"mytasks:t:{team['id']}",
         ))
     for team in member_teams[:_MAX_TEAMS]:
-        if str(team.get("id")) in managed_ids:
-            continue
         title = (team.get("chatTitle") or team.get("id") or "Команда")[:_MAX_TITLE]
         team_buttons.append(InlineKeyboardButton(
             text=f"👤 {title}",
@@ -56,7 +53,6 @@ def team_overview_keyboard(
     managed_teams: list[dict],
     member_teams: list[dict],
 ) -> InlineKeyboardMarkup:
-    managed_ids = {str(t.get("id")) for t in managed_teams}
     buttons: list[list[InlineKeyboardButton]] = []
     team_buttons: list[InlineKeyboardButton] = []
     for team in managed_teams[:_MAX_TEAMS]:
@@ -66,8 +62,6 @@ def team_overview_keyboard(
             callback_data=f"team_ctx:manager:{team['id']}",
         ))
     for team in member_teams[:_MAX_TEAMS]:
-        if str(team.get("id")) in managed_ids:
-            continue
         title = (team.get("chatTitle") or team.get("id") or "Команда")[:_MAX_TITLE]
         team_buttons.append(InlineKeyboardButton(
             text=f"👤 {title}",

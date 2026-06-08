@@ -1,1 +1,0 @@
-{"file": ".trellis/tasks/06-09-fix-minio-presigned-url-public-endpoint/prd.md", "reason": "Требования и решение: добавить S3_PRESIGNED_ENDPOINT в application.yml и .env.example"}

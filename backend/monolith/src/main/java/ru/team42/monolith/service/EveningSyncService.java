@@ -2,9 +2,11 @@ package ru.team42.monolith.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.team42.backend.web_common.exception.AppException;
+import ru.team42.monolith.dto.response.TaskUpdateMessage;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
@@ -36,7 +38,9 @@ public class EveningSyncService {
     private final YouGileService youGileService;
     private final TaskProposalCache proposalCache;
     private final ExcuseService excuseService;
+    private final SimpMessagingTemplate messagingTemplate;
 
+    @Transactional(readOnly = true)
     public void startSyncForAllTeams() {
         List<Team> teams = teamRepository.findByActiveTrue();
         for (Team team : teams) {
@@ -47,6 +51,12 @@ public class EveningSyncService {
                 log.error("Failed to start sync for team={}: {}", team.getId(), e.getMessage());
             }
         }
+    }
+
+    @Transactional
+    public void startSyncForChat(Long chatId, Long managerTelegramId) {
+        Team team = requireManagerTeamByChat(chatId, managerTelegramId);
+        startSyncForTeam(team);
     }
 
     private void startSyncForTeam(Team team) {
@@ -247,6 +257,7 @@ public class EveningSyncService {
         syncEventPublisher.publishDraftToUser(telegramUserId, chatId, updated);
     }
 
+    @Transactional(readOnly = true)
     public void closeSyncAndSendSummary() {
         List<SyncStateService.TeamSyncSession> snapshot = List.copyOf(syncStateService.getAllSessions());
         for (SyncStateService.TeamSyncSession session : snapshot) {
@@ -257,6 +268,18 @@ public class EveningSyncService {
             } finally {
                 syncStateService.closeSession(session.teamId());
             }
+        }
+    }
+
+    @Transactional
+    public void closeSyncAndSendSummaryForChat(Long chatId, Long managerTelegramId) {
+        Team team = requireManagerTeamByChat(chatId, managerTelegramId);
+        SyncStateService.TeamSyncSession session = syncStateService.getSession(team.getId())
+                .orElseThrow(() -> AppException.badRequest("No active sync session for chat"));
+        try {
+            sendSummaryForTeam(session);
+        } finally {
+            syncStateService.closeSession(session.teamId());
         }
     }
 
@@ -427,6 +450,7 @@ public class EveningSyncService {
             taskRepository.save(saved);
         });
         taskEventPublisher.publishCreated(saved);
+        broadcastTaskUpdate(saved, TaskUpdateMessage.approved(saved.getId(), saved.getTitle(), resolveActorName(saved.getTeam().getId(), telegramUserId)));
         log.info("Task '{}' approved by manager telegramId={}", task.getTitle(), telegramUserId);
     }
 
@@ -446,6 +470,7 @@ public class EveningSyncService {
         task.setDeleted(true);
         taskRepository.save(task);
         taskEventPublisher.publishCancelled(task);
+        broadcastTaskUpdate(task, TaskUpdateMessage.rejected(task.getId(), task.getTitle(), resolveActorName(task.getTeam().getId(), telegramUserId)));
         log.info("Task '{}' rejected by manager telegramId={}", task.getTitle(), telegramUserId);
     }
 
@@ -466,6 +491,21 @@ public class EveningSyncService {
         log.info("New task proposal '{}' stored as proposalId={} for team={}", title, proposalId, team.getId());
     }
 
+    private Team requireManagerTeamByChat(Long chatId, Long managerTelegramId) {
+        if (chatId == null) {
+            throw AppException.badRequest("chatId is required");
+        }
+        if (managerTelegramId == null) {
+            throw AppException.badRequest("managerTelegramId is required");
+        }
+        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
+                .orElseThrow(() -> AppException.notFound("Active team not found for chat"));
+        teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), managerTelegramId)
+                .filter(m -> m.getRole() == TeamRole.MANAGER)
+                .orElseThrow(() -> AppException.forbidden("Only team managers can control sync"));
+        return team;
+    }
+
     private void markTaskComplete(Team team, String taskIdStr) {
         UUID taskId;
         try {
@@ -481,5 +521,23 @@ public class EveningSyncService {
             youGileService.updateTask(team, task);
             log.info("Task '{}' marked complete via sync", task.getTitle());
         });
+    }
+
+    private void broadcastTaskUpdate(Task task, TaskUpdateMessage message) {
+        String destination = "/topic/teams/%s/task-updates".formatted(task.getTeam().getId());
+        messagingTemplate.convertAndSend(destination, message);
+    }
+
+    private String resolveActorName(UUID teamId, Long telegramUserId) {
+        return teamUserRepository.findByTeamIdAndUserTelegramId(teamId, telegramUserId)
+                .map(m -> {
+                    var u = m.getUser();
+                    if (u == null) return null;
+                    String first = u.getFirstName() != null ? u.getFirstName().trim() : "";
+                    String last = u.getLastName() != null ? u.getLastName().trim() : "";
+                    String name = (first + " " + last).trim();
+                    return name.isEmpty() ? (u.getTelegramLogin() != null ? u.getTelegramLogin() : null) : name;
+                })
+                .orElse(null);
     }
 }
