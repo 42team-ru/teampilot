@@ -48,12 +48,6 @@ _STATUS_ACTIONS = (
     "закрыла",
     "закончил",
     "закончила",
-    "завершил",
-    "завершила",
-    "начал",
-    "начала",
-    "приступил",
-    "приступила",
     "беру",
     "взял",
     "взяла",
@@ -171,14 +165,6 @@ def _query_task_points(
             score_threshold,
             top_scores,
         )
-
-    logger.debug(
-        "RAW QDRANT team_id={!r} query={!r} count={} scores={}",
-        team_id,
-        query[:80],
-        len(all_points),
-        [(p.score, p.payload.get('kind')) for p in all_points[:5]],
-    )
     return [
         p
         for p in all_points
