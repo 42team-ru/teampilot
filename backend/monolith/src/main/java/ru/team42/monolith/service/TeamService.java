@@ -45,6 +45,7 @@ public class TeamService {
     private final S3Service s3Service;
     private final TeamMapper teamMapper;
 
+    @Transactional
     public List<TeamResponse> getManagerTeams(Long telegramId) {
         return teamUserRepository.findAllByUserTelegramIdAndRole(telegramId, TeamRole.MANAGER)
                 .stream()
