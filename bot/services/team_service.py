@@ -483,6 +483,43 @@ async def yougile_select_board(
     return True
 
 
+async def update_yougile_profile(team_id: str, login: str, password: str, telegram_id: int) -> bool:
+    """PATCH /auth/invite/{teamId}/yougile — re-bind user's YouGile credentials."""
+    path = f"/auth/invite/{team_id}/yougile"
+    body = {"telegramId": telegram_id, "yougileLogin": login, "yougilePassword": password}
+    context = {"team_id": team_id, "telegram_id": telegram_id}
+    try:
+        resp = await http_client.patch(
+            f"{settings.BACKEND_URL}{path}",
+            headers=_headers(telegram_id),
+            json=body,
+        )
+    except HttpRequestError as e:
+        log_http_request_error(
+            service="Backend",
+            method="PATCH",
+            path=f"{settings.BACKEND_URL}{path}",
+            error=e,
+            context=context,
+            request_json=body,
+        )
+        raise BackendApiError.unavailable() from e
+
+    if resp.status_code not in (200, 204):
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="PATCH",
+            path=f"{settings.BACKEND_URL}{path}",
+            expected="200 or 204",
+            context=context,
+            request_json=body,
+        )
+        raise BackendApiError.from_response(resp)
+
+    return True
+
+
 async def deactivate_team(telegram_chat_id: int, telegram_id: int | None = None) -> bool:
     """DELETE /teams/{telegramChatId} - mark team inactive."""
     path = f"/teams/{telegram_chat_id}"
