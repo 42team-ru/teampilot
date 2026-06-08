@@ -203,3 +203,36 @@ Diagnosed and fixed AudioContext auto-suspension in Chrome extension offscreen d
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Extension realtime events UX
+
+**Date**: 2026-06-09
+**Task**: Extension realtime events UX
+**Branch**: `master`
+
+### Summary
+
+Wired all live meeting events to extension: STOMP team topic for task updates (created/approved/rejected), toast notifications in sidepanel, action badge count, context field display in LiveTab, human-readable status alert text.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3f72a43` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-06-07
+- **Total Sessions**: 7
+- **Last Active**: 2026-06-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~205 | Active |
+| `journal-1.md` | ~238 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-06-09 | Extension realtime events UX | `3f72a43` | `master` |
 | 6 | 2026-06-07 | Fix AudioContext auto-suspend in offscreen recording | `26b655b` | `master` |
 | 5 | 2026-06-06 | Diagnose slow bot backend requests | `910a305` | `master` |
 | 4 | 2026-06-06 | Bot button-first panel UX | `cffc82f` | `master` |
