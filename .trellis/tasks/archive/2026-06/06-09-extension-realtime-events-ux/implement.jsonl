@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/extension-integrations.md", "why": "паттерны интеграции расширения: STOMP, chrome.storage, background messaging"}
+{"file": ".trellis/spec/frontend/state-management.md", "why": "как управлять состоянием toast/badge в расширении"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "why": "как писать новый hook для toast"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "why": "как писать Toast компонент в Shadcn стиле"}
+{"file": ".trellis/spec/backend/kafka-events.md", "why": "паттерны Kafka→STOMP broadcast на бекенде"}
+{"file": ".trellis/spec/backend/error-handling.md", "why": "AppException паттерны для новых эндпоинтов"}
+{"file": ".trellis/tasks/06-09-extension-realtime-events-ux/prd.md", "why": "полные требования задачи"}
