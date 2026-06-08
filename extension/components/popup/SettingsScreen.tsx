@@ -1,9 +1,27 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Check, LogIn, LogOut, Mic, UserRound } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  LogIn,
+  LogOut,
+  Mic,
+  Monitor,
+  Moon,
+  Palette,
+  Sun,
+  UserRound,
+} from 'lucide-react'
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/scroll-area'
 import { getMicSettings, setMicSettings, listMicrophones } from '../../services/micSettings'
+import { useExtensionTheme } from '../../hooks/useExtensionTheme'
 import type { AuthSession } from '../../types/recording'
+
+const themeOptions = [
+  { value: 'system', label: 'Системная', Icon: Monitor },
+  { value: 'light', label: 'Светлая', Icon: Sun },
+  { value: 'dark', label: 'Тёмная', Icon: Moon },
+] as const
 
 interface Props {
   onBack: () => void
@@ -22,6 +40,7 @@ export default function SettingsScreen({
   onLogin,
   onLogout,
 }: Props) {
+  const { theme, setTheme } = useExtensionTheme()
   const [mics, setMics] = useState<MediaDeviceInfo[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -86,6 +105,35 @@ export default function SettingsScreen({
                 Войти через Telegram
               </Button>
             )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-muted-foreground" />
+            <p className="text-sm font-medium">Тема</p>
+          </div>
+          <div className="grid grid-cols-3 gap-1 rounded-md border p-1">
+            {themeOptions.map(({ value, label, Icon }) => {
+              const selected = theme === value
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={selected}
+                  className={`flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${
+                    selected
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                  onClick={() => void setTheme(value)}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 

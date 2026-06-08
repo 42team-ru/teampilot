@@ -168,3 +168,70 @@ extension -> GET /meetings/by-url?meetingUrl=<same URL>
 ```
 
 > Warning: login codes are short-lived and stored in backend memory. Restarting backend invalidates pending codes.
+
+## Scenario: Extension Local UI Preferences
+
+### 1. Scope / Trigger
+
+- Trigger: Chrome extension UI preferences that must survive closing/reopening popup, sidepanel, or extension pages.
+- Applies to WXT React UI code under `extension/` that reads/writes `chrome.storage.local`.
+- Use this for local presentation preferences such as theme and device choices, not backend-owned user profile state.
+
+### 2. Signatures
+
+- Theme preference type: `'system' | 'light' | 'dark'`.
+- Theme storage helpers:
+  - `getThemePreference(): Promise<ThemePreference>`
+  - `setThemePreference(preference: ThemePreference): Promise<void>`
+  - `watchThemePreference(cb: (preference: ThemePreference) => void): () => void`
+- Theme application hook:
+  - `useExtensionTheme(): { theme: ThemePreference; setTheme: (nextTheme: ThemePreference) => Promise<void> }`
+
+### 3. Contracts
+
+- Storage key: `themePreference`.
+- Storage area: `chrome.storage.local`.
+- Valid values: `system`, `light`, `dark`.
+- Default behavior: missing or invalid stored values resolve to `system`.
+- Theme application: toggle `.dark` on `document.documentElement`; do not duplicate dark-mode CSS variables in components.
+- System theme behavior: `system` follows `window.matchMedia('(prefers-color-scheme: dark)')`.
+
+### 4. Validation & Error Matrix
+
+- Missing `themePreference` -> use `system`.
+- Unknown `themePreference` value -> use `system`.
+- Storage changes while a UI is open -> update local React state and re-apply document theme.
+- System color-scheme changes while `system` is selected -> re-apply document theme.
+
+### 5. Good/Base/Bad Cases
+
+- Good: Popup, sidepanel, and extension pages call `useExtensionTheme()` once near the app root so their UI is themed on open.
+- Good: Settings controls call `setTheme(nextTheme)` and rely on the shared service/hook contract.
+- Base: User never chooses a theme; extension follows OS/browser color scheme.
+- Bad: A component sets `document.documentElement.classList` directly or defines a second storage key for the same preference.
+
+### 6. Tests Required
+
+- Extension build must pass with `npm run build` in `extension/`.
+- Type-check should pass when the repo's existing TypeScript errors are resolved.
+- Manual checks:
+  - Select dark in settings -> current UI gets `.dark`.
+  - Select light -> `.dark` is removed.
+  - Select system -> UI follows `prefers-color-scheme`.
+  - Reopen popup/sidepanel -> saved preference is restored.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+document.documentElement.classList.add('dark')
+await chrome.storage.local.set({ theme: 'dark' })
+```
+
+#### Correct
+
+```typescript
+const { theme, setTheme } = useExtensionTheme()
+await setTheme('dark')
+```
