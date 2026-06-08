@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_TASKS: str = "tasks"
     QDRANT_COLLECTION_KNOWLEDGE: str = "team_knowledge"
     DEDUP_THRESHOLD: float = 0.92
-    STATUS_HINT_THRESHOLD: float = 0.25
+    STATUS_HINT_THRESHOLD: float = 0.50
 
     # Классификатор
     CLASSIFIER_THRESHOLD: float = 0.65
