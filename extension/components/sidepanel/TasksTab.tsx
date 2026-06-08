@@ -10,7 +10,7 @@ export default function TasksTab({ tasks }: Props) {
   if (tasks.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        Задачи появятся после обработки встречи
+        Задачи появятся по мере обсуждения...
       </div>
     )
   }
