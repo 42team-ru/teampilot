@@ -1,4 +1,5 @@
 42team.ru {
+#    tls internal
     handle /api/ws* {
         uri strip_prefix /api
         reverse_proxy monolith:8080 {
@@ -48,14 +49,17 @@
 #    }
 }
 
-s3.42team.ru {
-    reverse_proxy minio:9000
-}
+#s3.42team.ru {
+#    tls internal
+#    reverse_proxy minio:9000
+#}
 
-minio.42team.ru {
-    reverse_proxy minio:9001
-}
+#minio.42team.ru {
+#    tls internal
+#    reverse_proxy minio:9001
+#}
 
 #me.42team.ru {
+#    tls internal
 #    reverse_proxy landing:80
 #}

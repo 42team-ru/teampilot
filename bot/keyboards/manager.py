@@ -50,22 +50,26 @@ def manager_deactivate_confirm_keyboard(team_id: str) -> InlineKeyboardMarkup:
     ])
 
 
-def manager_members_list_keyboard(members: list[dict], team_id: str) -> InlineKeyboardMarkup:
+def manager_members_list_keyboard(
+    members: list[dict], team_id: str, viewer_telegram_id: int | None = None
+) -> InlineKeyboardMarkup:
     buttons = []
     for member in members:
         role = member.get("role", "USER")
         display = _member_display(member)
+        mid = member["id"]
+        is_self = viewer_telegram_id is not None and member.get("telegramId") == viewer_telegram_id
         if role == "USER":
-            member_user_id = member["id"]
             buttons.append([
                 InlineKeyboardButton(text=display, callback_data="noop"),
-                InlineKeyboardButton(
-                    text="❌",
-                    callback_data=f"manager:mbr_confirm:{member_user_id}",
-                ),
+                InlineKeyboardButton(text="⭐", callback_data=f"manager:mbr_promote:{mid}"),
+                InlineKeyboardButton(text="❌", callback_data=f"manager:mbr_confirm:{mid}"),
             ])
         else:
-            buttons.append([InlineKeyboardButton(text=f"{display} 🔑", callback_data="noop")])
+            row = [InlineKeyboardButton(text=f"{display} 🔑", callback_data="noop")]
+            if not is_self:
+                row.append(InlineKeyboardButton(text="👤", callback_data=f"manager:mbr_demote:{mid}"))
+            buttons.append(row)
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="manager:members")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -79,6 +83,20 @@ def back_to_team_ctx_keyboard(team_id: str) -> InlineKeyboardMarkup:
 def manager_member_remove_confirm_keyboard(team_user_id: str, team_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"manager:mbr_remove:{team_user_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"manager:members_list:{team_id}")],
+    ])
+
+
+def manager_member_promote_confirm_keyboard(team_user_id: str, team_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, назначить", callback_data=f"manager:mbr_promote_conf:{team_user_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"manager:members_list:{team_id}")],
+    ])
+
+
+def manager_member_demote_confirm_keyboard(team_user_id: str, team_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, снять роль", callback_data=f"manager:mbr_demote_conf:{team_user_id}")],
         [InlineKeyboardButton(text="← Отмена", callback_data=f"manager:members_list:{team_id}")],
     ])
 

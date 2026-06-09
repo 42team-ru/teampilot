@@ -14,6 +14,8 @@ from keyboards.manager import (
     manager_back_keyboard,
     manager_chat_select_keyboard,
     manager_deactivate_confirm_keyboard,
+    manager_member_demote_confirm_keyboard,
+    manager_member_promote_confirm_keyboard,
     manager_member_remove_confirm_keyboard,
     manager_members_list_keyboard,
     manager_skip_keyboard,
@@ -29,6 +31,7 @@ from services.team_service import (
     get_team_members,
     link_chat_to_team,
     remove_team_member,
+    update_member_role,
     update_team,
 )
 from states.manager import ManagerLinkChatStates, ManagerMeetingStates, ManagerUpdateStates
@@ -425,7 +428,7 @@ async def manager_members_list(callback: CallbackQuery, state: FSMContext) -> No
 
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=manager_members_list_keyboard(members, team_id),
+        reply_markup=manager_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
     )
     await callback.answer()
 
@@ -512,7 +515,145 @@ async def manager_member_remove(callback: CallbackQuery, state: FSMContext) -> N
 
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=manager_members_list_keyboard(members, team_id),
+        reply_markup=manager_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manager:mbr_promote:"))
+async def manager_member_promote_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id")
+
+    if not team_id:
+        await callback.answer("Сессия истекла, начните заново.", show_alert=True)
+        return
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    member = next((m for m in members if str(m.get("id")) == team_user_id), None)
+    if member is None:
+        await callback.message.edit_text("Участник не найден.", reply_markup=manager_back_keyboard())
+        await callback.answer()
+        return
+
+    parts = []
+    if member.get("firstName"):
+        parts.append(member["firstName"])
+    if member.get("lastName"):
+        parts.append(member["lastName"])
+    name = " ".join(parts) if parts else "Без имени"
+    login = member.get("telegramLogin")
+    display = f"{name} (@{login})" if login else name
+
+    await callback.message.edit_text(
+        f"Назначить <b>{escape(display)}</b> менеджером команды?",
+        reply_markup=manager_member_promote_confirm_keyboard(team_user_id, team_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manager:mbr_promote_conf:"))
+async def manager_member_promote(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id")
+
+    if not team_id:
+        await callback.answer("Сессия истекла, начните заново.", show_alert=True)
+        return
+
+    await update_member_role(team_id, team_user_id, "MANAGER", callback.from_user.id)
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    team_title = _team_title(team) if team else team_id
+
+    lines = [f"✅ Роль обновлена.\n\n<b>Участники: {team_title}</b> ({len(members)})\n"]
+    for m in members:
+        role_label = "менеджер 🔑" if m.get("role") == "MANAGER" else "участник"
+        parts = []
+        if m.get("firstName"):
+            parts.append(m["firstName"])
+        if m.get("lastName"):
+            parts.append(m["lastName"])
+        name = " ".join(parts) if parts else "Без имени"
+        login = m.get("telegramLogin")
+        display = f"{name} (@{login})" if login else name
+        lines.append(f"• {display} — {role_label}")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=manager_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manager:mbr_demote:"))
+async def manager_member_demote_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id")
+
+    if not team_id:
+        await callback.answer("Сессия истекла, начните заново.", show_alert=True)
+        return
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    member = next((m for m in members if str(m.get("id")) == team_user_id), None)
+    if member is None:
+        await callback.message.edit_text("Участник не найден.", reply_markup=manager_back_keyboard())
+        await callback.answer()
+        return
+
+    parts = []
+    if member.get("firstName"):
+        parts.append(member["firstName"])
+    if member.get("lastName"):
+        parts.append(member["lastName"])
+    name = " ".join(parts) if parts else "Без имени"
+    login = member.get("telegramLogin")
+    display = f"{name} (@{login})" if login else name
+
+    await callback.message.edit_text(
+        f"Снять роль менеджера с <b>{escape(display)}</b>?",
+        reply_markup=manager_member_demote_confirm_keyboard(team_user_id, team_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manager:mbr_demote_conf:"))
+async def manager_member_demote(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id")
+
+    if not team_id:
+        await callback.answer("Сессия истекла, начните заново.", show_alert=True)
+        return
+
+    await update_member_role(team_id, team_user_id, "USER", callback.from_user.id)
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    team_title = _team_title(team) if team else team_id
+
+    lines = [f"✅ Роль обновлена.\n\n<b>Участники: {team_title}</b> ({len(members)})\n"]
+    for m in members:
+        role_label = "менеджер 🔑" if m.get("role") == "MANAGER" else "участник"
+        parts = []
+        if m.get("firstName"):
+            parts.append(m["firstName"])
+        if m.get("lastName"):
+            parts.append(m["lastName"])
+        name = " ".join(parts) if parts else "Без имени"
+        login = m.get("telegramLogin")
+        display = f"{name} (@{login})" if login else name
+        lines.append(f"• {display} — {role_label}")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=manager_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
     )
     await callback.answer()
 
@@ -1001,7 +1142,7 @@ async def team_ctx_members(callback: CallbackQuery, state: FSMContext) -> None:
 
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=_ctx_members_list_keyboard(members, team_id),
+        reply_markup=_ctx_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
     )
     await callback.answer()
 
@@ -1085,7 +1226,137 @@ async def team_ctx_member_remove(callback: CallbackQuery, state: FSMContext) -> 
 
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=_ctx_members_list_keyboard(members, team_id),
+        reply_markup=_ctx_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("team_ctx:mbr_promote:"))
+async def team_ctx_member_promote_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id", "")
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    member = next((m for m in members if str(m.get("id")) == team_user_id), None)
+    if member is None:
+        await callback.message.edit_text("Участник не найден.", reply_markup=back_to_team_ctx_keyboard(team_id))
+        await callback.answer()
+        return
+
+    parts = []
+    if member.get("firstName"):
+        parts.append(member["firstName"])
+    if member.get("lastName"):
+        parts.append(member["lastName"])
+    name = " ".join(parts) if parts else "Без имени"
+    login = member.get("telegramLogin")
+    display = f"{name} (@{login})" if login else name
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, назначить", callback_data=f"team_ctx:mbr_promote_conf:{team_user_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"team_ctx:members:{team_id}")],
+    ])
+    await callback.message.edit_text(
+        f"Назначить <b>{escape(display)}</b> менеджером команды?",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("team_ctx:mbr_promote_conf:"))
+async def team_ctx_member_promote(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id", "")
+
+    await update_member_role(team_id, team_user_id, "MANAGER", callback.from_user.id)
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    team_title = _team_title(team) if team else team_id
+
+    lines = [f"✅ Роль обновлена.\n\n<b>Участники: {team_title}</b> ({len(members)})\n"]
+    for m in members:
+        role_label = "менеджер 🔑" if m.get("role") == "MANAGER" else "участник"
+        parts = []
+        if m.get("firstName"):
+            parts.append(m["firstName"])
+        if m.get("lastName"):
+            parts.append(m["lastName"])
+        name = " ".join(parts) if parts else "Без имени"
+        login = m.get("telegramLogin")
+        display = f"{name} (@{login})" if login else name
+        lines.append(f"• {display} — {role_label}")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=_ctx_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("team_ctx:mbr_demote:"))
+async def team_ctx_member_demote_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id", "")
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    member = next((m for m in members if str(m.get("id")) == team_user_id), None)
+    if member is None:
+        await callback.message.edit_text("Участник не найден.", reply_markup=back_to_team_ctx_keyboard(team_id))
+        await callback.answer()
+        return
+
+    parts = []
+    if member.get("firstName"):
+        parts.append(member["firstName"])
+    if member.get("lastName"):
+        parts.append(member["lastName"])
+    name = " ".join(parts) if parts else "Без имени"
+    login = member.get("telegramLogin")
+    display = f"{name} (@{login})" if login else name
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, снять роль", callback_data=f"team_ctx:mbr_demote_conf:{team_user_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"team_ctx:members:{team_id}")],
+    ])
+    await callback.message.edit_text(
+        f"Снять роль менеджера с <b>{escape(display)}</b>?",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("team_ctx:mbr_demote_conf:"))
+async def team_ctx_member_demote(callback: CallbackQuery, state: FSMContext) -> None:
+    team_user_id = callback.data.split(":", 2)[2]
+    data = await state.get_data()
+    team_id = data.get("members_team_id", "")
+
+    await update_member_role(team_id, team_user_id, "USER", callback.from_user.id)
+
+    members = await get_team_members(team_id, callback.from_user.id)
+    team = await _get_team_for_manager(callback.from_user.id, team_id)
+    team_title = _team_title(team) if team else team_id
+
+    lines = [f"✅ Роль обновлена.\n\n<b>Участники: {team_title}</b> ({len(members)})\n"]
+    for m in members:
+        role_label = "менеджер 🔑" if m.get("role") == "MANAGER" else "участник"
+        parts = []
+        if m.get("firstName"):
+            parts.append(m["firstName"])
+        if m.get("lastName"):
+            parts.append(m["lastName"])
+        name = " ".join(parts) if parts else "Без имени"
+        login = m.get("telegramLogin")
+        display = f"{name} (@{login})" if login else name
+        lines.append(f"• {display} — {role_label}")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=_ctx_members_list_keyboard(members, team_id, viewer_telegram_id=callback.from_user.id),
     )
     await callback.answer()
 
@@ -1253,23 +1524,24 @@ async def team_ctx_deactivate_confirm(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-def _ctx_members_list_keyboard(members: list[dict], team_id: str):
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+def _ctx_members_list_keyboard(members: list[dict], team_id: str, viewer_telegram_id: int | None = None):
     buttons = []
     for member in members:
         role = member.get("role", "USER")
         display = _member_display_short(member)
+        mid = member["id"]
+        is_self = viewer_telegram_id is not None and member.get("telegramId") == viewer_telegram_id
         if role == "USER":
-            member_user_id = member["id"]
             buttons.append([
                 InlineKeyboardButton(text=display, callback_data="noop"),
-                InlineKeyboardButton(
-                    text="❌",
-                    callback_data=f"team_ctx:mbr_confirm:{member_user_id}",
-                ),
+                InlineKeyboardButton(text="⭐", callback_data=f"team_ctx:mbr_promote:{mid}"),
+                InlineKeyboardButton(text="❌", callback_data=f"team_ctx:mbr_confirm:{mid}"),
             ])
         else:
-            buttons.append([InlineKeyboardButton(text=f"{display} 🔑", callback_data="noop")])
+            row = [InlineKeyboardButton(text=f"{display} 🔑", callback_data="noop")]
+            if not is_self:
+                row.append(InlineKeyboardButton(text="👤", callback_data=f"team_ctx:mbr_demote:{mid}"))
+            buttons.append(row)
     buttons.append([InlineKeyboardButton(text="← Назад к команде", callback_data=f"team_ctx:manager:{team_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
