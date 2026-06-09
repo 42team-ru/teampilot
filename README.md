@@ -85,6 +85,12 @@
 
 Когда задача просрочена — Spring запускает Qdrant-поиск по семантике задачи в каталоге курсов (`team_knowledge` с `type="course"`), включая глобальный каталог (Skillbox, Яндекс Практикум, Степик, YouTube, Coursera). Исполнитель получает подборку в личку. Менеджер может добавлять курсы через URL, бот парсит og:title/og:description через jsoup. DataSeeder содержит 15+ глобальных курсов.
 
+### RAG — контекст команды в каждом запросе к LLM
+
+При извлечении задач из чата LLM Worker автоматически обогащает каждый запрос релевантными знаниями команды из Qdrant (`team_knowledge`): резюме встреч, summary файлов, архив задач, каталог курсов. Это позволяет LLM учитывать контекст проекта при создании задач.
+
+Команда `/wiki запрос` делает семантический поиск по базе знаний и возвращает топ-3 релевантных фрагмента (retrieval-only, без дополнительной LLM-генерации).
+
 ### Онбординг и роли
 
 - **SYSTEM_ADMIN**: команда `/admin` в личке, создание команд через `POST /admin/teams`, управление пользователями.
@@ -260,6 +266,9 @@ Spring-монолит, LLM Worker и Telegram-бот запускаются вр
 # Spring-монолит
 cd backend && ./gradlew :monolith:bootRun
 
+# Сгенерировать Protobuf-классы (нужно один раз, перед первым запуском LLM Worker)
+make proto-gen
+
 # LLM Worker
 cd llm-worker && uv run python main.py
 
@@ -273,12 +282,6 @@ cd bot && uv run python main.py
 make build     # jibDockerBuild локально
 make push      # ghcr.io/42team-ru/*
 make release   # build + push через Jib
-```
-
-### Protobuf (Python-сторона)
-
-```bash
-make proto-gen
 ```
 
 ### Управление
@@ -325,13 +328,3 @@ make clean     # удалить все контейнеры и volumes
 | Excuses                   | `POST /excuse`, `GET /excuse/teams` |
 
 ---
-
-## Соглашения по коду (Spring)
-
-- Нет `/api` префикса — пишем `/auth`, `/tasks`, `/teams`.
-- `ddl-auto: update`, Flyway не используется.
-- Все исключения через `AppException` (обрабатывается `GlobalExceptionHandler`).
-- Ответы через `ResponseUtils.ok/created/noContent/page`.
-- Сущности наследуют `AbstractEntity` (UUID id, createdAt, updatedAt).
-- Kafka-события: `BaseEvent` + `AbstractEventPublisher`.
-- Файлы: `S3Service.upload/presignedGetUrl`.
