@@ -1,5 +1,6 @@
 package ru.team42.backend.kafka_common.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -28,6 +29,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @AutoConfiguration(beforeName = "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration")
 @ConditionalOnClass(KafkaTemplate.class)
 @EnableConfigurationProperties({KafkaProperties.class, AppKafkaProperties.class})
@@ -99,6 +101,7 @@ public class KafkaAutoConfiguration {
                             .partitions(appProps.getDefaultPartitions())
                             .replicas(appProps.getDefaultReplicationFactor())
                             .build());
+                    log.info("Добавлены топики: {}",  topicName);
                 } catch (IllegalAccessException ignored) {}
             }
         }
