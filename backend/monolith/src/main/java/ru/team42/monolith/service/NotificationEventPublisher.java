@@ -107,6 +107,14 @@ public class NotificationEventPublisher extends AbstractEventPublisher {
         );
     }
 
+    public void publishTeamCreated(Long telegramId, String teamId, String teamName, String inviteLink) {
+        send(
+                KafkaTopics.BOTS_NOTIFICATIONS,
+                telegramId.toString(),
+                BotNotificationEvent.teamCreated(telegramId, teamId, teamName, inviteLink)
+        );
+    }
+
     public void publishMeetingSummary(Meeting meeting, MeetingLiveResultEvent event) {
         Long chatId = meeting.getTeam().getTelegramChatId();
         if (chatId == null) {

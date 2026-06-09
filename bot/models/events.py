@@ -155,6 +155,18 @@ class BotNotificationEvent(BackendEvent):
         default=None,
         validation_alias=AliasChoices("debugText", "debug_text"),
     )
+    team_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("teamId", "team_id"),
+    )
+    team_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("teamName", "team_name"),
+    )
+    invite_link: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("inviteLink", "invite_link"),
+    )
 
 
 class SyncDraftItem(BackendEvent):

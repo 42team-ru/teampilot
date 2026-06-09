@@ -74,6 +74,7 @@ def team_overview_keyboard(
             callback_data=f"team_ctx:member:{team['id']}",
         ))
     buttons.extend(_rows(team_buttons))
+    buttons.append([InlineKeyboardButton(text="➕ Создать команду", callback_data="team:create")])
     buttons.append([InlineKeyboardButton(text="← Главное меню", callback_data="member:back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -200,4 +201,10 @@ def back_to_teams_keyboard() -> InlineKeyboardMarkup:
 def back_to_member_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="← Назад", callback_data="member:back")],
+    ])
+
+
+def no_team_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Создать команду", callback_data="team:create")],
     ])
