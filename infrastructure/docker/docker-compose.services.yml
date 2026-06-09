@@ -1,34 +1,124 @@
 services:
-  auth-service:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/auth-service:latest
-    container_name: auth-service
+  monolith:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/monolith:latest
+    container_name: monolith
     pull_policy: always
     ports:
-      - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
+      - "${API_GATEWAY_PORT:-8080}:8080"
+    restart: unless-stopped
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
-      SERVER_FORWARD_HEADERS_STRATEGY: framework
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}?currentSchema=auth_schema
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}?currentSchema=public
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:19092
-      AUTH_ISSUER: "http://auth-service:${AUTH_SERVICE_PORT}"
-      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: "http://alloy:4317"
-      JWT_ISSUER: http://auth-service:8082
-      COOKIE_DOMAIN: dynamic
-      COOKIE_SECURE: "true"
-      APP_FRONTEND_URL: "https://42team.ru"
-      APP_OAUTH2_REDIRECT_BASE_URL: "https://42team.ru/api"
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
-      YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID}
-      YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET}
-      APP_S3_ENDPOINT: http://minio:9000
-      APP_S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      APP_S3_SECRET_KEY: ${S3_SECRET_KEY}
-      APP_S3_REGION: us-east-1
-      APP_S3_DEFAULT_BUCKET: ${S3_DEFAULT_BUCKET}
-      APP_S3_PRESIGNED_ENDPOINT: ${S3_SERVER_URL}
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:19092
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-bXlfc3VwZXJfc2VjcmV0X2tleV9mb3JfaGFja2F0aG9uXzIwMjQ=}
+      BOT_SECRET: ${BOT_SECRET:-changeme}
+      TELEGRAM_BOT_TOKEN: ${BOT_TOKEN}
+      BOT_URL: ${BOT_URL:-t.me/prorab_bot}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_REGION: us-east-1
+      S3_DEFAULT_BUCKET: ${S3_DEFAULT_BUCKET:-uploads}
+      S3_PRESIGNED_ENDPOINT: ${S3_SERVER_URL:-https://s3.42team.ru}
+
+  bot:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/bot:latest
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: bot
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:19092
+      BACKEND_URL: http://monolith:8080
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${S3_DEFAULT_BUCKET:-uploads}
+      MINIO_BUCKET_AUDIO: ${MINIO_BUCKET_AUDIO:-audio-recordings}
+      LLM_WORKER_URL: http://llm-worker:8001
+      MOCK_YOUGILE: ${MOCK_YOUGILE:-false}
+      DEBUG_MODE: ${DEBUG_MODE:-false}
+      DEBUG_ADMIN_IDS: ${DEBUG_ADMIN_IDS:-[]}
+
+  llm-worker:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/llm-worker:latest
+    build:
+      context: ./llm-worker
+      dockerfile: Dockerfile
+    container_name: llm-worker
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:19092
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      MINIO_SECURE: "false"
+      LLM_API_BASE: ${LLM_API_BASE}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_CHEAP_MODEL: ${LLM_CHEAP_MODEL}
+      LLM_EXPENSIVE_MODEL: ${LLM_EXPENSIVE_MODEL}
+      EMBEDDINGS_API_BASE: ${EMBEDDINGS_API_BASE}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-text-embedding-3-small}
+      EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-1536}
+      WHISPER_API_BASE: ${WHISPER_API_BASE}
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      WHISPER_MODEL: ${WHISPER_MODEL:-whisper-large-v3}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-ru}
+      WHISPER_TIMEOUT_SECONDS: ${WHISPER_TIMEOUT_SECONDS:-120}
+      DEBUG_MODE: ${DEBUG_MODE:-false}
+      DEBUG_ADMIN_IDS: ${DEBUG_ADMIN_IDS:-[]}
+
+      # ------------------------------------------------------------------
+      # Классификатор батчей
+      # ------------------------------------------------------------------
+      # Минимальная уверенность классификатора чтобы отправить батч на
+      # дорогую LLM. Ниже порога — батч игнорируется.
+      CLASSIFIER_THRESHOLD: ${CLASSIFIER_THRESHOLD:-0.65}
+      # Уверенность выше этого порога — задача создаётся автоматически
+      # без подтверждения пользователем.
+      AUTO_CONFIRM_THRESHOLD: ${AUTO_CONFIRM_THRESHOLD:-0.90}
+
+      # ------------------------------------------------------------------
+      # Дедупликация задач (Qdrant cosine similarity)
+      # ------------------------------------------------------------------
+      # Если похожая задача уже есть в векторной БД с similarity выше порога —
+      # новая задача считается дубликатом и не создаётся.
+      DEDUP_THRESHOLD: ${DEDUP_THRESHOLD:-0.92}
+      # Минимальный score при поиске статус-хинтов. Ниже порога — хинт
+      # не учитывается при извлечении смены статуса.
+      STATUS_HINT_THRESHOLD: ${STATUS_HINT_THRESHOLD:-0.25}
+
+      # ------------------------------------------------------------------
+      # Параллелизм воркера
+      # ------------------------------------------------------------------
+      # Сколько батчей обрабатывается одновременно в ThreadPoolExecutor.
+      LLM_WORKER_CONCURRENCY: ${LLM_WORKER_CONCURRENCY:-4}
+
+      # ------------------------------------------------------------------
+      # Чанкинг транскриптов встреч
+      # ------------------------------------------------------------------
+      # Размер одного чанка транскрипта в символах.
+      TRANSCRIPT_CHUNK_CHARS: ${TRANSCRIPT_CHUNK_CHARS:-6000}
+      # Перекрытие между соседними чанками — не потерять контекст на стыке.
+      TRANSCRIPT_CHUNK_OVERLAP_CHARS: ${TRANSCRIPT_CHUNK_OVERLAP_CHARS:-500}
+      # Сколько символов контекста встречи передаётся в промпт.
+      MEETING_CONTEXT_CHARS: ${MEETING_CONTEXT_CHARS:-6000}
+      # Минимальный размер чанка для извлечения задач из встречи.
+      MEETING_EXTRACTION_MIN_CHARS: ${MEETING_EXTRACTION_MIN_CHARS:-100}
+      # Шаг сдвига при извлечении задач из чанков встречи.
+      MEETING_EXTRACTION_STEP_CHARS: ${MEETING_EXTRACTION_STEP_CHARS:-200}
+      # Сколько секунд ждать после последнего чанка перед финализацией встречи.
+      MEETING_FINALIZE_WAIT_SECONDS: ${MEETING_FINALIZE_WAIT_SECONDS:-10}
 
 networks:
   default:

@@ -20,10 +20,12 @@ Analyze the message batch and output a single JSON object. Raw JSON only — no 
 </has_task_true>
 
 <has_status_change_true>
-- Completion: "готово", "сделал", "закрыл", "смотри в PR", "задеплоено", "проверяй"
+- Completion (IT): "готово", "сделал/а", "закрыл/а", "смотри в PR", "задеплоено", "проверяй", "в мастере", "слил/а", "залил/а", "смерджил/а"
+- Completion (general past tense verbs): "разработал/а", "настроил/а", "написал/а", "реализовал/а", "исправил/а", "запустил/а", "выполнил/а", "починил/а", "обновил/а", "прикрутил/а", "испёк/испекла", "сделал/а" + any domain verb in past tense reporting completion
 - Taking ownership: "взял задачу", "беру задачу", "взял таску", "занялся", "приступил", "взял на себя"
 - Reassignment: "передаю Кириллу", "назначаю на Вову", "это теперь твоё"
 - Cancellation: "не актуально", "отменяем", "снимаем с повестки"
+IMPORTANT: Any past-tense verb reporting that something is done = has_status_change true, even if the domain is non-technical (cooking, design, etc.).
 </has_status_change_true>
 
 <has_decision_true>
@@ -84,8 +86,34 @@ Use 0.01–0.05 for definite false, 0.95–0.99 for definite true.
 </example>
 
 <example>
-<input>Есть и то и то — новая задача и статус старой</input>
-<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": true, "confidence_status": 0.85, "has_decision": false, "confidence_decision": 0.02}}</output>
+<input>[09:00] vasya: испек булки
+[09:01] vladimir: фронтенд переоткрыли, нужно его доделать
+[09:02] vasya: я возьму его в работу</input>
+<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": true, "confidence_status": 0.90, "has_decision": false, "confidence_decision": 0.02}}</output>
+</example>
+
+<example>
+<input>[10:00] misha: настроил деплой, всё работает
+[10:01] pm: отлично. Миша, теперь займись мониторингом
+[10:02] misha: ок, берусь</input>
+<output>{{"has_task": true, "confidence_task": 0.95, "has_status_change": true, "confidence_status": 0.92, "has_decision": false, "confidence_decision": 0.02}}</output>
+</example>
+
+<example>
+<input>[14:00] dasha: разработала экран профиля, смотрите
+[14:02] pm: Даша, тогда возьми ещё экран настроек</input>
+<output>{{"has_task": true, "confidence_task": 0.93, "has_status_change": true, "confidence_status": 0.91, "has_decision": false, "confidence_decision": 0.02}}</output>
+</example>
+
+<example>
+<input>[16:00] vova: написал тесты для авторизации
+[16:01] vova: кстати нужно ещё покрыть платёжку</input>
+<output>{{"has_task": true, "confidence_task": 0.88, "has_status_change": true, "confidence_status": 0.90, "has_decision": false, "confidence_decision": 0.02}}</output>
+</example>
+
+<example>
+<input>[11:00] misha: настроил деплой, всё работает</input>
+<output>{{"has_task": false, "confidence_task": 0.03, "has_status_change": true, "confidence_status": 0.92, "has_decision": false, "confidence_decision": 0.02}}</output>
 </example>
 
 <example>
