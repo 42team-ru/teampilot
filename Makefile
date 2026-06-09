@@ -24,8 +24,6 @@ AI_CFG       := -f $(DOCKER_DIR)/docker-compose.ai.yml
 PROTO_SRC    := backend/core/kafka-proto-common/src/main/proto
 PROTO_PY_OUT := llm-worker/proto_generated
 
-PROXY_DIR    := infrastructure/yookassa-proxy
-
 # ============================================================
 # Help
 # ============================================================
@@ -132,21 +130,6 @@ proto-gen: ## Сгенерировать Python-классы из .proto
 # ============================================================
 # Other
 # ============================================================
-
-##@ YooKassa Proxy (русский VPS)
-
-.PHONY: yk-proxy-up yk-proxy-down yk-proxy-logs yk-proxy-install
-yk-proxy-install: ## Установить Docker на чистый Ubuntu/Debian сервер
-	ssh -i ~/.ssh/id_rsa hexaend@$(YK_PROXY_HOST) "curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker hexaend"
-yk-proxy-up:      ## Запустить прокси на русском VPS
-	ssh -i ~/.ssh/id_rsa hexaend@$(YK_PROXY_HOST) "sudo mkdir -p /opt/yookassa-proxy && sudo chown hexaend:hexaend /opt/yookassa-proxy"
-	scp -i ~/.ssh/id_rsa $(PROXY_DIR)/docker-compose.yml hexaend@$(YK_PROXY_HOST):/opt/yookassa-proxy/
-	scp -i ~/.ssh/id_rsa $(PROXY_DIR)/Caddyfile hexaend@$(YK_PROXY_HOST):/opt/yookassa-proxy/
-	ssh -i ~/.ssh/id_rsa hexaend@$(YK_PROXY_HOST) "cd /opt/yookassa-proxy && docker compose up -d --force-recreate"
-yk-proxy-down:    ## Остановить прокси на русском VPS
-	ssh -i ~/.ssh/id_rsa hexaend@$(YK_PROXY_HOST) "cd /opt/yookassa-proxy && docker compose down"
-yk-proxy-logs:    ## Логи прокси
-	ssh -i ~/.ssh/id_rsa hexaend@$(YK_PROXY_HOST) "cd /opt/yookassa-proxy && docker compose logs -f"
 
 ##@ Other
 
