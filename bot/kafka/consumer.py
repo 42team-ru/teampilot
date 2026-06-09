@@ -362,6 +362,8 @@ class EventConsumer:
         elif event.type == "MEETING_SUMMARY":
             text = _format_meeting_summary(event)
             reply_markup = _meeting_speaker_keyboard(event)
+        elif event.type == "DEBUG":
+            text = _format_debug(event)
         else:
             text = (
                 "🔔 <b>Уведомление по задаче</b>\n\n"
@@ -612,3 +614,9 @@ def _speaker_num(label: str) -> str:
     if "_" in label:
         return label.rsplit("_", 1)[-1]
     return label
+
+
+def _format_debug(event: "BotNotificationEvent") -> str:
+    title = escape(event.task_title or "DEBUG")
+    body = event.debug_text or ""
+    return f"🐛 <b>[DEBUG] {title}</b>\n\n{body}"
