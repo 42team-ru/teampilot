@@ -50,6 +50,10 @@ server:
 springdoc:
     api-docs:
         path: /v3/api-docs
+    swagger-ui:
+        path: /swagger-ui.html
+        config-url: /api/v3/api-docs/swagger-config
+        url: /api/v3/api-docs
     packages-to-scan: ru.team42.monolith.rest
     default-produces-media-type: application/json
 
