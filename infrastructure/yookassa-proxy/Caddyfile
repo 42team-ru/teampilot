@@ -1,0 +1,5 @@
+yookassa-proxy.42team.ru {
+	reverse_proxy https://api.yookassa.ru {
+		header_up Host api.yookassa.ru
+	}
+}
