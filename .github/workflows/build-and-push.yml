@@ -21,24 +21,9 @@ jobs:
       llm-worker: ${{ steps.filter.outputs.llm-worker }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            monolith:
-              - 'backend/monolith/**'
-              - 'backend/core/**'
-              - 'backend/build.gradle.kts'
-              - 'backend/settings.gradle.kts'
-              - 'backend/gradle/**'
-            bot:
-              - 'bot/**'
-            llm-worker:
-              - 'llm-worker/**'
 
   build-monolith:
     needs: changes
-    if: needs.changes.outputs.monolith == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +42,6 @@ jobs:
 
   build-bot:
     needs: changes
-    if: needs.changes.outputs.bot == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +61,6 @@ jobs:
 
   build-llm-worker:
     needs: changes
-    if: needs.changes.outputs.llm-worker == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
