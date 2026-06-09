@@ -18,6 +18,7 @@ public class BotNotificationEvent extends BaseEvent {
     public static final String TYPE_LEVEL_UP = "LEVEL_UP";
     public static final String TYPE_COURSE_RECOMMENDATION = "COURSE_RECOMMENDATION";
     public static final String TYPE_MEETING_SUMMARY = "MEETING_SUMMARY";
+    public static final String TYPE_TEAM_CREATED = "TEAM_CREATED";
 
     public record CourseInfo(String courseId, String title, String url, String description) {}
     public record SpeakerInfo(String speakerLabel, String sample) {}
@@ -38,6 +39,9 @@ public class BotNotificationEvent extends BaseEvent {
     private final List<String> meetingTasks;
     private final List<String> meetingHints;
     private final List<SpeakerInfo> meetingSpeakers;
+    private final String teamId;
+    private final String teamName;
+    private final String inviteLink;
 
     public BotNotificationEvent(List<Long> recipientTelegramIds, String type, UUID taskId, String taskTitle) {
         this(
@@ -45,6 +49,9 @@ public class BotNotificationEvent extends BaseEvent {
                 type,
                 taskId,
                 taskTitle,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -76,7 +83,10 @@ public class BotNotificationEvent extends BaseEvent {
             String meetingSummary,
             List<String> meetingTasks,
             List<String> meetingHints,
-            List<SpeakerInfo> meetingSpeakers
+            List<SpeakerInfo> meetingSpeakers,
+            String teamId,
+            String teamName,
+            String inviteLink
     ) {
         this.recipientTelegramIds = recipientTelegramIds;
         this.type = type;
@@ -94,6 +104,9 @@ public class BotNotificationEvent extends BaseEvent {
         this.meetingTasks = meetingTasks;
         this.meetingHints = meetingHints;
         this.meetingSpeakers = meetingSpeakers;
+        this.teamId = teamId;
+        this.teamName = teamName;
+        this.inviteLink = inviteLink;
     }
 
     public static BotNotificationEvent achievement(
@@ -110,6 +123,9 @@ public class BotNotificationEvent extends BaseEvent {
                 achievement.getEmoji(),
                 achievement.getXpReward(),
                 newTotalXp,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -142,6 +158,9 @@ public class BotNotificationEvent extends BaseEvent {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
         );
     }
@@ -162,6 +181,9 @@ public class BotNotificationEvent extends BaseEvent {
                 null,
                 null,
                 courses,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -196,7 +218,39 @@ public class BotNotificationEvent extends BaseEvent {
                 meetingSummary,
                 meetingTasks,
                 meetingHints,
-                meetingSpeakers
+                meetingSpeakers,
+                null,
+                null,
+                null
+        );
+    }
+
+    public static BotNotificationEvent teamCreated(
+            Long telegramId,
+            String teamId,
+            String teamName,
+            String inviteLink
+    ) {
+        return new BotNotificationEvent(
+                List.of(telegramId),
+                TYPE_TEAM_CREATED,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                teamId,
+                teamName,
+                inviteLink
         );
     }
 }

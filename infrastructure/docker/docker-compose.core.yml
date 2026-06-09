@@ -115,6 +115,9 @@ services:
             - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
             - ./infrastructure/caddy/data:/data
             - ./infrastructure/caddy/config:/config
+        environment:
+            REDPANDA_CONSOLE_USER: ${REDPANDA_CONSOLE_USER:-admin}
+            REDPANDA_CONSOLE_PASSWORD_HASH: ${REDPANDA_CONSOLE_PASSWORD_HASH}
         restart: unless-stopped
 
 volumes:

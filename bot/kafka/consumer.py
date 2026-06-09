@@ -362,6 +362,8 @@ class EventConsumer:
         elif event.type == "MEETING_SUMMARY":
             text = _format_meeting_summary(event)
             reply_markup = _meeting_speaker_keyboard(event)
+        elif event.type == "TEAM_CREATED":
+            text = _format_team_created(event)
         elif event.type == "DEBUG":
             text = _format_debug(event)
         else:
@@ -614,6 +616,20 @@ def _speaker_num(label: str) -> str:
     if "_" in label:
         return label.rsplit("_", 1)[-1]
     return label
+
+
+def _format_team_created(event: "BotNotificationEvent") -> str:
+    name = escape(event.team_name or "Команда")
+    lines = [
+        f"✅ <b>Команда «{name}» создана!</b>",
+        f"Вы — менеджер 🎉",
+        "",
+        "Добавьте бота в Telegram-группу команды,",
+        "затем свяжите её через «🔗 Привязать чат».",
+    ]
+    if event.invite_link:
+        lines.extend(["", f"🔗 Ссылка для приглашения:\n{escape(event.invite_link)}"])
+    return "\n".join(lines)
 
 
 def _format_debug(event: "BotNotificationEvent") -> str:
