@@ -34,6 +34,7 @@ from models import (
     TaskExtractionList,
 )
 from infra.minio import download_file, list_object_keys, upload_file
+from infra import debug_notifier
 from settings import settings
 
 TOPIC_TASKS = "llm.tasks.create"
@@ -281,6 +282,8 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
     text = format_messages(batch)
     results = []
 
+    debug_notifier.notify_batch_received(batch.event_id, len(batch.messages), text)
+
     try:
         clf_output = classifier_chain.invoke({"messages": text})
         clf = ClassificationResult.model_validate(clf_output)
@@ -289,6 +292,13 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
         return results
 
     logger.debug(f"Classification for batch {batch.event_id}: {clf}")
+
+    debug_notifier.notify_classification(
+        batch.event_id,
+        clf.has_task, clf.confidence_task,
+        clf.has_status_change, clf.confidence_status,
+        clf.has_decision, clf.confidence_decision,
+    )
 
     run_tasks = clf.has_task and clf.confidence_task >= settings.CLASSIFIER_THRESHOLD
     run_statuses = clf.has_status_change and clf.confidence_status >= settings.CLASSIFIER_THRESHOLD
@@ -313,6 +323,9 @@ def process_batch(batch: MessageBatchEvent) -> List[Union[TaskCreateEvent, Statu
             results.extend(_extract_statuses(batch, text))
         elif run_decisions:
             _extract_decisions(batch, text)
+
+    if not results and not run_decisions:
+        debug_notifier.notify_no_results(batch.event_id)
 
     return results
 
@@ -361,6 +374,7 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
             )
             events.append(event)
 
+        debug_notifier.notify_tasks_extracted(batch.event_id, events)
         return events
     except Exception as e:
         logger.error(f"Task extraction chain failed (batch={batch.event_id}): {e}")
@@ -421,6 +435,8 @@ def _extract_statuses(batch: MessageBatchEvent, text: str) -> List[StatusChangeE
                 f"column={event.column_id} assignee={event.assignee_id}"
             )
             events.append(event)
+
+        debug_notifier.notify_statuses_extracted(batch.event_id, events)
         return events
     except Exception as e:
         logger.error(f"Status extraction chain failed (batch={batch.event_id}): {e}")
@@ -651,6 +667,7 @@ def process_audio(event: AudioNewEvent) -> None:
         return
 
     logger.info(f"Transcribed file_id={event.file_id}: {len(text)} chars")
+    debug_notifier.notify_transcript(event.file_id, len(text), text)
 
     try:
         base_key, _ = os.path.splitext(event.s3_key)

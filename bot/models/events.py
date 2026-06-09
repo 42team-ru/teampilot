@@ -151,6 +151,10 @@ class BotNotificationEvent(BackendEvent):
         default_factory=list,
         validation_alias=AliasChoices("meetingSpeakers", "meeting_speakers"),
     )
+    debug_text: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("debugText", "debug_text"),
+    )
 
 
 class SyncDraftItem(BackendEvent):
