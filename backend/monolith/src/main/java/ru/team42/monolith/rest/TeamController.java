@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.request.CreatePendingTeamChatRequest;
+import ru.team42.monolith.dto.request.UpdateMemberRoleRequest;
 import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.response.PendingTeamChatResponse;
 import ru.team42.monolith.dto.response.TeamMemberResponse;
@@ -116,6 +117,20 @@ public class TeamController {
     ) {
         teamService.removeMember(teamId, teamUserId, requireTelegramId(currentUser, servletRequest));
         return ResponseUtils.noContent();
+    }
+
+    @Operation(summary = "Изменить роль участника команды (менеджер → участник или наоборот)")
+    @PatchMapping("/{teamId}/members/{teamUserId}/role")
+    public ResponseEntity<TeamMemberResponse> updateMemberRole(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest,
+            @PathVariable UUID teamId,
+            @PathVariable UUID teamUserId,
+            @Valid @RequestBody UpdateMemberRoleRequest request
+    ) {
+        return ResponseUtils.ok(
+                teamService.updateMemberRole(teamId, teamUserId, request.role(), requireTelegramId(currentUser, servletRequest))
+        );
     }
 
     @Operation(summary = "Деактивировать команду")
