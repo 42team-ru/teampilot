@@ -213,6 +213,28 @@ public class TeamService {
         teamUserRepository.delete(member);
     }
 
+    @Transactional
+    public TeamMemberResponse updateMemberRole(UUID teamId, UUID teamUserId, TeamRole newRole, Long managerTelegramId) {
+        requireManagerMembership(teamId, managerTelegramId);
+        TeamUser member = teamUserRepository.findById(teamUserId)
+                .filter(tu -> tu.getTeam().getId().equals(teamId))
+                .orElseThrow(() -> AppException.notFound(
+                        "Team member %s not found in team %s".formatted(teamUserId, teamId)
+                ));
+        if (member.getUser().getTelegramId().equals(managerTelegramId)) {
+            throw AppException.badRequest("Cannot change your own role");
+        }
+        if (newRole == TeamRole.USER) {
+            long managerCount = teamUserRepository.findByTeamId(teamId).stream()
+                    .filter(tu -> tu.getRole() == TeamRole.MANAGER).count();
+            if (managerCount <= 1) {
+                throw AppException.badRequest("Team must have at least one manager");
+            }
+        }
+        member.setRole(newRole);
+        return teamMapper.toMemberResponse(teamUserRepository.save(member));
+    }
+
     @Transactional(readOnly = true)
     public List<UploadedFileResponse> getTeamFiles(UUID teamId, Long telegramId) {
         requireMember(teamId, telegramId);

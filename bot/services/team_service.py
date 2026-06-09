@@ -401,6 +401,34 @@ async def remove_team_member(team_id: str, team_user_id: str, telegram_id: int) 
     return True
 
 
+async def update_member_role(team_id: str, team_user_id: str, role: str, manager_telegram_id: int) -> bool:
+    """PATCH /teams/{teamId}/members/{teamUserId}/role - change member role (MANAGER/USER)."""
+    path = f"/teams/{team_id}/members/{team_user_id}/role"
+    context = {"team_id": team_id, "team_user_id": team_user_id, "role": role, "manager_telegram_id": manager_telegram_id}
+    try:
+        resp = await http_client.patch(
+            f"{settings.BACKEND_URL}{path}",
+            headers=_headers(manager_telegram_id),
+            json={"role": role},
+        )
+    except HttpRequestError as e:
+        log_http_request_error(service="Backend", method="PATCH", path=f"{settings.BACKEND_URL}{path}", error=e, context=context)
+        raise BackendApiError.unavailable() from e
+
+    if resp.status_code not in (200, 204):
+        log_http_response_error(
+            resp,
+            service="Backend",
+            method="PATCH",
+            path=f"{settings.BACKEND_URL}{path}",
+            expected="200 or 204",
+            context=context,
+        )
+        raise BackendApiError.from_response(resp)
+
+    return True
+
+
 async def yougile_auth(
     chat_id: int,
     login: str,
