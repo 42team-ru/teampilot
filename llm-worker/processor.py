@@ -244,11 +244,20 @@ def _dedupe_status_queries(queries: list[str]) -> list[str]:
 
 def _status_queries_from_batch(batch: MessageBatchEvent) -> list[str]:
     text = format_messages(batch)
-    return _status_queries_via_llm(text)
+    queries = _status_queries_via_llm(text)
+    if not queries:
+        logger.debug("[STATUS QUERIES] LLM returned empty, falling back to raw message texts")
+        queries = _dedupe_status_queries([m.text for m in batch.messages if m.text.strip()])
+    return queries
 
 
 def _status_queries_from_text(text: str) -> list[str]:
-    return _status_queries_via_llm(text)
+    queries = _status_queries_via_llm(text)
+    if not queries:
+        logger.debug("[STATUS QUERIES] LLM returned empty, falling back to raw text lines")
+        lines = [l.strip() for l in re.split(r"[\n\r]+", text) if l.strip()]
+        queries = _dedupe_status_queries(lines)
+    return queries
 
 
 def _status_queries_via_llm(text: str) -> list[str]:
@@ -261,7 +270,7 @@ def _status_queries_via_llm(text: str) -> list[str]:
         logger.debug(f"[STATUS QUERIES] extracted={queries}")
         return _dedupe_status_queries(queries)
     except Exception as e:
-        logger.warning(f"status_query_chain failed, falling back to empty: {e}")
+        logger.warning(f"status_query_chain failed: {e}")
         return []
 
 
