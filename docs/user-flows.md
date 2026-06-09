@@ -332,34 +332,39 @@ flowchart TD
 
 Менеджер добавляет курсы, система автоматически рекомендует их при просроченных задачах.
 
+**9а. Добавление курса менеджером:**
+
 ```mermaid
 flowchart TD
-    subgraph "Добавление курса (Менеджер)"
-        MA([Менеджер]) --> A["POST /teams/{id}/courses\nURL курса"]
-        A --> B["Spring: jsoup → og:title\nog:description, og:image"]
-        B --> C{Парсинг\nуспешен?}
-        C -->|Нет| D["Ошибка — ввести вручную\ntitle + description"]
-        D --> E["Курс сохранён\nscope = TEAM или GLOBAL"]
-        C -->|Да| E
-        E --> F["Kafka: courses.indexed\n{courseId, teamId, title, description}"]
-        F --> G["LLM Worker: store_knowledge\ntype=course, Qdrant"]
-        G --> H["Курс готов к рекомендациям ✅"]
-    end
+    A([Менеджер]) --> B["Отправить URL курса боту\nPOST /teams/{id}/courses"]
+    B --> C["Spring: jsoup парсит страницу\nog:title, og:description"]
+    C --> D{Парсинг успешен?}
+    D -->|Нет| E["Ввести title и description\nвручную"]
+    E --> F["Курс сохранён в БД\nscope = TEAM"]
+    D -->|Да| F
+    F --> G["Kafka: courses.indexed"]
+    G --> H["LLM Worker: store_knowledge\ntype=course -> Qdrant"]
+    H --> I["Курс доступен\nдля рекомендаций"]
+```
 
-    subgraph "Автоматическая рекомендация"
-        Sched(["NotificationScheduler\nкаждые 30 мин"]) --> I["Задачи с истёкшим дедлайном\nbez courseRecommendedAt"]
-        I --> J["Kafka: courses.recommend.request\ntaskTitle + taskDescription"]
-        J --> K["LLM Worker: semantic search\nQdrant team_knowledge\ntype=course\nteam + GLOBAL каталог, limit=5"]
-        K --> L{Курсы\nнайдены?}
-        L -->|Нет| M["Нет рекомендаций"]
-        L -->|Да| N["Kafka: courses.recommend.result\ntop-5 course_ids"]
-        N --> O["Spring: courseRecommendedAt = now\nбот: ЛС исполнителю"]
-        O --> P([Исполнитель])
-        P --> Q["📚 Подборка курсов\nпо теме просроченной задачи"]
-        Q --> R{Действие}
-        R -->|Открыть| S["Ссылка на ресурс\nSkillbox / Stepik / YouTube / etc."]
-        R -->|Игнорировать| T["Повтор не предусмотрен\ncourseRecommendedAt установлен"]
-    end
+**9б. Автоматическая рекомендация:**
+
+```mermaid
+flowchart TD
+    A(["NotificationScheduler\nкаждые 30 мин"]) --> B["Найти задачи:\nдедлайн истёк + нет курса"]
+    B --> C{Такие задачи\nесть?}
+    C -->|Нет| D["Ничего не делать"]
+    C -->|Да| E["Kafka: courses.recommend.request\ntaskTitle + taskDescription"]
+    E --> F["LLM Worker: Qdrant search\ntype=course, team + GLOBAL\nlimit=5"]
+    F --> G{Курсы\nнайдены?}
+    G -->|Нет| H["Нет рекомендаций"]
+    G -->|Да| I["Kafka: courses.recommend.result"]
+    I --> J["Spring: courseRecommendedAt = now\nБот: ЛС исполнителю"]
+    J --> K([Исполнитель])
+    K --> L["Подборка курсов\nпо теме задачи"]
+    L --> M{Действие}
+    M -->|Открыть| N["Ссылка на курс\nSkillbox / Stepik / YouTube / etc."]
+    M -->|Позже| O["Повтор не предусмотрен\ncourseRecommendedAt установлен"]
 ```
 
 ---
@@ -368,32 +373,36 @@ flowchart TD
 
 Автоматическое накопление знаний команды и ответы на вопросы через `/wiki`.
 
+**10а. Запрос через /wiki:**
+
 ```mermaid
 flowchart TD
-    subgraph "Запрос знаний (/wiki)"
-        Start([Пользователь]) --> A["/wiki вопрос в свободной форме"]
-        A --> B["Spring: передать в LLM Worker\nPOST /knowledge/ask\n{teamId, question}"]
-        B --> C["Qdrant: semantic search\nколлекция team_knowledge\nвсе типы записей"]
-        C --> D{Результаты\nнайдены?}
-        D -->|Да| E["LLM: сформировать ответ\nна основе чанков"]
-        D -->|Нет| F["Ответ: данных нет\nв базе знаний команды"]
-        E --> G["Бот: ответ + источники\n(тип: встреча / файл / задача / курс)"]
-        F --> G
-        G --> Start
-    end
+    A([Пользователь]) --> B["/wiki вопрос"]
+    B --> C["Spring -> LLM Worker\nPOST /knowledge/ask\n{teamId, question}"]
+    C --> D["Qdrant: semantic search\nколлекция team_knowledge\nвсе типы записей"]
+    D --> E{Результаты\nнайдены?}
+    E -->|Да| F["LLM: сформировать ответ\nна основе найденных чанков"]
+    E -->|Нет| G["Ответ: нет данных\nв базе знаний команды"]
+    F --> H["Бот: ответ + источники\nтип: встреча / файл / задача / курс"]
+    G --> H
+    H --> A
+```
 
-    subgraph "Автоматическое пополнение"
-        H{Источник} -->|"Файл загружен\nв команду"| I["Spring: файл → MinIO\nKafka: files.new"]
-        H -->|"Встреча завершена\n(finalChunk=true)"| J["LLM: summary встречи\ntitle + description"]
-        H -->|"Задача CONFIRMED\nили UPDATED"| K["Kafka: tasks.lifecycle"]
+**10б. Автоматическое пополнение базы знаний:**
 
-        I --> L["LLM Worker:\nfile_summary chain\nчанкование текста"]
-        J --> M["store_knowledge\ntype=meeting_summary"]
-        K --> N["store_knowledge\ntype=task_archive\ntitle + description"]
+```mermaid
+flowchart TD
+    A{Событие} -->|"Файл загружен\nв команду"| B["Spring: файл -> MinIO\nKafka: files.new"]
+    A -->|"Встреча завершена\nfinalChunk=true"| C["LLM Worker: Whisper\nполная транскрипция"]
+    A -->|"Задача CONFIRMED\nили UPDATED"| D["Kafka: tasks.lifecycle"]
 
-        L --> O["store_knowledge\ntype=file_summary"]
-        M --> P[("Qdrant\nteam_knowledge")]
-        N --> P
-        O --> P
-    end
+    B --> E["LLM Worker: file_summary chain\nчанкование и векторизация"]
+    C --> F["LLM: title + summary\nstore_knowledge\ntype=meeting_summary"]
+    D --> G["store_knowledge\ntype=task_archive\ntitle + description"]
+
+    E --> H["store_knowledge\ntype=file_summary"]
+    F --> I[("Qdrant\nteam_knowledge")]
+    G --> I
+    H --> I
+    I --> J["База знаний обновлена\nдоступна через /wiki"]
 ```
