@@ -7,235 +7,117 @@ ifneq (,$(wildcard .env))
   export
 endif
 
-DOCKER_DIR   := infrastructure/docker
-PROJECT_DIR  := .
-ENV_FILE     := .env
-BACKEND_DIR  := $(CURDIR)/backend
+DOCKER_DIR  := infrastructure/docker
+PROJECT_DIR := .
+ENV_FILE    := .env
+BACKEND_DIR := $(CURDIR)/backend
 
-REGISTRY     := ghcr.io
-OWNER        := 42team-ru
-SERVICES     := monolith
+REGISTRY := ghcr.io
+OWNER    := 42team-ru
 
 COMPOSE := docker compose --project-directory $(PROJECT_DIR) --env-file $(ENV_FILE)
 
 CORE_CFG     := -f $(DOCKER_DIR)/docker-compose.core.yml
-OBS_CFG      := -f $(DOCKER_DIR)/docker-compose.observability.yml
 SERVICES_CFG := -f $(DOCKER_DIR)/docker-compose.services.yml
 AI_CFG       := -f $(DOCKER_DIR)/docker-compose.ai.yml
+
+PROTO_SRC    := backend/core/kafka-proto-common/src/main/proto
+PROTO_PY_OUT := llm-worker/proto_generated
 
 # ============================================================
 # Help
 # ============================================================
 
 .PHONY: help
-help:
-	@echo ""
-	@echo "  Core"
-	@echo "    make core-up          — запустить core (БД, Kafka и т.д.)"
-	@echo "    make core-down        — остановить core"
-	@echo "    make core-logs        — логи core"
-	@echo ""
-	@echo "  Observability"
-	@echo "    make obs-up           — запустить observability (Grafana, Loki и т.д.)"
-	@echo "    make obs-down         — остановить observability"
-	@echo "    make obs-logs         — логи observability"
-	@echo ""
-	@echo "  Services"
-	@echo "    make services-up      — запустить сервисы"
-	@echo "    make services-down    — остановить сервисы"
-	@echo "    make services-logs    — логи сервисов"
-	@echo ""
-	@echo "  Dev  (core + services, без observability)"
-	@echo "    make dev-up           — поднять dev окружение"
-	@echo "    make dev-down         — остановить dev окружение"
-	@echo "    make dev-logs         — логи dev окружения"
-	@echo ""
-	@echo "  Staging  (core + observability + services)"
-	@echo "    make staging-up       — поднять staging окружение"
-	@echo "    make staging-down     — остановить staging окружение"
-	@echo ""
-	@echo "  Images (backend)"
-	@echo "    make build            — собрать образы локально (jibDockerBuild)"
-	@echo "    make push             — запушить образы в $(REGISTRY)"
-	@echo "    make release          — собрать и запушить (jib)"
-	@echo ""
-	@echo "  Frontend"
-	@echo "    make frontend-build   — собрать Docker-образ frontend локально"
-	@echo "    make frontend-push    — запушить образ frontend в $(REGISTRY)"
-	@echo "    make frontend-release — собрать и запушить frontend"
-	@echo ""
-	@echo "  AI (Whisper ASR)"
-	@echo "    make whisper-up       — поднять Whisper ASR (faster-whisper-server, порт 8002)"
-	@echo "    make whisper-down     — остановить Whisper"
-	@echo "    make whisper-logs     — логи Whisper"
-	@echo ""
-	@echo "  Other"
-	@echo "    make seed             — заполнить БД тестовыми данными (DataFaker)"
-	@echo "    make ps               — статус контейнеров"
-	@echo "    make clean            — удалить все контейнеры и volumes"
+help: ## Показать список команд
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make \033[36m<target>\033[0m\n"} \
+	  /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } \
+	  /^[a-zA-Z_-]+:.*##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' \
+	  $(MAKEFILE_LIST)
 	@echo ""
 
 # ============================================================
 # Core
 # ============================================================
 
+##@ Core (БД, Kafka, MinIO, Qdrant, Caddy)
+
 .PHONY: core-up core-down core-logs
-
-core-up:
+core-up:   ## Запустить
 	$(COMPOSE) $(CORE_CFG) up -d
-
-core-down:
+core-down: ## Остановить
 	$(COMPOSE) $(CORE_CFG) down
-
-core-logs:
+core-logs: ## Логи
 	$(COMPOSE) $(CORE_CFG) logs -f
-
-# ============================================================
-# Observability
-# ============================================================
-
-.PHONY: obs-up obs-down obs-logs
-
-obs-up:
-	$(COMPOSE) $(OBS_CFG) up -d
-
-obs-down:
-	$(COMPOSE) $(OBS_CFG) down
-
-obs-logs:
-	$(COMPOSE) $(OBS_CFG) logs -f
 
 # ============================================================
 # Services
 # ============================================================
 
+##@ Services (monolith, bot, llm-worker)
+
 .PHONY: services-up services-down services-logs
-
-services-up:
-	$(COMPOSE) $(SERVICES_CFG) up -d
-
-services-down:
+services-up:   ## Запустить (с пересборкой Python-образов)
+	$(COMPOSE) $(SERVICES_CFG) up -d --build
+services-down: ## Остановить
 	$(COMPOSE) $(SERVICES_CFG) down
-
-services-logs:
+services-logs: ## Логи
 	$(COMPOSE) $(SERVICES_CFG) logs -f
 
 # ============================================================
-# AI (Whisper ASR)
+# Dev
 # ============================================================
 
+##@ Dev (core + services)
+
+.PHONY: dev-up dev-down dev-logs deploy
+dev-up:   ## Поднять всё окружение (локальная сборка Python-образов)
+	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) up -d --build
+	@echo "Dev окружение запущено"
+dev-down: ## Остановить
+	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) down
+dev-logs: ## Логи
+	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) logs -f
+deploy:   ## Задеплоить с пулом образов из GHCR (для сервера)
+	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) up -d --remove-orphans
+
+# ============================================================
+# AI
+# ============================================================
+
+##@ AI (Whisper ASR локально, порт 8002)
+
 .PHONY: whisper-up whisper-down whisper-logs
-
-whisper-up:
+whisper-up:   ## Запустить
 	$(COMPOSE) $(AI_CFG) up -d
-
-whisper-down:
+whisper-down: ## Остановить
 	$(COMPOSE) $(AI_CFG) down
-
-whisper-logs:
+whisper-logs: ## Логи
 	$(COMPOSE) $(AI_CFG) logs -f
 
 # ============================================================
-# Dev (core + services)
+# Backend images (Jib)
 # ============================================================
 
-.PHONY: dev-up dev-down dev-logs
-
-dev-up: core-up services-up
-	@echo "Dev окружение запущено"
-
-dev-down:
-	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) down
-
-dev-logs:
-	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) logs -f
-
-# ============================================================
-# Staging (core + observability + services)
-# ============================================================
-
-.PHONY: staging-up staging-down
-
-staging-up: core-up obs-up services-up
-	@echo "Staging окружение запущено"
-
-staging-down:
-	$(COMPOSE) $(CORE_CFG) $(OBS_CFG) $(SERVICES_CFG) down
-
-# ============================================================
-# Frontend
-# ============================================================
-
-.PHONY: frontend-build frontend-push frontend-release
-
-frontend-build:
-	@echo "Сборка образа frontend..."
-	docker build -t $(FRONTEND_IMAGE):latest $(FRONTEND_DIR)
-
-frontend-push:
-	@echo "Пуш образа frontend в $(REGISTRY)/$(OWNER)..."
-	docker push $(FRONTEND_IMAGE):latest
-
-frontend-release: frontend-build frontend-push
-	@echo "Frontend выпущен: $(FRONTEND_IMAGE):latest"
-
-# ============================================================
-# Images
-# ============================================================
+##@ Backend images
 
 .PHONY: build push release
-
-build:
-	@echo "Сборка образов локально через Jib..."
-	cd $(BACKEND_DIR) && chmod +x gradlew && ./gradlew --no-daemon --parallel clean
-	@for svc in $(SERVICES); do \
-		echo ">>> Сборка $$svc"; \
-		cd $(BACKEND_DIR) && ./gradlew --no-daemon --parallel :$$svc:jibDockerBuild; \
-	done
-
-push:
-	@echo "Пуш образов в $(REGISTRY)/$(OWNER)..."
-	@for svc in $(SERVICES); do \
-		IMAGE=$(REGISTRY)/$(OWNER)/$$svc:latest; \
-		echo ">>> Push $$IMAGE"; \
-		docker push "$$IMAGE"; \
-	done
-
-release:
-	@echo "Сборка и пуш в $(REGISTRY)/$(OWNER)..."
-	cd $(BACKEND_DIR) && chmod +x gradlew && ./gradlew --no-daemon --parallel clean
-	@for svc in $(SERVICES); do \
-		echo ">>> Release $$svc"; \
-		cd $(BACKEND_DIR) && ./gradlew --no-daemon --parallel :$$svc:jib; \
-	done
-
-# ============================================================
-# Other
-# ============================================================
-
-.PHONY: seed seed-docker
-
-# Локально (postgres должен быть доступен на localhost:5432)
-# SPRING_DATASOURCE_URL переопределяем явно — .env экспортирует Docker-hostname "postgres"
-seed:
-	cd backend && SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:$(DB_PORT)/$(DB_NAME)?currentSchema=auth_schema" \
-		./gradlew :data-seeder:run
-
-# В Docker (требует собранного образа: make build)
-seed-docker:
-	$(COMPOSE) $(CORE_CFG) -f $(DOCKER_DIR)/docker-compose.seed.yml run --rm data-seeder
+build:   ## Собрать monolith локально (jibDockerBuild)
+	cd $(BACKEND_DIR) && chmod +x gradlew && ./gradlew --no-daemon :monolith:jibDockerBuild
+push:    ## Запушить monolith в ghcr.io/$(OWNER)
+	docker push $(REGISTRY)/$(OWNER)/monolith:latest
+release: ## Собрать и запушить monolith (jib)
+	cd $(BACKEND_DIR) && chmod +x gradlew && ./gradlew --no-daemon :monolith:jib
 
 # ============================================================
 # Proto
 # ============================================================
 
-PROTO_SRC    := backend/core/kafka-proto-common/src/main/proto
-PROTO_PY_OUT := llm-worker/proto_generated
+##@ Proto
 
 .PHONY: proto-gen
-
-proto-gen:
-	@echo "Генерация Python proto классов из $(PROTO_SRC)..."
+proto-gen: ## Сгенерировать Python-классы из .proto
+	@echo "Генерация из $(PROTO_SRC)..."
 	@cd llm-worker && uv run python -c "from pathlib import Path; Path('proto_generated').mkdir(parents=True, exist_ok=True)"
 	cd llm-worker && uv run python -m grpc_tools.protoc \
 		-I../$(PROTO_SRC) \
@@ -249,11 +131,11 @@ proto-gen:
 # Other
 # ============================================================
 
+##@ Other
+
 .PHONY: ps clean
-
-ps:
-	$(COMPOSE) $(CORE_CFG) $(OBS_CFG) $(SERVICES_CFG) ps
-
-clean:
-	$(COMPOSE) $(CORE_CFG) $(OBS_CFG) $(SERVICES_CFG) \
+ps:    ## Статус контейнеров
+	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) ps
+clean: ## Удалить все контейнеры и volumes
+	$(COMPOSE) $(CORE_CFG) $(SERVICES_CFG) \
 		down --volumes --remove-orphans
