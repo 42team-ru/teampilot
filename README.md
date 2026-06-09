@@ -8,7 +8,7 @@
 
 ### Telegram → Канбан без ручного ввода
 
-Бот присутствует в командном чате. Батчит сообщения (10 штук или 5 минут тишины), прогоняет через двухступенчатый LLM-пайплайн (дешёвая модель — есть ли задача? дорогая — извлечь title / assignee / deadline / column). Менеджеру приходит карточка-черновик с кнопками ✅ / ✏️ / ❌.
+Бот присутствует в командном чате. Батчит сообщения (3 сообщения или 5 минут тишины), прогоняет через двухступенчатый LLM-пайплайн (дешёвая модель — есть ли задача? дорогая — извлечь title / assignee / deadline / column). Менеджеру приходит карточка-черновик с кнопками ✅ / ✏️ / ❌.
 
 - Задачи с `confidence ≥ 0.90` создаются **автоматически** без подтверждения (кнопка только «Отменить»).
 - В карточке — «Уверенность ИИ: XX%» из классификатора.
@@ -28,7 +28,6 @@
 | `/tasks` | Задачи команды с фильтром по колонке канбана (динамические кнопки) |
 | `/board` | Сводка доски по блокам: в работе / на проверке / просрочено (только менеджер) |
 | `/tasks @username` | Задачи конкретного участника (только менеджер) |
-| `/sync` | Принудительная синхронизация с YouGile |
 
 Задачи фильтруются по колонкам (динамически из YouGile/БД) — хардкода статусов нет.
 
@@ -58,7 +57,7 @@
 
 ### Проактивные уведомления
 
-- За ~2 часа до дедлайна — личное сообщение исполнителю (однократно, поле `deadlineNotifiedAt`).
+- За ~24 часа до дедлайна — личное сообщение исполнителю (однократно, поле `deadlineNotifiedAt`).
 - Stale-алерт: задача не двигалась 24+ часов.
 - Учёт статусов «болею / экзамен / отпуск» через `/excuse`.
 - Батчинг уведомлений: 5 отменённых задач подряд → 1 сообщение со списком.
@@ -105,28 +104,6 @@
 
 ![arch.png](docs/arch.png)
 > **User Flows (Activity Diagrams):** подробные пошаговые схемы всех сценариев — [docs/user-flows.md](docs/user-flows.md)
-
----
-
-## Kafka-топики
-
-| Топик                        | Направление      | Описание                                                        |
-|------------------------------|------------------|-----------------------------------------------------------------|
-| `messages.raw`               | Bot → Spring     | Батчи сообщений из чата (Protobuf)                             |
-| `users.events`               | Bot → Spring     | Регистрация / обновление пользователя                           |
-| `audio.new`                  | Spring → LLM     | Новый аудиофайл в MinIO (после загрузки через бота)            |
-| `meeting.audio.chunk`        | Spring → LLM     | Чанк встречи из STOMP-сессии Chrome Extension                  |
-| `meeting.live.result`        | LLM → Spring     | Результаты реалтайм-транскрибации → STOMP broadcast            |
-| `llm.tasks.create`           | LLM → Spring     | Создать задачу (Protobuf)                                       |
-| `llm.status.change`          | LLM → Spring     | Сменить статус / назначить исполнителя (Protobuf)              |
-| `files.transcript_ready`     | LLM → Spring     | Title / description / summary файла из Whisper                 |
-| `bots.tasks`                 | Spring → Bot     | Подтверждение задачи (кнопки ✅/✏️/❌, батчинг событий)       |
-| `bots.notifications`         | Spring → Bot     | Дедлайн / stale / достижения / синк / рекомендации курсов      |
-| `tasks.lifecycle`            | Spring → LLM     | CONFIRMED/UPDATED/CANCELLED → sync Qdrant                      |
-| `sync.draft`                 | LLM → Spring     | Вечерний синк: разбор отчётов участников                       |
-| `courses.indexed`            | Spring → LLM     | Новый курс → индексировать в Qdrant                             |
-| `courses.recommend.request`  | Spring → LLM     | Запрос рекомендаций по просроченной задаче                     |
-| `courses.recommend.result`   | LLM → Spring     | Список релевантных курсов                                       |
 
 ---
 
@@ -302,12 +279,10 @@ make clean     # удалить все контейнеры и volumes
 | `/tasks`           | все | Задачи команды по колонкам канбана                            |
 | `/mytasks`         | все | Мои активные задачи                                           |
 | `/board`           | MANAGER | Сводка доски команды                                      |
-| `/sync`            | MANAGER | Синхронизация с YouGile                                   |
 | `/profile`         | все | RPG-профиль: XP, уровень, стрик, ачивки                      |
 | `/wiki <запрос>`   | все | Семантический поиск по базе знаний команды                    |
 | `/excuse [причина]`| все | Исключить себя из вечернего синка на сегодня                  |
 | `/upload`          | все | Загрузить аудио/файл в команду (с выбором команды)            |
-| `/help`            | все | Список команд                                                  |
 
 Основные флоу доступны через кнопки — знать команды необязательно.
 
@@ -318,13 +293,13 @@ make clean     # удалить все контейнеры и volumes
 | Группа                    | Пример эндпоинтов                                              |
 |---------------------------|----------------------------------------------------------------|
 | Auth / Telegram OAuth     | `POST /auth/telegram`, `POST /auth/register`, `GET /auth/me`  |
-| Extension login (pairing) | `POST /auth/extension-login/start`, `GET /auth/extension-login/{code}/status`, `POST /auth/extension-login/{code}/confirm` |
-| Teams                     | `POST /admin/teams`, `GET /teams/my`, `PATCH /teams/{id}`, `GET /teams/{id}/files`, `GET /teams/{id}/courses` |
-| YouGile                   | `POST /auth/yougile/auth`, `GET /yougile/boards`, `POST /teams/{id}/yougile/connect` |
+| Extension login (pairing) | `POST /auth/extension-login`, `GET /auth/extension-login/{code}`, `POST /auth/extension-login/{code}/confirm` |
+| Teams                     | `POST /admin/teams`, `GET /teams/my`, `PATCH /teams/{id}`, `GET /teams/{id}/files` |
+| YouGile                   | `POST /auth/yougile/auth`, `POST /auth/yougile/board`, `PATCH /auth/invite/{teamId}/yougile` |
 | Tasks                     | `GET /tasks`, `GET /tasks/columns`, `POST /tasks/{id}/approve`, `POST /tasks/{id}/cancel` |
 | Users                     | `GET /users/{telegramId}/stats`, `PATCH /users/{id}` |
 | Meetings                  | `POST /meetings`, `GET /meetings/by-url` |
-| Courses                   | `POST /teams/{teamId}/courses`, `GET /teams/{teamId}/courses` |
-| Excuses                   | `POST /excuse`, `GET /excuse/teams` |
+| Courses                   | `POST /courses/teams/{teamId}/courses`, `GET /courses/teams/{teamId}/courses` |
+| Excuses                   | `POST /sync/excuse`, `GET /sync/excuse/teams` |
 
 ---

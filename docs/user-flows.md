@@ -32,8 +32,8 @@ flowchart TB
     D{"Роль"} -- Менеджер --> E["Ввести название команды"]
     E --> F["Команда создана\nРоль: MANAGER"]
     F --> G{"Привязать YouGile\nпрямо сейчас?"}
-    G -- Да --> H["/link"]
-    H --> I["Ввести YouGile API key\nи board ID"]
+    G -- Да --> H["Ввести YouGile login\nи пароль"]
+    H --> I["POST /auth/yougile/auth\nвыбрать доску"]
     I --> J{"API key\nвалиден?"}
     J -- Нет --> K["Ошибка — повторить"]
     K --> I
@@ -63,7 +63,7 @@ flowchart TD
     A --> B["Бот накапливает сообщения"]
     B --> C{"Батч готов?\n≥ 3 сообщений\nили 5 мин прошло"}
     C -->|Нет| B
-    C -->|Да| D["Kafka: messages.batches\n(Protobuf)"]
+    C -->|Да| D["Kafka"]
 
     D --> E["LLM Worker\nдешёвый классификатор"]
     E --> F{Есть ли задача\nв батче?}
@@ -73,18 +73,17 @@ flowchart TD
     H --> I["Qdrant: проверить семантический дубликат"]
     I --> J{Дубликат?}
     J -->|Да| K["Пропустить"]
-    J -->|Нет| L{Confidence\n≥ 0.90?}
+    J -->|Нет| L["Kafka → Spring"]
 
-    L -->|Да — auto-confirm| M["Spring: создать задачу\nстатус CONFIRMED\nYouGile сразу"]
-    L -->|Нет| N["Kafka: llm.tasks.create\nSpring: задача PENDING"]
-    N --> O["Бот: сообщение в чат\nс кнопками"]
-    O --> P([Менеджер])
-    P --> Q{"Нажимает кнопку"}
-    Q -->|"✅ Подтвердить"| R["Задача CONFIRMED\nYouGile создана"]
-    Q -->|"✏️ Изменить"| S["Бот: форма редактирования\ntitle / assignee / deadline"]
-    S --> R
-    Q -->|"❌ Отклонить"| T["Задача CANCELLED\nQdrant: удалить"]
-    M --> R
+    L --> M{Confidence\n≥ 0.90?}
+    M -->|Да — auto-confirm| N["Spring: создать задачу\nстатус CONFIRMED\nYouGile сразу"]
+    M -->|Нет| O["Spring: задача PENDING"]
+    O --> P["Бот: сообщение в чат\nс кнопками"]
+    P --> Q([Менеджер])
+    Q --> R{"Нажимает кнопку"}
+    R -->|"✅ Подтвердить"| S["Задача CONFIRMED\nYouGile создана"]
+    R -->|"❌ Отклонить"| T["Задача CANCELLED\nQdrant: удалить"]
+    N --> S
 ```
 
 ---
@@ -121,11 +120,11 @@ flowchart TD
     R --> S["MediaRecorder → WebM blob\nfixWebmDuration"]
     S --> T["STOMP SEND\n/app/meetings/{id}/chunks\naudioBase64, chunkIndex"]
     T --> U["Spring → MinIO\nmeetings/{id}/chunks/{N:06d}"]
-    U --> V["Kafka: meetings.audio.chunks"]
+    U --> V["Kafka"]
     V --> W["LLM Worker: Whisper\nтранскрипция чанка"]
     W --> X["Накопление контекста\nклассификатор → задачи"]
     X --> Y["Qdrant hints\nscore ≥ 0.80"]
-    Y --> Z["Kafka: meetings.live.result"]
+    Y --> Z["Kafka → STOMP broadcast"]
     Z --> AA["STOMP broadcast\n/topic/meetings/{id}/results"]
     AA --> AB["Sidepanel обновляется\nтранскрипция + подсказки"]
     AB --> AC{Продолжить\nзапись?}
@@ -152,14 +151,14 @@ flowchart TD
 ```mermaid
 flowchart TB
     Sched(["EveningSyncScheduler (ежедневный крон в 18:00)"]) --> A["startSyncForAllTeams\nфильтр: исключить MANAGER\nи excused пользователей"]
-    A --> B["SyncStateService: openSession\nKafka: bots.notifications\ntype=SYNC_PROMPT"]
-    B --> C@{ label: "Бот: сообщение в чат\\n'Вечерний синк — что сделал сегодня?'" }
+    A --> B["SyncStateService: openSession\nKafka → Бот: уведомление"]
+    B --> C@{ label: "Бот: сообщение в чат\\n'🌆 Вечерний синк\\nОпишите задачи отдельно\\n/ready когда готово'" }
     C --> D(["Участник команды"])
     D --> E{"Реакция\nдо 19:00"} & S{"Участник\nвыбирает"}
     E -- /excuse --> F["Отмечен как excused\nисключён из итогов синка"]
     E -- Написал отчёт --> G["POST /sync/submit\ntekst в свободной форме"]
     E -- Нет ответа --> H["Отмечен как not_responded"]
-    G --> I["Spring: загрузить активные задачи\nKafka: sync.requests"]
+    G --> I["Spring: загрузить активные задачи\nKafka → LLM Worker"]
     I --> J["LLM Worker\nQdrant: поиск по тексту\nlimit=10, score ≥ STATUS_HINT_THRESHOLD"]
     J --> K{"Совпадения\nнайдены?"}
     K -- Нет — fallback --> L["LLM: sync_match_chain\nJSON-список активных задач"]
@@ -168,8 +167,8 @@ flowchart TB
     N -- Нет --> O["SyncDraftItem\nis_new_task=true\nновая задача"]
     N -- Да --> M
     O --> M
-    M --> P["Kafka: sync.draft"]
-    P --> Q["Spring: обогатить assignee\nKafka: bots.notifications\ntype=SYNC_DRAFT"]
+    M --> P["Kafka → Spring: черновик синка"]
+    P --> Q["Spring: обогатить assignee\nKafka → Бот: уведомление"]
     Q --> R["Бот: ЛС участнику\nчерновик с кнопками ✅ ✏️ ❌"]
     R --> D
     S -- ✅ Подтвердить всё --> T["confirmAll\nЗадачи CONFIRMED\nYouGile: переместить карточки"]
@@ -200,8 +199,8 @@ flowchart TB
     B --> D["Бот: выбрать команду\nинлайн-кнопки"]
     C --> D
     D --> E{"Команда\nвыбрана"}
-    E --> F["Spring: MinIO upload\naudio/{teamId}/{fileId}"]
-    F --> G["Kafka: audio.new\n{teamId, minioKey, fileId}"]
+    E --> F["Бот: MinIO upload\naudio/{teamId}/{fileId}"]
+    F --> G["Бот: публикует событие в Kafka\nSpring маршрутизирует обработку"]
     G --> H["LLM Worker скачать файл из MinIO"]
     H --> I["Конвертация в WAV\n(ffmpeg)"]
     I --> J["faster-whisper\nтранскрипция → текст"]
@@ -210,7 +209,7 @@ flowchart TB
     L --> M["Qdrant: дедупликация\nпо семантике"]
     M --> N{"Дубликат?"}
     N -- Да --> O["Пропустить"]
-    N -- Нет --> P["Kafka: llm.tasks.create"]
+    N -- Нет --> P["Kafka → Spring: создать задачу"]
     P --> Q["Spring: задача PENDING"]
     Q --> R["Бот: сообщение в чат\nс кнопками ✅ ✏️ ❌"]
     R --> S(["Менеджер подтверждает"])
@@ -246,10 +245,9 @@ flowchart TD
     H -->|Сменить статус| J{Роль\nпользователя}
     J -->|Менеджер| K["Выбрать любой\nстатус / колонку"]
     J -->|Участник| L["Только свои задачи\nдвижение → Done"]
-    K --> M["Spring: PATCH /tasks/{id}/status"]
+    K --> M["YouGile API: переместить карточку\n(retry backoff 3x)\nSpring: обновить localStatus"]
     L --> M
-    M --> N["YouGile API: переместить\nкарточку retry backoff 3x"]
-    N --> O["Kafka: tasks.lifecycle\ntype=UPDATED"]
+    M --> O["Kafka → LLM Worker: обновить архив"]
     O --> P["Qdrant: обновить task_archive"]
     O --> Q["XP начислено ✨"]
 
@@ -269,14 +267,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Sched(["NotificationScheduler\nкаждые 30 мин"]) --> A["Проверить все активные задачи"]
+    Sched(["NotificationScheduler\nдедлайны: каждые 5 мин\nstale: каждый час"]) --> A["Проверить все активные задачи"]
 
-    A --> B{Дедлайн\nчерез ≤ 2 ч?}
-    B -->|Да| C["Kafka: bots.notifications\ntype=DEADLINE_ALERT"]
-    C --> D["Бот: ЛС исполнителю\n⚠️ Дедлайн через 2 часа\nназвание задачи"]
+    A --> B{Дедлайн\nчерез ≤ 24 ч?}
+    B -->|Да| C["Kafka → Бот: уведомление\ntype=DEADLINE"]
+    C --> D["Бот: ЛС исполнителю\n⚠️ Дедлайн через 24 часа\nназвание задачи"]
 
     A --> E{Задача не обновлялась\n≥ 24 ч?}
-    E -->|Да| F["Kafka: bots.notifications\ntype=STALE_TASK"]
+    E -->|Да| F["Kafka → Бот: уведомление\ntype=STALE"]
     F --> G["Бот: ЛС исполнителю\n🕒 Задача зависла\nназвание задачи"]
 
     D --> H([Исполнитель])
@@ -342,7 +340,7 @@ flowchart TD
     D -->|Нет| E["Ввести title и description\nвручную"]
     E --> F["Курс сохранён в БД\nscope = TEAM"]
     D -->|Да| F
-    F --> G["Kafka: courses.indexed"]
+    F --> G["Kafka → LLM Worker: индексировать"]
     G --> H["LLM Worker: store_knowledge\ntype=course -> Qdrant"]
     H --> I["Курс доступен\nдля рекомендаций"]
 ```
@@ -354,11 +352,11 @@ flowchart TD
     A(["NotificationScheduler\nкаждые 30 мин"]) --> B["Найти задачи:\nдедлайн истёк + нет курса"]
     B --> C{Такие задачи\nесть?}
     C -->|Нет| D["Ничего не делать"]
-    C -->|Да| E["Kafka: courses.recommend.request\ntaskTitle + taskDescription"]
+    C -->|Да| E["Kafka → LLM Worker: запрос рекомендаций\ntaskTitle + taskDescription"]
     E --> F["LLM Worker: Qdrant search\ntype=course, team + GLOBAL\nlimit=5"]
     F --> G{Курсы\nнайдены?}
     G -->|Нет| H["Нет рекомендаций"]
-    G -->|Да| I["Kafka: courses.recommend.result"]
+    G -->|Да| I["Kafka → Spring: результат рекомендаций"]
     I --> J["Spring: courseRecommendedAt = now\nБот: ЛС исполнителю"]
     J --> K([Исполнитель])
     K --> L["Подборка курсов\nпо теме задачи"]
@@ -392,9 +390,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A{Событие} -->|"Файл загружен\nв команду"| B["Spring: файл -> MinIO\nKafka: files.new"]
+    A{Событие} -->|"Файл загружен\nв команду"| B["Бот: файл -> MinIO\nKafka → Spring: файл загружен"]
     A -->|"Встреча завершена\nfinalChunk=true"| C["LLM Worker: Whisper\nполная транскрипция"]
-    A -->|"Задача CONFIRMED\nили UPDATED"| D["Kafka: tasks.lifecycle"]
+    A -->|"Задача CONFIRMED\nили UPDATED"| D["Kafka → LLM Worker: обновить архив"]
 
     B --> E["LLM Worker: file_summary chain\nчанкование и векторизация"]
     C --> F["LLM: title + summary\nstore_knowledge\ntype=meeting_summary"]
