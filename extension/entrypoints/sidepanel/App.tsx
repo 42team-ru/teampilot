@@ -144,18 +144,18 @@ export default function App() {
               className={`flex items-start gap-2 rounded-lg px-3 py-2.5 shadow-lg pointer-events-auto text-sm
                 ${toast.variant === 'success' ? 'bg-green-50 border border-green-200 text-green-900' : ''}
                 ${toast.variant === 'destructive' ? 'bg-red-50 border border-red-200 text-red-900' : ''}
-                ${toast.variant === 'default' ? 'bg-white border border-border text-foreground' : ''}
+                ${toast.variant === 'default' ? 'bg-white border border-gray-200 text-gray-900' : ''}
               `}
             >
               <span className="flex-shrink-0 mt-0.5">
                 {toast.variant === 'success' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                 {toast.variant === 'destructive' && <XCircle className="h-4 w-4 text-red-600" />}
-                {toast.variant === 'default' && <Info className="h-4 w-4 text-muted-foreground" />}
+                {toast.variant === 'default' && <Info className="h-4 w-4 text-gray-500" />}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="font-medium leading-tight">{toast.title}</p>
                 {toast.description && (
-                  <p className="text-xs opacity-70 truncate mt-0.5">{toast.description}</p>
+                  <p className="text-xs text-gray-600 truncate mt-0.5">{toast.description}</p>
                 )}
               </div>
               <button
