@@ -27,7 +27,7 @@ app:
         return-url: ${YOOKASSA_RETURN_URL:https://t.me/prorab_bot}
 
     team-creation:
-        price-rub: ${TEAM_CREATION_PRICE_RUB:100.00}
+        price-rub: ${TEAM_CREATION_PRICE_RUB:2500.00}
 
     batching:
         min-messages: 3
