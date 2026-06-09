@@ -48,8 +48,8 @@ services:
   llm-worker:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/llm-worker:latest
     build:
-      context: ./llm-worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: llm-worker/Dockerfile
     container_name: llm-worker
     pull_policy: always
     restart: unless-stopped
