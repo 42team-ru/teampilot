@@ -65,5 +65,9 @@ class Settings(BaseSettings):
     WHISPER_LANGUAGE: str = "ru"
     WHISPER_TIMEOUT_SECONDS: int = 120
 
+    # Debug режим: отправлять всё в ЛС к администраторам
+    DEBUG_MODE: bool = False
+    DEBUG_ADMIN_IDS: list[int] = []
+
 
 settings = Settings()
