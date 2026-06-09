@@ -151,7 +151,7 @@ backend/
     kafka-common/        — KafkaSender, AbstractEventPublisher, BaseEvent, KafkaTopics
     kafka-proto-common/  — Protobuf: MessageBatch, TaskCreate, StatusChange
     security-common/     — UserPrincipal, JWT, TelegramOAuthVerifier
-    logging-common/      — Structured logging (MDC, traceId, Loki)
+    logging-common/      — Structured logging (MDC, traceId)
     s3-common/           — S3Service, AbstractStoredFileEntity
 
 llm-worker/
@@ -203,11 +203,10 @@ extension/               — Chrome Extension (Manifest V3, WXT + React + TS + T
 infrastructure/
   docker/
     docker-compose.core.yml         — PostgreSQL, Redpanda (Kafka), MinIO
-    docker-compose.services.yml     — Spring Monolith, Bot, LLM Worker
+    docker-compose.services.yml     — вспомогательные сервисы (auth-service)
     docker-compose.ai.yml           — faster-whisper-server (порт 8002)
-    docker-compose.observability.yml — Grafana, Loki, Tempo, Prometheus, Alloy
     docker-compose.seed.yml         — DataSeeder
-  config/                — Grafana dashboards, Loki, Tempo, Prometheus, Redpanda Console
+  config/                — Redpanda Console
   caddy/                 — Caddyfile: reverse proxy
 ```
 
@@ -226,7 +225,6 @@ infrastructure/
 | ASR               | faster-whisper-server (OpenAI API compatible, Docker)        |
 | Хранилище файлов  | MinIO (S3-совместимый)                                        |
 | Контейнеризация   | Docker Compose + Jib (образы на `ghcr.io/42team-ru`)         |
-| Observability     | Grafana + Loki + Tempo + Prometheus + Alloy (OpenTelemetry)  |
 | Reverse proxy     | Caddy                                                         |
 | Bot               | Python, Aiogram 3, aiogram-fsm                               |
 | Extension         | WXT, React, TypeScript, Tailwind, @stomp/stompjs             |
@@ -246,20 +244,27 @@ infrastructure/
 ### Запуск
 
 ```bash
-# PostgreSQL + Redpanda + MinIO
+# Инфраструктура (PostgreSQL, Kafka, MinIO, Qdrant, Caddy)
 make core-up
 
-# + Spring-монолит, бот, LLM Worker
-make dev-up
-
-# + Grafana, Loki, Tempo, Prometheus
-make staging-up
+# Whisper ASR (нужен для аудио и встреч)
+make whisper-up
 
 # Залить тестовые данные (глобальные курсы, seed-пользователи)
 make seed
+```
 
-# Запустить Whisper ASR (нужен для аудио и встреч)
-make whisper-up
+Spring-монолит, LLM Worker и Telegram-бот запускаются вручную:
+
+```bash
+# Spring-монолит
+cd backend && ./gradlew :monolith:bootRun
+
+# LLM Worker
+cd llm-worker && uv run python main.py
+
+# Telegram-бот
+cd bot && uv run python main.py
 ```
 
 ### Сборка и публикация
