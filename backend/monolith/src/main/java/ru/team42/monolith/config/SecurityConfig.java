@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/groups/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                        .requestMatchers("/payments/webhook").permitAll()
                         .anyRequest().authenticated()
                 );
         return http.build();
