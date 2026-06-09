@@ -14,6 +14,7 @@ from keyboards.member import (
     home_keyboard,
     member_main_keyboard,
     my_tasks_team_keyboard,
+    no_team_keyboard,
     team_context_manager_keyboard,
     team_context_manager_files_keyboard,
     team_context_manager_manage_keyboard,
@@ -33,8 +34,8 @@ from states.auth import UpdateYouGileStates
 router = Router()
 
 NO_TEAM_TEXT = (
-    "Вы зарегистрированы, но пока не состоите ни в одной команде.\n"
-    "Нужно, чтобы менеджер добавил вас в команду."
+    "👋 Вы зарегистрированы!\n\n"
+    "Создайте свою команду или дождитесь приглашения от менеджера."
 )
 
 
@@ -49,7 +50,7 @@ async def show_member_panel(message: Message, user: dict) -> None:
         get_my_teams(message.from_user.id),
     )
     if not manager_teams and not member_teams:
-        await message.answer(NO_TEAM_TEXT)
+        await message.answer(NO_TEAM_TEXT, reply_markup=no_team_keyboard())
         return
 
     await message.answer(
@@ -67,7 +68,7 @@ async def member_back(callback: CallbackQuery, state: FSMContext) -> None:
         get_my_teams(callback.from_user.id),
     )
     if not manager_teams and not member_teams:
-        await callback.message.edit_text(NO_TEAM_TEXT)
+        await callback.message.edit_text(NO_TEAM_TEXT, reply_markup=no_team_keyboard())
         await callback.answer()
         return
 
@@ -89,9 +90,8 @@ async def member_teams_overview(callback: CallbackQuery, state: FSMContext) -> N
 
     if not manager_teams and not member_teams:
         await callback.message.edit_text(
-            "Вы пока не состоите ни в одной команде.\n"
-            "Нужно, чтобы менеджер добавил вас в команду.",
-            reply_markup=back_to_member_keyboard(),
+            NO_TEAM_TEXT,
+            reply_markup=no_team_keyboard(),
         )
         await callback.answer()
         return

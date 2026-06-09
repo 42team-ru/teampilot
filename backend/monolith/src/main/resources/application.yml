@@ -20,6 +20,15 @@ app:
     llm:
         auto-confirm-threshold: ${LLM_AUTO_CONFIRM_THRESHOLD:0.90}
 
+    yookassa:
+        api-url: ${YOOKASSA_API_URL:https://api.yookassa.ru/v3}
+        shop-id: ${YOOKASSA_SHOP_ID:}
+        secret-key: ${YOOKASSA_SECRET_KEY:}
+        return-url: ${YOOKASSA_RETURN_URL:https://t.me/prorab_bot}
+
+    team-creation:
+        price-rub: ${TEAM_CREATION_PRICE_RUB:100.00}
+
     batching:
         min-messages: 3
         max-age-minutes: 5

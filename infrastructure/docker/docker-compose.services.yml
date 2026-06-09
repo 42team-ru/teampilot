@@ -22,6 +22,9 @@ services:
       S3_REGION: us-east-1
       S3_DEFAULT_BUCKET: ${S3_DEFAULT_BUCKET:-uploads}
       S3_PRESIGNED_ENDPOINT: ${S3_SERVER_URL:-https://s3.42team.ru}
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY}
+      YOOKASSA_RETURN_URL: ${YOOKASSA_RETURN_URL:-https://t.me/prorab_bot}
 
   bot:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/bot:latest
