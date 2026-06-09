@@ -24,6 +24,8 @@ AI_CFG       := -f $(DOCKER_DIR)/docker-compose.ai.yml
 PROTO_SRC    := backend/core/kafka-proto-common/src/main/proto
 PROTO_PY_OUT := llm-worker/proto_generated
 
+PROXY_DIR    := infrastructure/yookassa-proxy
+
 # ============================================================
 # Help
 # ============================================================
@@ -130,6 +132,21 @@ proto-gen: ## Сгенерировать Python-классы из .proto
 # ============================================================
 # Other
 # ============================================================
+
+##@ YooKassa Proxy (русский VPS)
+
+.PHONY: yk-proxy-up yk-proxy-down yk-proxy-logs yk-proxy-install
+yk-proxy-install: ## Установить Docker на чистый Ubuntu/Debian сервер
+	ssh root@$(YK_PROXY_HOST) "apt-get update && apt-get install -y docker.io docker-compose-plugin && systemctl enable --now docker"
+yk-proxy-up:      ## Запустить прокси на русском VPS
+	ssh root@$(YK_PROXY_HOST) "mkdir -p /opt/yookassa-proxy"
+	scp $(PROXY_DIR)/docker-compose.yml root@$(YK_PROXY_HOST):/opt/yookassa-proxy/
+	scp $(PROXY_DIR)/Caddyfile root@$(YK_PROXY_HOST):/opt/yookassa-proxy/
+	ssh root@$(YK_PROXY_HOST) "cd /opt/yookassa-proxy && docker compose up -d"
+yk-proxy-down:    ## Остановить прокси на русском VPS
+	ssh root@$(YK_PROXY_HOST) "cd /opt/yookassa-proxy && docker compose down"
+yk-proxy-logs:    ## Логи прокси
+	ssh root@$(YK_PROXY_HOST) "cd /opt/yookassa-proxy && docker compose logs -f"
 
 ##@ Other
 
