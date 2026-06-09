@@ -89,7 +89,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
-          context: ./llm-worker
+          context: .
+          file: llm-worker/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/llm-worker:latest
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.OWNER }}/llm-worker:latest
