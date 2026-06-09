@@ -18,7 +18,7 @@ public class YouGileSyncScheduler {
     private final TeamRepository teamRepository;
     private final YouGileBoardSyncService boardSyncService;
 
-    @Scheduled(fixedDelay = 60_000)
+    @Scheduled(fixedDelay = 5_000)
     public void syncAllTeams() {
         List<Team> teams = teamRepository.findByActiveTrue();
         log.info("YouGile board sync started for {} active teams", teams.size());
