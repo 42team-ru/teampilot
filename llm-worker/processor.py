@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from infra.kafka import publish
 from infra.qdrant import is_task_duplicate, search_knowledge, search_tasks, store_knowledge
-from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, decision_chain, file_summary_chain, speaker_segments_chain, status_chain, status_query_chain, task_chain
+from llm.chains import audio_status_chain, audio_task_chain, classifier_chain, decision_chain, file_summary_chain, speaker_segments_chain, status_chain, task_chain
 from llm.transcript import chunk_text
 from models import (
     AudioNewEvent,
@@ -75,33 +75,6 @@ _STATUS_SEARCH_MARKERS = (
     "не актуально",
     "неактуально",
     "отбой",
-    # completion verbs not covered above
-    "разработал",
-    "разработала",
-    "настроил",
-    "настроила",
-    "выполнил",
-    "выполнила",
-    "реализовал",
-    "реализовала",
-    "написал",
-    "написала",
-    "исправил",
-    "исправила",
-    "запустил",
-    "запустила",
-    "прикрутил",
-    "прикрутила",
-    "починил",
-    "починила",
-    "обновил",
-    "обновила",
-    "задеплоил",
-    "задеплоила",
-    "смёрджил",
-    "смерджил",
-    "залил",
-    "залила",
 )
 
 
@@ -203,6 +176,9 @@ def _status_marker_index(text: str) -> int:
     return min(indexes) if indexes else -1
 
 
+def _looks_like_status_query(text: str) -> bool:
+    return _status_marker_index(text) >= 0
+
 
 def _clean_status_search_query(text: str, limit: int = 320) -> str:
     # Strip formatter metadata like "[ID: ...] [10:00] username:" when the
@@ -243,35 +219,17 @@ def _dedupe_status_queries(queries: list[str]) -> list[str]:
 
 
 def _status_queries_from_batch(batch: MessageBatchEvent) -> list[str]:
-    text = format_messages(batch)
-    queries = _status_queries_via_llm(text)
-    if not queries:
-        logger.debug("[STATUS QUERIES] LLM returned empty, falling back to raw message texts")
-        queries = _dedupe_status_queries([m.text for m in batch.messages if m.text.strip()])
-    return queries
+    return _dedupe_status_queries([
+        message.text
+        for message in batch.messages
+        if _looks_like_status_query(message.text)
+    ])
 
 
 def _status_queries_from_text(text: str) -> list[str]:
-    queries = _status_queries_via_llm(text)
-    if not queries:
-        logger.debug("[STATUS QUERIES] LLM returned empty, falling back to raw text lines")
-        lines = [l.strip() for l in re.split(r"[\n\r]+", text) if l.strip()]
-        queries = _dedupe_status_queries(lines)
-    return queries
-
-
-def _status_queries_via_llm(text: str) -> list[str]:
-    try:
-        raw = status_query_chain.invoke({"messages": text})
-        if not isinstance(raw, list):
-            logger.warning(f"status_query_chain returned non-list: {raw!r}")
-            return []
-        queries = [str(q).strip() for q in raw if q and str(q).strip()]
-        logger.debug(f"[STATUS QUERIES] extracted={queries}")
-        return _dedupe_status_queries(queries)
-    except Exception as e:
-        logger.warning(f"status_query_chain failed: {e}")
-        return []
+    pieces = re.split(r"[\n\r]+|(?<=[.!?])\s+", text)
+    status_pieces = [piece for piece in pieces if _looks_like_status_query(piece)]
+    return _dedupe_status_queries(status_pieces)
 
 
 def _merge_status_candidates(
@@ -384,7 +342,6 @@ def _extract_tasks(batch: MessageBatchEvent, text: str, confidence: float = 0.0)
             "stickers_context": format_stickers_context(batch),
             "knowledge_context": format_knowledge_context(knowledge_items),
         })
-        logger.debug(f"[TASK RAW] batch={batch.event_id} raw={raw!r}")
         extraction_list = TaskExtractionList.model_validate(raw)
 
         events = []
