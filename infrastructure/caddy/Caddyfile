@@ -28,9 +28,6 @@
     }
 
     handle /redpanda* {
-        basic_auth {
-            {env.REDPANDA_CONSOLE_USER} {env.REDPANDA_CONSOLE_PASSWORD_HASH}
-        }
         uri strip_prefix /redpanda
         reverse_proxy redpanda-console:8080
     }
