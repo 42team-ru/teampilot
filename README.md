@@ -1,65 +1,332 @@
-Описание: Разработать прототип бота-помощника, который берёт на себя роль project-менеджера. Работает в фоне, сам следит за чатами и встречами, ведёт задачи и напоминает.
+# TeamPilot — AI-ассистент проект-менеджера
 
+> Хакатон-проект. Бот берёт на себя рутину PM: читает Telegram-чат и встречи, сам извлекает задачи, ведёт канбан в YouGile, напоминает о дедлайнах. Команда работает в привычном Telegram — минимум ручных действий.
 
-Обязательный функционал:
+---
 
+## Что умеет
 
-1) Интеграция с Telegram
-— Бот добавляется в командный чат и читает переписку.
-— Распознаёт задачи, дедлайны, ответственных.
+### Telegram → Канбан без ручного ввода
 
+Бот присутствует в командном чате. Батчит сообщения (10 штук или 5 минут тишины), прогоняет через двухступенчатый LLM-пайплайн (дешёвая модель — есть ли задача? дорогая — извлечь title / assignee / deadline / column). Менеджеру приходит карточка-черновик с кнопками ✅ / ✏️ / ❌.
 
-2) Присутствие на встречах
-— Подключается к Яндекс Телемосту (в идеале — к любому сервису через захват звука с драйвера)
-— Слышит устные договорённости и задачи, пишет саммари встречи и выносит задачи на канбан доску
+- Задачи с `confidence ≥ 0.90` создаются **автоматически** без подтверждения (кнопка только «Отменить»).
+- В карточке — «Уверенность ИИ: XX%» из классификатора.
+- Не создаёт задачу из каждого сообщения: игнорирует шутки, общие объявления без явного исполнителя.
+- **Дедупликация** через семантический поиск в Qdrant — дубли не создаются.
+- После подтверждения — карточка в YouGile с title, assignee, deadline, description, колонкой.
 
+### Смена статусов из переписки
 
-3) Ведение канбан-доски
-— Интеграция с любой внешней доской (YouGile и т.д.).
-— Автоматически создаёт, двигает и закрывает карточки задач
-— Отслеживает статус каждой задачи.
+Участник пишет «беру в работу», «готово», «закрыл» — бот разбирает текст, находит нужную задачу через Qdrant и двигает карточку по канбану. Статус-изменение считается только если явно называет задачу или написано от первого лица («я сделал X», «взял X», «закончил X»).
 
+### Инструменты просмотра задач
 
-4) Проактивные напоминания
-— Пишет в чат или лично: «Задача X через 2 часа», «Вы не обновили статус».
-— Вечером присылает каждому его список задач на основе канбана.
+| Команда | Описание |
+|---------|----------|
+| `/mytasks` | Активные задачи текущего пользователя |
+| `/tasks` | Задачи команды с фильтром по колонке канбана (динамические кнопки) |
+| `/board` | Сводка доски по блокам: в работе / на проверке / просрочено (только менеджер) |
+| `/tasks @username` | Задачи конкретного участника (только менеджер) |
+| `/sync` | Принудительная синхронизация с YouGile |
 
+Задачи фильтруются по колонкам (динамически из YouGile/БД) — хардкода статусов нет.
 
-5) Минимальное ручное управление
-— Всё взаимодействие — только подтверждения. Бот сам извлекает контекст.
+### Анализ встреч — файл
 
+Бот принимает голосовое или запись встречи → Whisper (faster-whisper-server) → расшифровка → LLM → summary встречи + задачи с дедлайнами и ответственными → карточки в YouGile. При загрузке через бота пользователь выбирает команду через inline-кнопки.
 
-6) Дополнительные возможности (усилят решение)
-— Трекинг скорости и качества выполнения задач.
-— Личный кабинет: профиль, задачи, заметки.
-— Рекомендации по развитию (курсы, навыки).
-— Геймификация (ачивки, RPG-система).
-— Общая база знаний команды.
-— Адаптация под госуправление (Госкоманда, спецпроцессы).
+### Анализ встреч — реалтайм (Chrome Extension)
 
+**Chrome Extension** (WXT + React + TypeScript + Tailwind) захватывает аудио активной вкладки браузера, сохраняя звук слышимым для пользователя. Чанки по 30 секунд отправляются через STOMP/WebSocket в Spring → MinIO → Kafka → LLM Worker → Whisper. Результаты (транскрипт, summary, найденные задачи) возвращаются обратно в sidepanel в реальном времени.
 
-Целевая аудитория
-IT‑команды, менеджеры, администраторы, госорганы (любые сотрудники со своими карточками).
+**Возможности расширения:**
+- Вход через Telegram: pairing-code flow (пользователь отправляет `/start <код>` боту, бот подтверждает в backend, extension получает JWT через polling).
+- После входа — менеджер создаёт meeting для команды из URL звонка, бот публикует ссылку в командный чат.
+- Live-подсказки прямо во время звонка: «похожая задача уже есть» (Qdrant search).
+- После встречи — полный финальный транскрипт, LLM повторно анализирует весь текст и доизвлекает задачи.
+- Переключение тем: тёмная / светлая / системная (Tailwind class-based dark mode, сохраняется в `chrome.storage.local`).
+- Хронологический порядок лога транскрипции с автоскроллом к последнему событию.
 
+**Разделение спикеров:** ручное сопоставление `SPEAKER_N → @username` через inline-кнопки в боте после встречи.
 
-Технологически
-— Любой стек, но быстрый прототип за 3-4 дня.
-— Распознавание речи — готовые API (Whisper, Yandex SpeechKit и тд).
-— Telegram Bot API — обязательно.
-— API выбранной канбан-доски.
-+
+### Вечерний синк
 
-На что обратить внимание при разработке:
-- Рабочий MVP — бот создаёт задачи в канбане из чата.
-- Автономность — как редко нужно вмешательство человека.
-- Качество распознавания (текст + голос).
-- Удобство пользования для команды заказчика.
-- Наличие дополнительных фич.
+В 18:00 бот пишет в чат: «Вечерний синк: напишите, что сделали сегодня». Участники описывают своё за день → LLM сопоставляет отчёты с задачами по каждой строке отдельно (per-line Qdrant search) → предлагает закрыть соответствующие карточки → менеджер получает сводку: кто отчитался / не ответил / что просрочено.
 
+Команда `/excuse [причина]` исключает пользователя из синка на сегодня. При нескольких командах — выбор через inline-кнопки.
 
-Результат к концу хакатона
-— Демо-бот в Telegram, подключённый к тестовому чату.
-— Интеграция с выбранной канбан-доской.
-— Короткая презентация о разработанном решении с демо
+### Проактивные уведомления
 
+- За ~2 часа до дедлайна — личное сообщение исполнителю (однократно, поле `deadlineNotifiedAt`).
+- Stale-алерт: задача не двигалась 24+ часов.
+- Учёт статусов «болею / экзамен / отпуск» через `/excuse`.
+- Батчинг уведомлений: 5 отменённых задач подряд → 1 сообщение со списком.
+- Уведомления — только в личку, без спама в групповой чат.
 
+### База знаний команды (`/wiki`)
+
+Файлы, саммари встреч и подтверждённые задачи автоматически индексируются в Qdrant коллекции `team_knowledge` (типы: `meeting_summary`, `file_summary`, `task_archive`). Команда `/wiki <запрос>` делает семантический поиск по архиву прямо из Telegram. База знаний также автоматически инжектируется как контекст при извлечении задач из новых сообщений.
+
+### Файлы команды
+
+После обработки файла через Whisper + LLM — title, description и summary автоматически заполняются в БД. `GET /teams/{teamId}/files` отдаёт список с presigned download URL (15 мин). В боте: кнопка «📁 Файлы» в контексте команды. Presigned URL генерируется через публичный endpoint MinIO (настраивается через `S3_PRESIGNED_ENDPOINT`).
+
+### Геймификация и RPG-профиль (`/profile`)
+
+- XP за выполненные задачи: 100 (вовремя) / 20 (с опозданием) / +50 (за 24ч до дедлайна).
+- Множитель стрика: до 2× при ежедневной активности.
+- Уровни: Новобранец → Исполнитель → Специалист → Профессионал → Эксперт → Легенда.
+- Ачивки: FIRST_STEP, LIGHTNING, EARLY_BIRD, WEEK_STREAK, SNIPER, MOUNTAIN, CLEAN_MONTH.
+- Push-уведомления о новом уровне и ачивках через `bots.notifications`.
+- `/profile` показывает XP-прогресс-бар, стрик, статистику, inline-кнопка «Ачивки».
+
+### Рекомендации курсов
+
+Когда задача просрочена — Spring запускает Qdrant-поиск по семантике задачи в каталоге курсов (`team_knowledge` с `type="course"`), включая глобальный каталог (Skillbox, Яндекс Практикум, Степик, YouTube, Coursera). Исполнитель получает подборку в личку. Менеджер может добавлять курсы через URL, бот парсит og:title/og:description через jsoup. DataSeeder содержит 15+ глобальных курсов.
+
+### Онбординг и роли
+
+- **SYSTEM_ADMIN**: команда `/admin` в личке, создание команд через `POST /admin/teams`, управление пользователями.
+- **MANAGER**: привязка YouGile-доски, подтверждение задач, доступ к сводкам.
+- **MEMBER**: просмотр задач, смена статусов, вечерний синк, курсы, профиль.
+
+Процесс: менеджер добавляет бота в Telegram-группу → бот пишет в личку менеджеру → YouGile-токен → выбор доски → готово. Без знания команд — всё через inline-кнопки.
+
+---
+
+## Архитектура
+
+![arch.png](docs/arch.png)
+> **User Flows (Activity Diagrams):** подробные пошаговые схемы всех сценариев — [docs/user-flows.md](docs/user-flows.md)
+
+---
+
+## Kafka-топики
+
+| Топик                        | Направление      | Описание                                                        |
+|------------------------------|------------------|-----------------------------------------------------------------|
+| `messages.raw`               | Bot → Spring     | Батчи сообщений из чата (Protobuf)                             |
+| `users.events`               | Bot → Spring     | Регистрация / обновление пользователя                           |
+| `audio.new`                  | Spring → LLM     | Новый аудиофайл в MinIO (после загрузки через бота)            |
+| `meeting.audio.chunk`        | Spring → LLM     | Чанк встречи из STOMP-сессии Chrome Extension                  |
+| `meeting.live.result`        | LLM → Spring     | Результаты реалтайм-транскрибации → STOMP broadcast            |
+| `llm.tasks.create`           | LLM → Spring     | Создать задачу (Protobuf)                                       |
+| `llm.status.change`          | LLM → Spring     | Сменить статус / назначить исполнителя (Protobuf)              |
+| `files.transcript_ready`     | LLM → Spring     | Title / description / summary файла из Whisper                 |
+| `bots.tasks`                 | Spring → Bot     | Подтверждение задачи (кнопки ✅/✏️/❌, батчинг событий)       |
+| `bots.notifications`         | Spring → Bot     | Дедлайн / stale / достижения / синк / рекомендации курсов      |
+| `tasks.lifecycle`            | Spring → LLM     | CONFIRMED/UPDATED/CANCELLED → sync Qdrant                      |
+| `sync.draft`                 | LLM → Spring     | Вечерний синк: разбор отчётов участников                       |
+| `courses.indexed`            | Spring → LLM     | Новый курс → индексировать в Qdrant                             |
+| `courses.recommend.request`  | Spring → LLM     | Запрос рекомендаций по просроченной задаче                     |
+| `courses.recommend.result`   | LLM → Spring     | Список релевантных курсов                                       |
+
+---
+
+## Qdrant-коллекции
+
+| Коллекция      | Содержимое                                        | Используется для                                     |
+|----------------|---------------------------------------------------|------------------------------------------------------|
+| `tasks`        | Векторы задач (title + description, multi-point) | Дедупликация, резолвинг статусов, live-hints         |
+| `team_knowledge` | meeting_summary / file_summary / task_archive / course | /wiki поиск, контекст для LLM, рекомендации курсов |
+
+---
+
+## Структура репозитория
+
+```
+backend/
+  monolith/              — Spring-сервис (Spring Boot 3, Java 21)
+    ├─ rest/             — Controllers: Auth, Task, Team, User, Meeting, Course, Admin, YouGile...
+    ├─ service/          — TaskService, GamificationService, EveningSyncService, NotificationScheduler...
+    ├─ entity/           — Task, Team, TeamUser, Meeting, UserProfile, Course, YouGileSticker...
+    ├─ kafka/consumer/   — LlmTaskCreate, LlmStatusChange, MeetingLiveResult, CourseRecommend...
+    ├─ kafka/publisher/  — Audio, Meeting, Notification, Task, Course event publishers
+    └─ config/           — WebSocket/STOMP, Kafka, YouGile, Security, DataSeeder
+
+  core/
+    web-common/          — AppException, GlobalExceptionHandler, ResponseUtils, PageResponse
+    common-data/         — AbstractEntity (UUID, createdAt, updatedAt)
+    kafka-common/        — KafkaSender, AbstractEventPublisher, BaseEvent, KafkaTopics
+    kafka-proto-common/  — Protobuf: MessageBatch, TaskCreate, StatusChange
+    security-common/     — UserPrincipal, JWT, TelegramOAuthVerifier
+    logging-common/      — Structured logging (MDC, traceId, Loki)
+    s3-common/           — S3Service, AbstractStoredFileEntity
+
+llm-worker/
+  main.py                — Точка входа: Kafka-consumer-потоки + Uvicorn HTTP
+  processor.py           — Батчи → классификатор → параллельное извлечение задач + статусов
+  sync_processor.py      — Вечерний синк: per-line Qdrant search + LLM-fallback
+  api.py                 — FastAPI: GET /knowledge/search (для бота)
+  llm/
+    chains.py            — LangChain: classifier, task, status, audio_task, audio_status, file_summary
+    prompts.py           — Все промпты (XML-теги, few-shot, CoT, calibration)
+    transcript.py        — Чанкинг транскриптов с overlap
+    safe_parser.py       — JSON-парсер: strip <thinking>, markdown-strip
+  infra/
+    qdrant.py            — multi-point store/search/delete; tasks + team_knowledge
+    whisper.py           — HTTP-клиент faster-whisper-server (OpenAI SDK compatible)
+    kafka.py             — Producer/consumer helpers, Protobuf deserialization
+    minio.py             — Download/upload чанков встреч
+    audio.py             — Конкатенация WebM-чанков для финального трека
+
+bot/
+  main.py                — Aiogram 3, регистрация роутеров
+  handlers/              — setup, tasks, admin, sync (evening), profile, wiki,
+  │                         courses, meetings, upload, knowledge, reminders...
+  services/              — REST-клиенты: team, task, admin, user, profile, course, knowledge
+  kafka/consumer.py      — bots.tasks + bots.notifications (батчинг событий по chat_id)
+  keyboards/             — Inline-клавиатуры всех панелей (вложенные меню)
+  states/                — FSM: setup, upload, admin, courses, sync
+  storage.py             — FSM-хранилище
+
+extension/               — Chrome Extension (Manifest V3, WXT + React + TS + Tailwind)
+  entrypoints/
+    popup/               — Главное меню: вход, статус записи, кнопки
+    sidepanel/           — Живой лог транскрипции, задачи, summary, подсказки
+    background.ts        — Service Worker: orchestrates meeting state + STOMP
+    offscreen/           — Захват аудио вкладки (MediaRecorder, WebM chunking)
+    content.ts           — Получение URL активной вкладки
+  services/
+    api.ts               — REST-клиент к Spring (auth header, base URL)
+    auth.ts              — Pairing-code login, JWT storage, polling
+    meetingSocket.ts     — STOMP lifecycle: connect / subscribe / send chunks / disconnect
+    storage.ts           — chrome.storage.local: recording state, live events, auth
+    themeSettings.ts     — Тема: system / light / dark
+  hooks/
+    useAuthSession.ts    — Состояние авторизации
+    useRecordingState.ts — Состояние записи
+    useMeetingResults.ts — Live результаты из STOMP
+    useExtensionTheme.ts — Реакция на смену темы
+
+infrastructure/
+  docker/
+    docker-compose.core.yml         — PostgreSQL, Redpanda (Kafka), MinIO
+    docker-compose.services.yml     — Spring Monolith, Bot, LLM Worker
+    docker-compose.ai.yml           — faster-whisper-server (порт 8002)
+    docker-compose.observability.yml — Grafana, Loki, Tempo, Prometheus, Alloy
+    docker-compose.seed.yml         — DataSeeder
+  config/                — Grafana dashboards, Loki, Tempo, Prometheus, Redpanda Console
+  caddy/                 — Caddyfile: reverse proxy
+```
+
+---
+
+## Технологический стек
+
+| Слой              | Технология                                                    |
+|-------------------|---------------------------------------------------------------|
+| Backend           | Java 21, Spring Boot 3, Gradle 9, WebSocket/STOMP            |
+| БД                | PostgreSQL (`ddl-auto: update`)                               |
+| Очередь           | Redpanda (Kafka-совместимый)                                  |
+| LLM Worker        | Python 3.12, LangChain, FastAPI, Uvicorn                     |
+| Векторный поиск   | Qdrant (`tasks` + `team_knowledge`)                          |
+| Embeddings        | `paraphrase-multilingual-MiniLM-L12-v2` (384d, Cosine)       |
+| ASR               | faster-whisper-server (OpenAI API compatible, Docker)        |
+| Хранилище файлов  | MinIO (S3-совместимый)                                        |
+| Контейнеризация   | Docker Compose + Jib (образы на `ghcr.io/42team-ru`)         |
+| Observability     | Grafana + Loki + Tempo + Prometheus + Alloy (OpenTelemetry)  |
+| Reverse proxy     | Caddy                                                         |
+| Bot               | Python, Aiogram 3, aiogram-fsm                               |
+| Extension         | WXT, React, TypeScript, Tailwind, @stomp/stompjs             |
+| Kanban            | YouGile API                                                   |
+| Сериализация      | Protobuf (MessageBatch, TaskCreate, StatusChange)            |
+| URL-парсинг       | jsoup (og:title / og:description для курсов)                 |
+
+---
+
+## Быстрый старт
+
+### Требования
+
+- Docker + Docker Compose
+- `.env` на основе `.env.example`
+
+### Запуск
+
+```bash
+# PostgreSQL + Redpanda + MinIO
+make core-up
+
+# + Spring-монолит, бот, LLM Worker
+make dev-up
+
+# + Grafana, Loki, Tempo, Prometheus
+make staging-up
+
+# Залить тестовые данные (глобальные курсы, seed-пользователи)
+make seed
+
+# Запустить Whisper ASR (нужен для аудио и встреч)
+make whisper-up
+```
+
+### Сборка и публикация
+
+```bash
+make build     # jibDockerBuild локально
+make push      # ghcr.io/42team-ru/*
+make release   # build + push через Jib
+```
+
+### Protobuf (Python-сторона)
+
+```bash
+make proto-gen
+```
+
+### Управление
+
+```bash
+make ps        # статус контейнеров
+make clean     # удалить все контейнеры и volumes
+```
+
+---
+
+## Команды Telegram-бота
+
+| Команда            | Кто | Описание                                                       |
+|--------------------|-----|----------------------------------------------------------------|
+| `/start`           | все | Регистрация, привязка к команде, главное меню с кнопками      |
+| `/admin`           | ADMIN | Панель администратора: создание команд, управление          |
+| `/tasks`           | все | Задачи команды по колонкам канбана                            |
+| `/mytasks`         | все | Мои активные задачи                                           |
+| `/board`           | MANAGER | Сводка доски команды                                      |
+| `/sync`            | MANAGER | Синхронизация с YouGile                                   |
+| `/profile`         | все | RPG-профиль: XP, уровень, стрик, ачивки                      |
+| `/wiki <запрос>`   | все | Семантический поиск по базе знаний команды                    |
+| `/excuse [причина]`| все | Исключить себя из вечернего синка на сегодня                  |
+| `/upload`          | все | Загрузить аудио/файл в команду (с выбором команды)            |
+| `/help`            | все | Список команд                                                  |
+
+Основные флоу доступны через кнопки — знать команды необязательно.
+
+---
+
+## REST API (основные группы)
+
+| Группа                    | Пример эндпоинтов                                              |
+|---------------------------|----------------------------------------------------------------|
+| Auth / Telegram OAuth     | `POST /auth/telegram`, `POST /auth/register`, `GET /auth/me`  |
+| Extension login (pairing) | `POST /auth/extension-login/start`, `GET /auth/extension-login/{code}/status`, `POST /auth/extension-login/{code}/confirm` |
+| Teams                     | `POST /admin/teams`, `GET /teams/my`, `PATCH /teams/{id}`, `GET /teams/{id}/files`, `GET /teams/{id}/courses` |
+| YouGile                   | `POST /auth/yougile/auth`, `GET /yougile/boards`, `POST /teams/{id}/yougile/connect` |
+| Tasks                     | `GET /tasks`, `GET /tasks/columns`, `POST /tasks/{id}/approve`, `POST /tasks/{id}/cancel` |
+| Users                     | `GET /users/{telegramId}/stats`, `PATCH /users/{id}` |
+| Meetings                  | `POST /meetings`, `GET /meetings/by-url` |
+| Courses                   | `POST /teams/{teamId}/courses`, `GET /teams/{teamId}/courses` |
+| Excuses                   | `POST /excuse`, `GET /excuse/teams` |
+
+---
+
+## Соглашения по коду (Spring)
+
+- Нет `/api` префикса — пишем `/auth`, `/tasks`, `/teams`.
+- `ddl-auto: update`, Flyway не используется.
+- Все исключения через `AppException` (обрабатывается `GlobalExceptionHandler`).
+- Ответы через `ResponseUtils.ok/created/noContent/page`.
+- Сущности наследуют `AbstractEntity` (UUID id, createdAt, updatedAt).
+- Kafka-события: `BaseEvent` + `AbstractEventPublisher`.
+- Файлы: `S3Service.upload/presignedGetUrl`.
