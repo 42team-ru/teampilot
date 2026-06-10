@@ -6,10 +6,6 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - ./caddy_data:/data
+      - ./caddy_config:/config
     restart: unless-stopped
-
-volumes:
-  caddy_data:
-  caddy_config:
