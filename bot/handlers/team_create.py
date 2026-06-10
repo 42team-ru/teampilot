@@ -12,7 +12,7 @@ from states.payment import TeamCreateStates
 
 router = Router()
 
-_PRICE_DISPLAY = "100 ₽"
+_PRICE_DISPLAY = "2500 ₽"
 _MAX_NAME_LEN = 100
 
 
