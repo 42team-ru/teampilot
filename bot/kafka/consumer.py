@@ -16,27 +16,23 @@ from kafka.topics import (
     TOPIC_TASKS_STATE,
 )
 from keyboards.sync import (
+    build_sync_draft_keyboard,
+    build_sync_multi_choice_keyboard,
     build_task_approval_keyboard,
-    build_sync_summary_keyboard,
+    build_proposal_approval_keyboard,
 )
 from models.events import (
     BotNotificationEvent,
     BotSyncEvent,
-    SyncMemberSummary,
     TaskConfirmationEvent,
     TaskStateEvent,
 )
 from services import sync_state
 
-_SYNC_TYPES = {"SYNC_PROMPT", "SYNC_SUMMARY"}
+_SYNC_TYPES = {"SYNC_PROMPT", "SYNC_DRAFT", "SYNC_SUMMARY"}
 
 _DISPLAY_TZ = timezone(timedelta(hours=3))
 _BATCH_WINDOW_SECS = 3
-
-# Cache of per-member sync summaries for the drilldown ("📋 Отчёт по участникам") view.
-# Keyed by team_id (string). Overwritten on each new summary — ephemeral hackathon data.
-# Each entry: {"overview": <overview text>, "members": [SyncMemberSummary, ...]}
-_summary_members_cache: dict[str, dict] = {}
 
 
 class EventConsumer:
@@ -120,7 +116,9 @@ class EventConsumer:
             return
         if len(events) == 1:
             event = events[0]
-            if not event.auto_confirmed and event.task_id:
+            if event.proposal_id:
+                kb = build_proposal_approval_keyboard(event.proposal_id)
+            elif not event.auto_confirmed and event.task_id:
                 kb = build_task_approval_keyboard(event.task_id)
             else:
                 kb = None
@@ -280,7 +278,7 @@ class EventConsumer:
                     try:
                         await bot.send_message(
                             chat_id=uid,
-                            text="🌆 <b>Вечерняя синхронизация</b>\n\nОпишите одним сообщением, что вы сделали за день (каждую задачу — с новой строки).",
+                            text="🌆 <b>Вечерний синк</b>\n\nОпишите каждую выполненную задачу <b>отдельным сообщением</b>.\nКогда закончите — отправьте /ready",
                             parse_mode="HTML",
                         )
                         sync_state.add_sync_user(uid)
@@ -288,21 +286,41 @@ class EventConsumer:
                     except TelegramAPIError as e:
                         logger.warning("Failed to send sync prompt to userId={}: {}", uid, e)
 
+        elif event.type == "SYNC_DRAFT":
+            recipient = event.recipient_telegram_id
+            chat_id = event.chat_id
+            if not recipient:
+                logger.warning("SYNC_DRAFT missing recipientTelegramId, skipping")
+                return
+            matched = [i for i in event.draft if not i.is_new_task and i.task_id]
+            if len(matched) > 1:
+                user_text = escape(event.draft[0].user_text[:120]) if event.draft else ""
+                text = (
+                    f"📋 <b>Нашлось несколько подходящих задач</b> для:\n"
+                    f"<i>{user_text}</i>\n\n"
+                    "Выберите нужную или переформулируйте:"
+                )
+                kb = build_sync_multi_choice_keyboard(matched, chat_id) if chat_id else None
+            else:
+                text = _format_sync_draft(event.draft, recipient)
+                item_index = event.draft[0].index if event.draft else 1
+                kb = build_sync_draft_keyboard(chat_id, item_index=item_index) if chat_id else None
+            if not chat_id:
+                logger.warning("SYNC_DRAFT has no chatId for user={} — sending draft without confirm buttons", recipient)
+            try:
+                await bot.send_message(chat_id=recipient, text=text, parse_mode="HTML", reply_markup=kb)
+                logger.info("Sync draft sent to user={} chatId={} items={}", recipient, chat_id, len(event.draft))
+            except TelegramAPIError as e:
+                logger.warning("Failed to send sync draft to user={}: {}", recipient, e)
+
         elif event.type == "SYNC_SUMMARY":
             if not event.recipient_telegram_ids:
                 logger.warning("SYNC_SUMMARY has no recipients")
                 return
             text = _format_sync_summary(event.summary)
-            kb = None
-            if event.team_id and event.summary and event.summary.members:
-                _summary_members_cache[event.team_id] = {
-                    "overview": text,
-                    "members": event.summary.members,
-                }
-                kb = build_sync_summary_keyboard(event.team_id)
             for manager_id in event.recipient_telegram_ids:
                 try:
-                    await bot.send_message(chat_id=manager_id, text=text, parse_mode="HTML", reply_markup=kb)
+                    await bot.send_message(chat_id=manager_id, text=text, parse_mode="HTML")
                 except TelegramAPIError as e:
                     logger.warning("Failed to send sync summary to manager={}: {}", manager_id, e)
 
@@ -370,6 +388,16 @@ class EventConsumer:
         )
 
     def _format_task_confirmation(self, event: TaskConfirmationEvent) -> str:
+        if event.proposal_id:
+            lines = [
+                "📝 <b>Сотрудник предлагает новую задачу:</b>",
+                "",
+                f"<b>{escape(event.title)}</b>",
+            ]
+            if event.assignee_username:
+                lines.append(f"👤 От: {escape(event.assignee_username)}")
+            return "\n".join(lines)
+
         prefix = "🤖 <b>Задача создана автоматически</b>" if event.auto_confirmed else "✅ <b>Задача создана</b>"
         lines = [prefix, "", f"<b>{escape(event.title)}</b>"]
 
@@ -435,36 +463,39 @@ class EventConsumer:
             logger.warning("{} {} was not delivered to any DM recipient", event_name, event_id)
 
 
+def _format_sync_draft(items: list, recipient_id: int | None = None) -> str:
+    lines = ["📋 <b>Вечерний синк — проверь, всё ли верно:</b>", ""]
+    for item in items:
+        title = escape(item.task_title or item.user_text or "?")
+        user_text = escape(item.user_text or "")
+        if item.is_new_task:
+            lines.append(f"{item.index}. {user_text} → <i>новая задача:</i> <b>{title}</b>")
+        elif item.task_id:
+            lines.append(f"{item.index}. {user_text} → <b>{title}</b> ✅")
+        else:
+            lines.append(f"{item.index}. {user_text} → <i>не найдено</i> ❓")
+    return "\n".join(lines)
+
+
 def _format_sync_summary(summary) -> str:
     if summary is None:
-        return "📊 <b>Вечерняя синхронизация завершена</b>"
-
-    responded_count = len(summary.responded_usernames)
-    not_responded_count = len(summary.not_responded_usernames)
-    excused = getattr(summary, "excused_entries", None) or []
-    total = responded_count + not_responded_count + len(excused)
-
+        return "📊 <b>Вечерний синк завершён</b>"
+    responded = ", ".join(summary.responded_usernames) or "никто"
+    not_responded = ", ".join(summary.not_responded_usernames) or "все отчитались"
     lines = [
-        "📊 <b>Итоги вечерней синхронизации</b>",
+        "📊 <b>Вечерний синк — итоги</b>",
         "",
-        f"Всего участников: {total}",
-        f"✅ Отчитались: {responded_count}",
-        f"❌ Не ответили: {not_responded_count}",
-        f"🤒 На больничном/в отпуске: {len(excused)}",
-    ]
-    for entry in excused:
-        lines.append(f"  • {escape(entry)}")
-    lines += [
-        "",
+        f"✅ Отчитались: {escape(responded)}",
+        f"❌ Не ответили: {escape(not_responded)}",
         f"📌 Задач закрыто: {summary.tasks_completed}",
-        f"🆕 Новых задач: {summary.new_tasks_pending_approval}",
+        f"🕐 На аппруве у менеджера: {summary.new_tasks_pending_approval}",
     ]
-
-    members = getattr(summary, "members", None) or []
-    if members:
+    excused = getattr(summary, "excused_entries", None) or []
+    if excused:
         lines.append("")
-        lines.append("Нажмите кнопку ниже, чтобы посмотреть детали по каждому участнику.")
-
+        lines.append("🤒 Не участвовали:")
+        for entry in excused:
+            lines.append(f"  • {escape(entry)}")
     return "\n".join(lines)
 
 

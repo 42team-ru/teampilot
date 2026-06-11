@@ -8,45 +8,35 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.dto.response.TaskUpdateMessage;
 import ru.team42.monolith.entity.Task;
-import ru.team42.monolith.entity.TaskColumn;
-import ru.team42.monolith.entity.TaskStatusHistory;
 import ru.team42.monolith.entity.Team;
 import ru.team42.monolith.entity.TeamUser;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.entity.enums.UserSyncStatus;
-import ru.team42.monolith.event.BotSyncEvent;
 import ru.team42.monolith.event.ChatMessageEvent;
 import ru.team42.monolith.event.SyncDraftEvent;
 import ru.team42.monolith.event.SyncRequestEvent;
 import ru.team42.monolith.kanban.YouGileService;
-import ru.team42.monolith.repository.TaskColumnRepository;
 import ru.team42.monolith.repository.TaskRepository;
-import ru.team42.monolith.repository.TaskStatusHistoryRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class EveningSyncService {
 
-    private static final List<String> DONE_COLUMN_TITLES = List.of(
-            "готово", "done", "выполнено", "выполнена", "завершено", "завершена", "completed");
-
     private final SyncStateService syncStateService;
     private final SyncEventPublisher syncEventPublisher;
     private final TaskRepository taskRepository;
-    private final TaskColumnRepository taskColumnRepository;
-    private final TaskStatusHistoryRepository taskStatusHistoryRepository;
     private final TeamRepository teamRepository;
     private final TeamUserRepository teamUserRepository;
     private final TaskEventPublisher taskEventPublisher;
     private final YouGileService youGileService;
+    private final TaskProposalCache proposalCache;
     private final ExcuseService excuseService;
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -65,9 +55,11 @@ public class EveningSyncService {
     private void startSyncForTeam(Team team) {
         List<TeamUser> members = teamUserRepository.findByTeamIdWithUser(team.getId());
         // Синк только для сотрудников — менеджеры отчёт не пишут, они подтверждают
+        // Excused users are filtered out
         List<TeamUser> employees = members.stream()
                 .filter(m -> m.getRole() != TeamRole.MANAGER
-                        && m.getUser() != null && m.getUser().getTelegramId() != null)
+                        && m.getUser() != null && m.getUser().getTelegramId() != null
+                        && !excuseService.isExcused(m.getUser().getTelegramId(), team.getId()))
                 .toList();
         List<Long> memberIds = employees.stream()
                 .map(m -> m.getUser().getTelegramId())
@@ -85,18 +77,8 @@ public class EveningSyncService {
                 })
                 .toList();
 
-        // Excused users still get a session entry (so they show up in reports), but are
-        // marked EXCUSED from the start and don't receive the sync prompt
-        Set<Long> excusedIds = memberIds.stream()
-                .filter(id -> excuseService.isExcused(id, team.getId()))
-                .collect(Collectors.toSet());
-
-        syncStateService.openSession(team.getId(), team.getTelegramChatId(), memberIds, usernames, excusedIds);
-
-        List<Long> promptRecipients = memberIds.stream()
-                .filter(id -> !excusedIds.contains(id))
-                .toList();
-        syncEventPublisher.publishSyncPrompt(team.getTelegramChatId(), promptRecipients);
+        syncStateService.openSession(team.getId(), team.getTelegramChatId(), memberIds, usernames);
+        syncEventPublisher.publishSyncPrompt(team.getTelegramChatId(), memberIds);
         log.info("Evening sync started for team={} chatId={}", team.getId(), team.getTelegramChatId());
     }
 
@@ -140,7 +122,7 @@ public class EveningSyncService {
         log.info("Sync request dispatched for user={} team={} requestId={}", telegramUserId, teamId, requestId);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public void handleDraft(SyncDraftEvent event) {
         UUID teamId;
         try {
@@ -150,33 +132,122 @@ public class EveningSyncService {
             return;
         }
 
-        Team team = teamRepository.findById(teamId).orElse(null);
-        if (team == null) {
-            log.warn("handleDraft: team not found for teamId={}", teamId);
-            return;
-        }
-
-        List<SyncDraftEvent.DraftItem> items = event.getItems() == null ? List.of() : event.getItems();
-
-        List<String> confirmedTitles = new ArrayList<>();
-        List<String> pendingTitles = new ArrayList<>();
-        for (SyncDraftEvent.DraftItem item : items) {
-            try {
-                if (item.isNewTask()) {
-                    createCompletedTask(team, item.getTaskTitle(), event.getTelegramUserId());
-                    pendingTitles.add(resolveTaskTitle(item));
-                } else if (item.getTaskId() != null) {
-                    markTaskComplete(team, item.getTaskId());
-                    confirmedTitles.add(resolveTaskTitle(item));
-                }
-            } catch (Exception e) {
-                log.error("Failed to process sync item '{}' for user={}: {}", item.getUserText(), event.getTelegramUserId(), e.getMessage());
+        Long chatId = syncStateService.getSession(teamId)
+                .map(SyncStateService.TeamSyncSession::chatId)
+                .orElse(null);
+        if (chatId == null) {
+            chatId = teamRepository.findById(teamId)
+                    .map(Team::getTelegramChatId)
+                    .orElse(null);
+            if (chatId != null) {
+                log.info("handleDraft: using DB chatId={} for teamId={} (no active session)", chatId, teamId);
+            } else {
+                log.warn("handleDraft: no chatId found for teamId={} - draft may not be delivered", teamId);
             }
         }
 
-        syncStateService.recordSyncResults(teamId, event.getTelegramUserId(), confirmedTitles, pendingTitles);
-        log.info("Sync draft auto-applied for user={} team={} confirmed={} pending={}",
-                event.getTelegramUserId(), teamId, confirmedTitles.size(), pendingTitles.size());
+        List<SyncDraftEvent.DraftItem> enrichedItems = event.getItems() == null ? List.of() :
+            event.getItems().stream().map(item -> {
+                if (item.getTaskId() == null || item.isNewTask()) return item;
+                try {
+                    return taskRepository.findById(UUID.fromString(item.getTaskId()))
+                        .map(task -> {
+                            Long assigneeId = Optional.ofNullable(task.getAssignee())
+                                    .map(tu -> tu.getUser())
+                                    .map(u -> u.getTelegramId())
+                                    .orElse(null);
+                            String assigneeName = Optional.ofNullable(task.getAssignee())
+                                    .map(tu -> tu.getUser())
+                                    .map(u -> (u.getFirstName() != null ? u.getFirstName() : "") +
+                                             (u.getLastName() != null ? " " + u.getLastName() : ""))
+                                    .map(String::trim)
+                                    .filter(s -> !s.isEmpty())
+                                    .orElse(null);
+                            return SyncDraftEvent.DraftItem.builder()
+                                    .index(item.getIndex())
+                                    .userText(item.getUserText())
+                                    .taskId(item.getTaskId())
+                                    .taskTitle(item.getTaskTitle())
+                                    .isNewTask(item.isNewTask())
+                                    .assigneeTelegramId(assigneeId)
+                                    .assigneeName(assigneeName)
+                                    .build();
+                        })
+                        .orElse(item);
+                } catch (Exception e) {
+                    return item;
+                }
+            }).toList();
+
+        log.info("handleDraft: publishing draft to user={} chatId={} items={}", event.getTelegramUserId(), chatId, enrichedItems.size());
+        syncStateService.storeDraft(teamId, event.getRequestId(), enrichedItems);
+        syncEventPublisher.publishDraftToUser(event.getTelegramUserId(), chatId, enrichedItems);
+    }
+
+    @Transactional
+    public void confirmAll(Long chatId, Long telegramUserId) {
+        UUID teamId = syncStateService.getTeamIdByChatId(chatId)
+                .orElseThrow(() -> AppException.badRequest("No active sync session for chat"));
+
+        SyncStateService.UserSyncState state = syncStateService.getUserState(teamId, telegramUserId)
+                .orElseThrow(() -> AppException.notFound("User not in sync session"));
+
+        if (state.status() != UserSyncStatus.DRAFT_SENT) {
+            throw AppException.badRequest("No draft pending for user");
+        }
+
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> AppException.notFound("Team not found"));
+
+        int confirmedCount = 0;
+        int pendingCount = 0;
+        for (SyncDraftEvent.DraftItem item : state.draft()) {
+            try {
+                if (item.isNewTask()) {
+                    createCompletedTaskPendingApproval(team, item.getTaskTitle(), telegramUserId);
+                    pendingCount++;
+                } else if (item.getTaskId() != null) {
+                    markTaskComplete(team, item.getTaskId());
+                    confirmedCount++;
+                }
+            } catch (Exception e) {
+                log.error("Failed to process sync item '{}' for user={}: {}", item.getUserText(), telegramUserId, e.getMessage());
+            }
+        }
+
+        syncStateService.addConfirmCounts(teamId, telegramUserId, confirmedCount, pendingCount);
+        log.info("User={} confirmed sync for team={} confirmed={} pending={}", telegramUserId, teamId, confirmedCount, pendingCount);
+    }
+
+    @Transactional
+    public void rejectSync(Long chatId, Long telegramUserId) {
+        syncStateService.getTeamIdByChatId(chatId).ifPresent(teamId ->
+                syncStateService.updateUserStatus(teamId, telegramUserId, UserSyncStatus.REJECTED));
+        log.info("User={} rejected sync for chatId={}", telegramUserId, chatId);
+    }
+
+    @Transactional
+    public void editSyncItem(Long chatId, Long telegramUserId, int itemIndex, String newTaskTitle) {
+        UUID teamId = syncStateService.getTeamIdByChatId(chatId)
+                .orElseThrow(() -> AppException.badRequest("No active sync session for chat"));
+
+        SyncStateService.UserSyncState state = syncStateService.getUserState(teamId, telegramUserId)
+                .orElseThrow(() -> AppException.notFound("User not in sync session"));
+
+        List<SyncDraftEvent.DraftItem> updated = state.draft().stream()
+                .map(item -> item.getIndex() == itemIndex
+                        ? SyncDraftEvent.DraftItem.builder()
+                                .index(item.getIndex())
+                                .userText(item.getUserText())
+                                .taskId(null)
+                                .taskTitle(newTaskTitle)
+                                .isNewTask(true)
+                                .build()
+                        : item)
+                .toList();
+
+        syncStateService.storeDraft(teamId, state.requestId(), updated);
+        syncEventPublisher.publishDraftToUser(telegramUserId, chatId, updated);
     }
 
     public void closeSyncAndSendSummary() {
@@ -218,26 +289,6 @@ public class EveningSyncService {
 
         // Build excused users info from ExcuseService
         Map<Long, String> excusedMap = excuseService.getExcusedForTeam(session.teamId());
-
-        // Build per-member summary (one entry per team member in the session)
-        List<BotSyncEvent.SyncSummary.MemberSummary> members = new ArrayList<>();
-        for (SyncStateService.UserSyncState u : session.userStates().values()) {
-            UserSyncStatus status = u.status();
-            String excuseReason = excusedMap.get(u.telegramId());
-            if (excuseReason != null) {
-                status = UserSyncStatus.EXCUSED;
-            }
-            members.add(BotSyncEvent.SyncSummary.MemberSummary.builder()
-                    .telegramId(u.telegramId())
-                    .username(u.username())
-                    .status(status.name())
-                    .excuseReason(excuseReason)
-                    .confirmedTasks(u.confirmedTaskTitles())
-                    .pendingTasks(u.pendingTaskTitles())
-                    .rawText(u.rawText())
-                    .build());
-        }
-
         List<String> excusedEntries = new ArrayList<>();
         if (!excusedMap.isEmpty()) {
             Map<Long, String> telegramIdToName = new HashMap<>();
@@ -270,8 +321,88 @@ public class EveningSyncService {
         }
 
         List<Long> managerIds = managers.stream().map(m -> m.getUser().getTelegramId()).toList();
-        syncEventPublisher.publishSyncSummary(managerIds, session.teamId(), responded, notResponded, confirmed, pending, excusedEntries, members);
+        syncEventPublisher.publishSyncSummary(managerIds, session.teamId(), responded, notResponded, confirmed, pending, excusedEntries);
         excuseService.clearTeam(session.teamId());
+    }
+
+    @Transactional
+    public void createNewTaskFromSync(Long chatId, Long telegramUserId, String title) {
+        if (title == null || title.isBlank()) throw AppException.badRequest("Task title is required");
+        Team team = syncStateService.getTeamIdByChatId(chatId)
+                .flatMap(teamRepository::findById)
+                .or(() -> teamRepository.findByTelegramChatIdAndActiveTrue(chatId))
+                .orElseThrow(() -> AppException.notFound("No team found for chat"));
+        createCompletedTaskPendingApproval(team, title, telegramUserId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<java.util.Map<String, String>> getActiveTasks(Long telegramUserId) {
+        return taskRepository
+                .findByAssigneeUserTelegramIdAndCompletedFalseAndDeletedFalseAndLocalStatus(
+                        telegramUserId, TaskLocalStatus.ACTIVE)
+                .stream()
+                .map(t -> java.util.Map.of("id", t.getId().toString(), "title", t.getTitle()))
+                .toList();
+    }
+
+    @Transactional
+    public void completeSingleTask(Long chatId, Long telegramUserId, String taskId) {
+        if (taskId == null || taskId.isBlank()) throw AppException.badRequest("taskId is required");
+        UUID id;
+        try {
+            id = UUID.fromString(taskId);
+        } catch (IllegalArgumentException e) {
+            throw AppException.badRequest("Invalid taskId: " + taskId);
+        }
+        taskRepository.findById(id).ifPresent(task -> {
+            task.setCompleted(true);
+            taskRepository.save(task);
+            youGileService.updateTask(task.getTeam(), task);
+            log.info("Task '{}' marked complete via sync pick by user={}", task.getTitle(), telegramUserId);
+        });
+        syncStateService.getTeamIdByChatId(chatId)
+                .ifPresent(teamId -> syncStateService.addConfirmCounts(teamId, telegramUserId, 1, 0));
+    }
+
+    @Transactional
+    public void approveProposal(String proposalId, Long telegramUserId) {
+        TaskProposalCache.PendingProposal proposal = proposalCache.get(proposalId)
+                .orElseThrow(() -> AppException.notFound("Proposal not found or already processed"));
+        teamUserRepository.findByTeamIdAndUserTelegramId(proposal.teamId(), telegramUserId)
+                .filter(m -> m.getRole() == TeamRole.MANAGER)
+                .orElseThrow(() -> AppException.forbidden("Only managers can approve proposals"));
+
+        Team team = teamRepository.findById(proposal.teamId())
+                .orElseThrow(() -> AppException.notFound("Team not found"));
+
+        Task task = new Task();
+        task.setTeam(team);
+        task.setTitle(proposal.title());
+        task.setCompleted(true);
+        task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
+        teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), proposal.reporterTelegramId())
+                .ifPresent(task::setAssignee);
+
+        Task saved = taskRepository.save(task);
+        youGileService.createTask(team, saved).ifPresent(externalId -> {
+            saved.setExternalId(externalId);
+            saved.setSyncStatus(TaskSyncStatus.SYNCED);
+            taskRepository.save(saved);
+        });
+        taskEventPublisher.publishCreated(saved);
+        proposalCache.remove(proposalId);
+        log.info("Proposal '{}' approved by manager telegramId={}, task created id={}", proposal.title(), telegramUserId, saved.getId());
+    }
+
+    public void rejectProposal(String proposalId, Long telegramUserId) {
+        TaskProposalCache.PendingProposal proposal = proposalCache.get(proposalId)
+                .orElseThrow(() -> AppException.notFound("Proposal not found or already processed"));
+        teamUserRepository.findByTeamIdAndUserTelegramId(proposal.teamId(), telegramUserId)
+                .filter(m -> m.getRole() == TeamRole.MANAGER)
+                .orElseThrow(() -> AppException.forbidden("Only managers can reject proposals"));
+        proposalCache.remove(proposalId);
+        log.info("Proposal '{}' rejected by manager telegramId={}", proposal.title(), telegramUserId);
     }
 
     @Transactional
@@ -323,41 +454,21 @@ public class EveningSyncService {
         log.info("Task '{}' rejected by manager telegramId={}", task.getTitle(), telegramUserId);
     }
 
-    private void createCompletedTask(Team team, String title, Long reporterTelegramId) {
-        Task task = new Task();
-        task.setTeam(team);
-        task.setTitle(title);
-        task.setCompleted(true);
-        task.setLocalStatus(TaskLocalStatus.ACTIVE);
-        task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
-        resolveDoneColumn(team).ifPresent(task::setColumn);
-        teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), reporterTelegramId)
-                .ifPresent(task::setAssignee);
+    private void createCompletedTaskPendingApproval(Team team, String title, Long reporterTelegramId) {
+        String reporterName = teamUserRepository.findByTeamIdAndUserTelegramId(team.getId(), reporterTelegramId)
+                .map(m -> {
+                    var u = m.getUser();
+                    if (u == null) return null;
+                    String first = u.getFirstName() != null ? u.getFirstName().trim() : "";
+                    String last = u.getLastName() != null ? u.getLastName().trim() : "";
+                    String name = (first + " " + last).trim();
+                    return name.isEmpty() ? (u.getTelegramLogin() != null ? u.getTelegramLogin() : u.getTelegramId().toString()) : name;
+                })
+                .orElse("Сотрудник");
 
-        Task saved = taskRepository.save(task);
-        youGileService.createTask(team, saved).ifPresent(externalId -> {
-            saved.setExternalId(externalId);
-            saved.setSyncStatus(TaskSyncStatus.SYNCED);
-            taskRepository.save(saved);
-        });
-        taskEventPublisher.publishCreated(saved);
-        log.info("New task '{}' auto-created from sync for team={}, reporter telegramId={}, taskId={}",
-                title, team.getId(), reporterTelegramId, saved.getId());
-    }
-
-    private String resolveTaskTitle(SyncDraftEvent.DraftItem item) {
-        if (item.getTaskTitle() != null && !item.getTaskTitle().isBlank()) {
-            return item.getTaskTitle();
-        }
-        if (item.getTaskId() == null) {
-            return item.getUserText();
-        }
-        try {
-            UUID taskId = UUID.fromString(item.getTaskId());
-            return taskRepository.findById(taskId).map(Task::getTitle).orElse(item.getUserText());
-        } catch (IllegalArgumentException e) {
-            return item.getUserText();
-        }
+        String proposalId = proposalCache.put(new TaskProposalCache.PendingProposal(title, reporterTelegramId, team.getId()));
+        taskEventPublisher.publishProposal(proposalId, team.getId(), title, reporterName);
+        log.info("New task proposal '{}' stored as proposalId={} for team={}", title, proposalId, team.getId());
     }
 
     private void markTaskComplete(Team team, String taskIdStr) {
@@ -371,43 +482,10 @@ public class EveningSyncService {
 
         taskRepository.findById(taskId).ifPresent(task -> {
             task.setCompleted(true);
-            resolveDoneColumn(team)
-                    .filter(col -> !col.equals(task.getColumn()))
-                    .ifPresent(col -> {
-                        TaskColumn prev = task.getColumn();
-                        task.setColumn(col);
-                        recordHistory(task, prev, col);
-                        taskEventPublisher.publishColumnChanged(task, col);
-                    });
             taskRepository.save(task);
             youGileService.updateTask(team, task);
             log.info("Task '{}' marked complete via sync", task.getTitle());
         });
-    }
-
-    private void recordHistory(Task task, TaskColumn from, TaskColumn to) {
-        TaskStatusHistory history = new TaskStatusHistory();
-        history.setTask(task);
-        history.setFromColumn(from);
-        history.setToColumn(to);
-        history.setChangedByTelegramId(telegramIdOf(task));
-        taskStatusHistoryRepository.save(history);
-    }
-
-    private Long telegramIdOf(Task task) {
-        return task.getAssignee() != null && task.getAssignee().getUser() != null
-                ? task.getAssignee().getUser().getTelegramId()
-                : null;
-    }
-
-    /** Находит колонку команды, соответствующую статусу "выполнено", иначе — первую доступную колонку */
-    private Optional<TaskColumn> resolveDoneColumn(Team team) {
-        List<TaskColumn> columns = taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId());
-        return columns.stream()
-                .filter(c -> c.getTitle() != null
-                        && DONE_COLUMN_TITLES.contains(c.getTitle().trim().toLowerCase(Locale.ROOT)))
-                .findFirst()
-                .or(() -> columns.stream().findFirst());
     }
 
     private void broadcastTaskUpdate(Task task, TaskUpdateMessage message) {

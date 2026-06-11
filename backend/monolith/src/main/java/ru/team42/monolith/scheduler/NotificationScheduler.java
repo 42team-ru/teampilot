@@ -28,7 +28,7 @@ public class NotificationScheduler {
     private final NotificationPolicyService notificationPolicyService;
 
     @Transactional
-    @Scheduled(fixedDelay = 10_000)
+    @Scheduled(fixedDelay = 300_000)
     public void sendDeadlineReminders() {
         Instant now = Instant.now();
         Instant to = now.plus(24, ChronoUnit.HOURS);
@@ -57,7 +57,7 @@ public class NotificationScheduler {
     }
 
     @Transactional
-    @Scheduled(fixedDelay = 10_000)
+    @Scheduled(fixedDelay = 1_800_000)
     public void sendCourseRecommendations() {
         Instant now = Instant.now();
         List<Task> tasks = taskRepository.findByCourseRecommendationNeeded(now);
