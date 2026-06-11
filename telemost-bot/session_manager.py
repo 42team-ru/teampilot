@@ -20,6 +20,8 @@ class TelemostSession:
     team_id: str
     sink_name: str
     sink_module_id: str
+    mic_sink_name: str
+    mic_module_id: str
     _chunk_index: int = 0
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event)
     _tasks: list[asyncio.Task] = field(default_factory=list)
@@ -34,10 +36,21 @@ async def start_session(meeting_id: str, meeting_url: str, team_id: str = "") ->
         logger.warning("Telemost session already active: meeting_id={}", meeting_id)
         return
 
-    sink_name = f"bot_sink_{meeting_id.replace('-', '')[:12]}"
-    sink_module_id = _create_virtual_sink(sink_name)
+    short_id = meeting_id.replace("-", "")[:12]
+    sink_name = f"bot_sink_{short_id}"
+    sink_module_id = _create_virtual_sink(sink_name, "TeamPilotBot")
     if sink_module_id is None:
         raise RuntimeError(f"Failed to create PulseAudio virtual sink {sink_name!r}")
+
+    # Virtual microphone: a second null-sink whose .monitor is fed to Chrome as the
+    # input device (PULSE_SOURCE). Nothing writes to it by default → silence, so the
+    # bot no longer transmits Chrome's fake-device beep. TTS can later play into this
+    # sink to make the bot "speak" in the call.
+    mic_sink_name = f"bot_mic_{short_id}"
+    mic_module_id = _create_virtual_sink(mic_sink_name, "TeamPilotBotMic")
+    if mic_module_id is None:
+        _remove_virtual_sink(sink_module_id)
+        raise RuntimeError(f"Failed to create PulseAudio virtual mic sink {mic_sink_name!r}")
 
     session = TelemostSession(
         meeting_id=meeting_id,
@@ -45,6 +58,8 @@ async def start_session(meeting_id: str, meeting_url: str, team_id: str = "") ->
         team_id=team_id,
         sink_name=sink_name,
         sink_module_id=sink_module_id,
+        mic_sink_name=mic_sink_name,
+        mic_module_id=mic_module_id,
     )
     _sessions[meeting_id] = session
 
@@ -65,6 +80,7 @@ async def stop_session(meeting_id: str) -> None:
     await asyncio.gather(*session._tasks, return_exceptions=True)
 
     _remove_virtual_sink(session.sink_module_id)
+    _remove_virtual_sink(session.mic_module_id)
     logger.info("Telemost session stopped: meeting_id={}", meeting_id)
 
 
@@ -96,7 +112,13 @@ async def _browser_task(session: TelemostSession) -> None:
         logger.warning("Xvfb not found — falling back to headless=True (Chrome audio may not route to PulseAudio)")
         use_headless = True
 
-    env = {**os.environ, "PULSE_SINK": session.sink_name}
+    # PULSE_SINK: where Chrome plays the call audio (we capture its .monitor).
+    # PULSE_SOURCE: the bot's microphone — our silent virtual mic sink's monitor.
+    env = {
+        **os.environ,
+        "PULSE_SINK": session.sink_name,
+        "PULSE_SOURCE": f"{session.mic_sink_name}.monitor",
+    }
     if not use_headless:
         env["DISPLAY"] = display
 
@@ -112,8 +134,11 @@ async def _browser_task(session: TelemostSession) -> None:
                 headless=use_headless,
                 executable_path=chrome_path or None,
                 args=[
+                    # Auto-grant mic/camera prompts. We intentionally do NOT pass
+                    # --use-fake-device-for-media-stream: its fake audio device emits a
+                    # periodic ~1kHz beep that would be broadcast to all participants.
+                    # Instead Chrome uses our silent virtual mic via PULSE_SOURCE.
                     "--use-fake-ui-for-media-stream",
-                    "--use-fake-device-for-media-stream",
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
@@ -291,13 +316,13 @@ async def _reroute_chrome_audio(sink_name: str) -> bool:
     return False
 
 
-def _create_virtual_sink(sink_name: str) -> Optional[str]:
+def _create_virtual_sink(sink_name: str, description: str = "TeamPilotBot") -> Optional[str]:
     try:
         result = subprocess.run(
             [
                 "pactl", "load-module", "module-null-sink",
                 f"sink_name={sink_name}",
-                "sink_properties=device.description=TeamPilotBot",
+                f"sink_properties=device.description={description}",
             ],
             capture_output=True,
             text=True,

@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-12-telemost-bot-virtual-microphone-fix-beep-tts-ready/prd.md", "reason": "PRD — архитектура виртуального микрофона и точечные изменения в session_manager.py"}
+{"file": ".trellis/tasks/06-11-meeting-bot-voice-qa-agent/prd.md", "reason": "Зависимая задача: TTS пишет в этот virtual source — имя mic sink должно остаться доступным"}
