@@ -67,6 +67,20 @@ class Settings(BaseSettings):
     WHISPER_LANGUAGE: str = "ru"
     WHISPER_TIMEOUT_SECONDS: int = 120
 
+    # ── Голосовой ассистент (voice Q&A) ──
+    # Backend (Spring) для tools доски — аутентификация заголовком X-Bot-Secret
+    BACKEND_URL: str = "http://localhost:8080"
+    BOT_SECRET: str = "changeme"
+    # LLM для голосовых ответов (пусто → LLM_CHEAP_MODEL)
+    VOICE_LLM_MODEL: str = ""
+    # TTS через OpenRouter /audio/speech (ключ пуст → LLM_API_KEY)
+    TTS_API_BASE: str = "https://openrouter.ai/api/v1"
+    TTS_API_KEY: str = ""
+    TTS_MODEL: str = "x-ai/grok-voice-tts-1.0"
+    TTS_VOICE: str = "Ara"
+    TTS_FORMAT: str = "mp3"
+    TTS_TIMEOUT_SECONDS: int = 30
+
     # Debug режим: отправлять всё в ЛС к администраторам
     DEBUG_MODE: bool = False
     DEBUG_ADMIN_IDS: list[int] = []
