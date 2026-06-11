@@ -25,6 +25,7 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     Page<Task> findByTeamId(UUID teamId, Pageable pageable);
 
+    /** Все неудалённые задачи команды — основа для голосовых счётчиков и выборок. */
     List<Task> findByTeamIdAndDeletedFalse(UUID teamId);
 
     Page<Task> findByTeamIdAndColumnId(UUID teamId, UUID columnId, Pageable pageable);

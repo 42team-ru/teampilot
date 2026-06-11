@@ -1,151 +1,170 @@
-# PRD: Meeting Bot — Voice Q&A Agent
+# PRD: Meeting Bot — Voice Q&A Agent (голосовой ассистент в звонке)
 
 ## Цель
 
-Голосовой агент на базе wake word + LLM с tool calling. Участник звонка говорит "ПИЛОТ, ..." — бот отвечает голосом в течение 10-15 секунд, используя данные из Spring backend и Qdrant.
+Участник звонка говорит «**Пилот**, ...» — бот в течение ~10 c отвечает голосом в
+звонок, используя данные доски (внутренняя БД через Spring) и семантический поиск
+(Qdrant). Преимущественно ≤10 c после конца фразы.
 
-Зависит от: `06-11-telemost-playwright-bot-passive-listener` (бот уже в звонке).
-
----
-
-## User Flow
-
-```
-Участник: "ПИЛОТ, сколько задач сейчас в беклоге?"
-  → [~0ms]   Wake word детектор слышит "ПИЛОТ"
-  → [0-5s]   Запись вопроса до тишины (VAD)
-  → [+0.2s]  Upload WAV в MinIO
-  → [+0.1s]  Kafka: voice.query {minio_key, correlation_id, meeting_id}
-  → [+0.2s]  Groq Whisper → "сколько задач сейчас в беклоге?"
-  → [+1.5s]  LLM Worker: tool call → GET /tasks/stats
-  → [+0.5s]  LLM формулирует: "В беклоге сейчас 8 задач, из них 2 просрочены"
-  → [+0.1s]  Kafka: voice.response {correlation_id, text}
-  → [+0.4s]  edge-tts → WAV
-  → [+0.1s]  Воспроизведение через virtual mic → все в звонке слышат
-Итого: ~3-8 секунд после окончания вопроса
-```
+Зависит от: `06-11-telemost-playwright-bot-passive-listener` (бот уже в звонке) и
+`06-12-telemost-bot-virtual-microphone-fix-beep-tts-ready` (виртуальный mic-sink готов).
 
 ---
 
-## Wake Word
+## Решения по архитектуре (зафиксированы с заказчиком)
 
-- Библиотека: **OpenWakeWord**
-- Слово: "pilot" (английское произношение) для MVP — OpenWakeWord предобучен
-- В будущем: кастомная модель на "ПИЛОТ" (20-30 записей + `train_custom_verifier.py`)
-- Работает непрерывно в отдельном потоке, не мешает записи аудио для транскрипции
+1. **Синхронный HTTP, без Kafka.** Голосовой путь латентно-критичный; Kafka добавляет
+   4 хопа, джиттер шины и корреляцию запрос/ответ. Делаем один sync round-trip.
+2. **always-listen + STT** для wake-word (готовой модели на русское «Пилот» нет;
+   openwakeword по англ. 'pilot' ловит криво). VAD режет речь на фразы, каждую фразу
+   STT, ищем «пилот»/«pilot» в тексте.
+3. **STT живёт в боте** (следствие always-listen — бот читает каждую фразу). То же
+   распознавание уже содержит сам вопрос → второй STT не нужен. Бот шлёт в воркер
+   **текст**, получает **аудио**.
+4. **Воркер = мозг + голос:** LLM с tool-calling + TTS. Эндпоинт `/voice/answer`:
+   `{text, team_id, meeting_id}` → wav.
+5. **Доска — внутренняя БД через Spring** (`/tasks`), не YouGile.
+6. **Весь облачный стек на одном ключе** `LLM_API_KEY` (OpenRouter) + Groq для STT —
+   уже сконфигурировано в `llm-worker/.env`. Работает одинаково локально и в докере.
 
----
-
-## Архитектура
+### Поток
 
 ```
-audio_pipeline.py (постоянно работает)
-  ├─ wake_word_detector (OpenWakeWord) — слушает непрерывно
-  │     ↓ trigger
-  └─ question_recorder (webrtcvad) — пишет до 1.5 сек тишины
-        ↓ WAV
-  minio_uploader → Kafka: voice.query {correlation_id, minio_key, meeting_id}
+telemost-bot (слушает bot_sink_<id>.monitor — речь участников):
+  VAD (webrtcvad) режет фразу
+   → STT (Groq whisper-large-v3, OpenAI-совместимый)
+   → если в тексте есть «пилот»/«pilot»:
+        POST {worker}/voice/answer {text, team_id, meeting_id}
+         ← audio/wav
+        paplay → bot_mic_<id> sink → Chrome отдаёт как микрофон → все слышат
 
-LLM Worker (новая ветка)
-  voice.query event:
-    → Groq Whisper (транскрипция)
-    → LLM (claude-haiku / gpt-4o-mini) с tools:
-        • get_task_stats() → GET /tasks/stats
-        • search_tasks(query) → Qdrant
-        • create_task(title, assignee) → POST /tasks
-        • get_meeting_summary() → Qdrant (эмбеддинги текущего транскрипта)
-    → Kafka: voice.response {correlation_id, text}
+llm-worker  POST /voice/answer:
+   text → LLM (gpt-4o-mini) с .bind_tools([...5 tools...])
+        → tools дёргают Spring /tasks (httpx) и Qdrant (есть)
+        → финальный текст ответа (1-2 предложения, разговорно)
+   → TTS (OpenRouter /audio/speech, x-ai/grok-voice-tts-1.0) → wav (pcm→wav)
+   → возвращает audio/wav
 
-Bot (consumer)
-  voice.response → edge-tts → sounddevice.play() через virtual mic
+backend (Spring):
+   +GET /tasks/stats?teamId        — счётчики (роль BOT)
+   +GET /tasks/voice-query?teamId  — фильтрованный список (роль BOT)
 ```
 
 ---
 
-## Новые Kafka топики
+## Демо-вопросы и tools
 
-| Топик | Направление | Поля |
+| Фраза участника | Tool | Источник |
 |---|---|---|
-| `voice.query` | Bot → LLM Worker | `correlation_id, minio_key, meeting_id, team_id` |
-| `voice.response` | LLM Worker → Bot | `correlation_id, text` |
+| «Пилот, сколько задач в работе и в беклоге?» | `get_board_overview` | GET /tasks/stats |
+| «Пилот, что надо сдать до завтра?» / «что просрочено?» | `list_tasks(due_before/overdue)` | GET /tasks/voice-query |
+| «Пилот, что сейчас на Олеге?» | `list_tasks(assignee_name)` | GET /tasks/voice-query |
+| «Пилот, есть задача про оплату?» | `search_tasks(query)` | Qdrant (`search_knowledge`/tasks collection) |
+| «Пилот, заведи задачу починить логин на Олега до пятницы» | `create_task(title, assignee_name, deadline)` | POST /tasks (LlmTaskCreateEvent), резолв имени переиспользуем из воркера |
 
----
-
-## Tools для LLM Worker
+Tools-сигнатуры (`llm-worker/llm/voice_agent.py`):
 
 ```python
-tools = [
-    {
-        "name": "get_task_stats",
-        "description": "Счётчики задач команды: беклог, в работе, просроченные, завершённые",
-        # GET /tasks/stats?teamId=...
-    },
-    {
-        "name": "search_tasks", 
-        "description": "Семантический поиск по задачам и транскриптам встреч",
-        "parameters": {"query": "string"}
-        # Qdrant
-    },
-    {
-        "name": "create_task",
-        "description": "Создать задачу и назначить на участника",
-        "parameters": {"title": "string", "assignee_name": "string", "description": "string"}
-        # POST /tasks
-    },
-    {
-        "name": "get_meeting_summary",
-        "description": "Краткий итог текущей встречи по накопленным транскриптам",
-        # Qdrant: поиск по meeting_id за сегодня + LLM summarize
-    }
-]
+get_board_overview(team_id)                         # счётчики по колонкам/статусам
+list_tasks(team_id, *, overdue=False, due_before=None, assignee_name=None, column=None)
+search_tasks(team_id, query)                        # Qdrant семантика
+create_task(team_id, title, assignee_name=None, deadline=None, description=None)
 ```
+
+LLM получает текущую дату (для «до завтра/до пятницы» → конкретный Instant) в system-prompt.
 
 ---
 
-## TTS
+## Backend (Spring) — новые эндпоинты
 
-- **edge-tts**, голос `ru-RU-DmitryNeural`
-- Генерация: ~300-500ms для фразы до 30 слов
-- Воспроизведение через PulseAudio virtual source (тот же, что настроен в Task 1)
+Причина: текущий `GET /tasks` фильтрует по `chatId` (Long) и telegramId, а у голосового
+агента — `team_id` (UUID). Нужны team-scoped read-эндпоинты под ролью BOT.
+
+```java
+@PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+@GetMapping("/stats")          // ?teamId=UUID → {backlog, inProgress, done, overdue, dueToday, dueTomorrow, byColumn:{...}}
+@GetMapping("/voice-query")    // ?teamId=UUID&overdue=&dueBefore=&assigneeName=&column= → List<TaskBrief>{title, assignee, deadline, column}
+```
+
+- Не считаем удалённые (`deleted=true`) и pending-approval (по необходимости).
+- `overdue` = `deadline < now AND completed=false`.
+- Сервисные методы в `TaskService` (`statsByTeam`, `voiceQuery`), DTO `TaskStatsResponse`, `TaskBriefResponse`.
 
 ---
 
-## Параллельная работа двух режимов
+## llm-worker — изменения
 
-```
-audio_pipeline.py
-  ├─ Thread A: continuous wake word detection
-  ├─ Thread B: 30-sec passive recording → audio.new (Task 1)
-  └─ Thread C: question recording (активен только после wake word)
-```
+- `infra/tts.py` (НОВЫЙ): `synthesize(text) -> bytes(wav)` через OpenRouter
+  `POST /audio/speech` (OpenAI-совместимо). Модель `TTS_MODEL`, голос `TTS_VOICE`,
+  `response_format=pcm` → завернуть в WAV-контейнер (16-bit, частота из ответа).
+- `infra/backend_client.py` (НОВЫЙ): httpx-клиент к Spring (`BACKEND_URL`, `BOT_SECRET`/
+  токен роли BOT) — `get_stats`, `voice_query`, `create_task`.
+- `llm/voice_agent.py` (НОВЫЙ): `answer(text, team_id, meeting_id) -> str`. LLM
+  (`_cheap` из `chains.py`) + `.bind_tools([...])`, цикл tool-calling (макс 2-3 итерации),
+  system-prompt «отвечай 1-2 предложениями, разговорно, по-русски; сегодня <дата>».
+- `api.py`: `POST /voice/answer` → `voice_agent.answer(...)` → `tts.synthesize(...)` →
+  `Response(content=wav, media_type="audio/wav")`. Таймаут-бюджет, лог латентности по стадиям.
+- `settings.py`: `TTS_API_BASE` (default = LLM_API_BASE), `TTS_API_KEY` (default = LLM_API_KEY),
+  `TTS_MODEL=x-ai/grok-voice-tts-1.0`, `TTS_VOICE`, `BACKEND_URL`, `BOT_TOKEN`/secret.
 
-Thread C прерывает Thread B на время записи вопроса (или пишет в отдельный буфер — не смешивать с passive чанками).
+## telemost-bot — изменения
+
+- `voice_qa.py` (НОВЫЙ): listener-цикл поверх `bot_sink_<id>.monitor`:
+  VAD (webrtcvad) собирает фразу → STT (Groq, OpenAI-совместимый клиент) → если
+  триггер → `httpx POST {WORKER_URL}/voice/answer` → ответный wav → `paplay`/ffmpeg в
+  `bot_mic_<id>` sink. Анти-эхо: на время проигрывания ответа пауза/гейт записи, чтобы
+  бот не услышал сам себя.
+- `session_manager.py`: запустить `voice_qa` как третий таск сессии (рядом с
+  `_browser_task` и `_record_loop`); прокинуть `sink_name`, `mic_sink_name`, `team_id`.
+- `config.py`: `WORKER_URL`, `WHISPER_API_BASE/KEY/MODEL` (Groq), `WAKE_WORDS=["пилот","pilot"]`,
+  `VAD_AGGRESSIVENESS`, `VAD_SILENCE_MS`, `MIN_UTTERANCE_MS`.
+- deps: `webrtcvad`, `httpx`, `openai` (для STT-клиента).
 
 ---
 
-## Scope MVP
-
-- [ ] OpenWakeWord интеграция (слово "pilot")
-- [ ] webrtcvad для детекции конца речи
-- [ ] Kafka: voice.query / voice.response топики
-- [ ] LLM Worker: новая ветка VOICE_QUERY с 4 tools
-- [ ] Spring: GET /tasks/stats endpoint
-- [ ] edge-tts → воспроизведение через virtual mic
-- [ ] Корреляция запрос/ответ по correlation_id
-
-## Latency бюджет (цель: ≤ 15 сек)
+## Latency-бюджет (цель ≤10 c, преимущ. ~6-8 c после конца фразы)
 
 | Этап | Бюджет |
 |---|---|
-| Запись вопроса | 2-5 сек (зависит от пользователя) |
-| Upload + Kafka | 0.3 сек |
-| Groq Whisper | 0.2 сек |
-| LLM + 1 tool call | 2 сек |
-| edge-TTS | 0.5 сек |
-| **Итого после конца фразы** | **~3 сек** |
+| VAD добор тишины (конец фразы) | 0.5-0.8 c |
+| STT (Groq whisper-large-v3) | ~0.3-0.7 c |
+| HTTP бот→воркер | <0.1 c (локально/докер) |
+| LLM + 1 tool call | 1.5-3 c |
+| TTS (OpenRouter) | 0.4-1 c |
+| HTTP воркер→бот + paplay | <0.2 c |
+| **Итого после конца фразы** | **~3-6 c** |
+
+---
+
+## Scope (MVP)
+
+- [ ] telemost-bot: VAD + STT listener + триггер «пилот» + проигрывание ответа в mic-sink (+ анти-эхо гейт)
+- [ ] llm-worker: `POST /voice/answer` (text→wav)
+- [ ] llm-worker: `infra/tts.py` (OpenRouter TTS)
+- [ ] llm-worker: `infra/backend_client.py` + `llm/voice_agent.py` с 5 tools
+- [ ] Spring: `GET /tasks/stats`, `GET /tasks/voice-query` (роль BOT, teamId)
+- [ ] Конфиг/env: TTS_MODEL/VOICE, WORKER_URL, WHISPER на боте; docker-compose проброс
+- [ ] Логи латентности по стадиям
+
+## Out of scope
+
+- Kafka voice-топики (отказались в пользу sync HTTP)
+- Кастомная wake-модель на «Пилот» (always-listen+STT покрывает)
+- Вывод видео/картинки в звонок
+- Многопользовательская диаризация / «кто спросил»
+
+## Риски
+
+- **Эхо**: бот слышит собственный TTS-ответ → ложный повторный триггер. Митигируем
+  гейтом записи на время проигрывания (+ небольшой хвост).
+- **Шум always-listen**: много коротких фраз → лишние STT. Фильтр по `MIN_UTTERANCE_MS`
+  и наличию «пилот» в начале/тексте.
+- **Резолв имени ассайни** («Олег» → TeamUser): переиспользовать логику воркера; при
+  неоднозначности — переспросить голосом или отдать без ассайни.
+- **headless без Xvfb**: PulseAudio-роутинг может не работать (уже есть warning).
 
 ## Стек
-- Python: openwakeword, webrtcvad, edge-tts, sounddevice
-- LLM: claude-haiku-4-5 или gpt-4o-mini (tool calling)
-- STT: Groq Whisper (уже используется)
-- Vector: Qdrant (уже в стеке)
+
+- telemost-bot: Python 3.12, webrtcvad, ffmpeg/paplay (PulseAudio), httpx, openai (STT→Groq)
+- llm-worker: FastAPI, langchain-openai (LLM, OpenRouter), httpx (Spring), qdrant-client, OpenRouter TTS
+- backend: Java 21 / Spring Boot, новые BOT-эндпоинты

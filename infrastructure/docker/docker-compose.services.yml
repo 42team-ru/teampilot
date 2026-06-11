@@ -83,6 +83,19 @@ services:
       WHISPER_MODEL: ${WHISPER_MODEL:-whisper-large-v3}
       WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-ru}
       WHISPER_TIMEOUT_SECONDS: ${WHISPER_TIMEOUT_SECONDS:-120}
+
+      # ------------------------------------------------------------------
+      # Голосовой ассистент (voice Q&A): tools доски + TTS
+      # ------------------------------------------------------------------
+      BACKEND_URL: http://monolith:8080
+      BOT_SECRET: ${BOT_SECRET:-changeme}
+      VOICE_LLM_MODEL: ${VOICE_LLM_MODEL:-}
+      TTS_API_BASE: ${TTS_API_BASE:-https://openrouter.ai/api/v1}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      TTS_MODEL: ${TTS_MODEL:-x-ai/grok-voice-tts-1.0}
+      TTS_VOICE: ${TTS_VOICE:-Ara}
+      TTS_FORMAT: ${TTS_FORMAT:-mp3}
+
       DEBUG_MODE: ${DEBUG_MODE:-false}
       DEBUG_ADMIN_IDS: ${DEBUG_ADMIN_IDS:-[]}
 
@@ -156,8 +169,53 @@ services:
       MINIO_SECURE: "false"
       MINIO_BUCKET: ${S3_DEFAULT_BUCKET:-audio}
       KAFKA_BOOTSTRAP_SERVERS: redpanda:19092
+      # Голосовой Q&A: STT (Groq) + адрес воркера
+      VOICE_QA_ENABLED: ${VOICE_QA_ENABLED:-true}
+      WORKER_URL: ${WORKER_URL:-http://llm-worker:8001}
+      WHISPER_API_BASE: ${WHISPER_API_BASE}
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      WHISPER_MODEL: ${WHISPER_MODEL:-whisper-large-v3}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-ru}
+      WAKE_WORDS: ${WAKE_WORDS:-пилот,pilot}
     devices:
       - /dev/snd:/dev/snd
+
+  # ────────────────────────────────────────────────────────────────────────
+  # voice-rvc — локальный OpenAI-совместимый TTS с мем-голосами (edge-tts → RVC).
+  # Drop-in замена облачного TTS: в llm-worker/.env выставить
+  #   TTS_API_BASE=http://voice-rvc:5050/v1  и  TTS_MODEL=<имя папки в rvc_models>
+  # ────────────────────────────────────────────────────────────────────────
+  voice-rvc:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/voice-rvc:latest
+    build:
+      context: ../../voice-rvc
+      dockerfile: Dockerfile
+    container_name: voice-rvc
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    environment:
+      RVC_DEVICE: ${RVC_DEVICE:-cpu:0}
+      BASE_TTS_VOICE: ${BASE_TTS_VOICE:-ru-RU-DmitryNeural}
+      RVC_F0METHOD: ${RVC_F0METHOD:-rmvpe}
+      RVC_INDEX_RATE: ${RVC_INDEX_RATE:-0.75}
+      RVC_PROTECT: ${RVC_PROTECT:-0.33}
+      RVC_F0UP_KEY: ${RVC_F0UP_KEY:-0}
+      PORT: "5050"
+    volumes:
+      # RVC-модели лежат на хосте (веса .pth/.index в git не коммитятся)
+      - ../../voice-rvc/rvc_models:/app/rvc_models
+    # ── GPU (опционально) ──
+    # Для cuda:0 раскомментируй блок ниже и поставь nvidia-container-toolkit на хосте,
+    # а также собери образ с CUDA-версией torch. На CPU работает без этого.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
 networks:
   default:

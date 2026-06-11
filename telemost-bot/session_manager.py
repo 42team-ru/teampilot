@@ -65,6 +65,11 @@ async def start_session(meeting_id: str, meeting_url: str, team_id: str = "") ->
 
     session._tasks.append(asyncio.create_task(_browser_task(session)))
     session._tasks.append(asyncio.create_task(_record_loop(session)))
+
+    # Голосовой Q&A («Пилот, ...») — слушает звонок и отвечает голосом
+    from voice_qa import run_voice_qa
+    session._tasks.append(asyncio.create_task(run_voice_qa(session)))
+
     logger.info("Telemost session started: meeting_id={} sink={}", meeting_id, sink_name)
 
 

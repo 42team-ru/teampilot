@@ -1,0 +1,7 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+edge-tts>=6.1.0
+rvc-python==0.1.5
+soundfile>=0.12.1
+numpy<=1.23.5  # rvc-python==0.1.5 требует numpy<=1.23.5
+httpx>=0.27.0

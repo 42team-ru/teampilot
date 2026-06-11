@@ -11,6 +11,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.monolith.config.AppProperties;
+import ru.team42.monolith.dto.response.TaskBriefResponse;
+import ru.team42.monolith.dto.response.TaskStatsResponse;
 import ru.team42.monolith.dto.response.TaskUpdateMessage;
 import ru.team42.monolith.entity.*;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
@@ -32,8 +34,13 @@ import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -505,6 +512,115 @@ public class TaskService {
                 .orElseThrow(() -> AppException.notFound(
                         "Team not found for chatId %d".formatted(chatId)));
         return youGileService.fetchAllTasksForBoard(team);
+    }
+
+    // ───────────────────────── Голосовой ассистент (роль BOT) ─────────────────────────
+
+    private static final ZoneId VOICE_ZONE = ZoneId.of("Europe/Moscow");
+
+    /** Счётчики доски команды для голосовых ответов. */
+    @Transactional(readOnly = true)
+    public TaskStatsResponse statsByTeam(UUID teamId) {
+        teamRepository.findById(teamId)
+                .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
+
+        List<Task> tasks = taskRepository.findByTeamIdAndDeletedFalse(teamId);
+
+        Instant now = Instant.now();
+        LocalDate today = LocalDate.now(VOICE_ZONE);
+        Instant todayStart = today.atStartOfDay(VOICE_ZONE).toInstant();
+        Instant tomorrowStart = today.plusDays(1).atStartOfDay(VOICE_ZONE).toInstant();
+        Instant dayAfterStart = today.plusDays(2).atStartOfDay(VOICE_ZONE).toInstant();
+
+        long total = 0, completed = 0, overdue = 0, dueToday = 0, dueTomorrow = 0;
+        Map<String, Long> byColumn = new LinkedHashMap<>();
+
+        for (Task t : tasks) {
+            if (t.getLocalStatus() != TaskLocalStatus.ACTIVE) continue;
+            if (t.isCompleted()) {
+                completed++;
+                continue;
+            }
+            total++;
+            String col = t.getColumn() != null ? t.getColumn().getTitle() : "Без колонки";
+            byColumn.merge(col, 1L, Long::sum);
+
+            Instant dl = t.getDeadline();
+            if (dl != null) {
+                if (dl.isBefore(now)) overdue++;
+                if (!dl.isBefore(todayStart) && dl.isBefore(tomorrowStart)) dueToday++;
+                else if (!dl.isBefore(tomorrowStart) && dl.isBefore(dayAfterStart)) dueTomorrow++;
+            }
+        }
+        return new TaskStatsResponse(total, completed, overdue, dueToday, dueTomorrow, byColumn);
+    }
+
+    /** Фильтрованный список активных задач команды для голосовых ответов. */
+    @Transactional(readOnly = true)
+    public List<TaskBriefResponse> voiceQuery(UUID teamId, boolean overdue, Instant dueBefore,
+                                              String assigneeName, String column, int limit) {
+        teamRepository.findById(teamId)
+                .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
+
+        List<Task> tasks = taskRepository.findByTeamIdAndDeletedFalse(teamId);
+        Instant now = Instant.now();
+        String nameQ = assigneeName != null && !assigneeName.isBlank() ? assigneeName.toLowerCase().trim() : null;
+        String colQ = column != null && !column.isBlank() ? column.toLowerCase().trim() : null;
+
+        return tasks.stream()
+                .filter(t -> t.getLocalStatus() == TaskLocalStatus.ACTIVE && !t.isCompleted())
+                .filter(t -> !overdue || (t.getDeadline() != null && t.getDeadline().isBefore(now)))
+                .filter(t -> dueBefore == null || (t.getDeadline() != null && t.getDeadline().isBefore(dueBefore)))
+                .filter(t -> nameQ == null || assigneeMatches(t, nameQ))
+                .filter(t -> colQ == null || (t.getColumn() != null && t.getColumn().getTitle().toLowerCase().contains(colQ)))
+                .sorted(Comparator.comparing(t -> t.getDeadline() == null ? Instant.MAX : t.getDeadline()))
+                .limit(limit)
+                .map(TaskBriefResponse::from)
+                .toList();
+    }
+
+    /** Создание задачи голосовой командой: резолвим имя исполнителя и переиспользуем
+     *  основной путь createFromLlmEvent (авто-подтверждение, YouGile-синк, события). */
+    @Transactional
+    public Task voiceCreate(UUID teamId, String title, String assigneeName, Instant deadline, String description) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
+
+        Long assigneeId = null;
+        if (assigneeName != null && !assigneeName.isBlank()) {
+            assigneeId = resolveAssigneeByName(team, assigneeName)
+                    .map(tu -> tu.getUser().getTelegramId())
+                    .orElse(null);
+        }
+
+        LlmTaskCreateEvent event = LlmTaskCreateEvent.builder()
+                .teamId(teamId.toString())
+                .title(title)
+                .description(description)
+                .deadline(deadline)
+                .assigneeId(assigneeId)
+                .confidence(1.0f) // голосовая команда — явное намерение, авто-подтверждаем
+                .build();
+        return createFromLlmEvent(event);
+    }
+
+    private boolean assigneeMatches(Task t, String nameQ) {
+        if (t.getAssignee() == null) return false;
+        return assigneeHaystack(t.getAssignee()).contains(nameQ);
+    }
+
+    private Optional<TeamUser> resolveAssigneeByName(Team team, String name) {
+        String q = name.toLowerCase().trim();
+        return teamUserRepository.findByTeamId(team.getId()).stream()
+                .filter(tu -> assigneeHaystack(tu).contains(q))
+                .findFirst();
+    }
+
+    private String assigneeHaystack(TeamUser tu) {
+        User u = tu.getUser();
+        return ((u.getFirstName() != null ? u.getFirstName() : "") + " "
+                + (u.getLastName() != null ? u.getLastName() : "") + " "
+                + (u.getTelegramLogin() != null ? u.getTelegramLogin() : "")).toLowerCase().trim();
     }
 
     @Transactional

@@ -3,7 +3,7 @@
   "name": "meeting-bot-voice-qa-agent",
   "title": "Meeting Bot — Voice Q&A Agent (ПИЛОТ wake word)",
   "description": "Wake word 'ПИЛОТ' → VAD запись вопроса → Groq Whisper → LLM с tool calling (задачи, статистика, саммари встречи) → edge-tts ответ в звонок. Зависит от: 06-11-telemost-playwright-bot-passive-listener.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

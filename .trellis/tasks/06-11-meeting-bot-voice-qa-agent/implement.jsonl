@@ -1,9 +1,18 @@
-{"file": ".trellis/tasks/06-11-meeting-bot-voice-qa-agent/prd.md", "reason": "PRD — полная архитектура, user flow, Kafka топики, tools для LLM, latency бюджет"}
-{"file": "telemost-bot/session_manager.py", "reason": "Основной сервис — нужно добавить wake word loop + VAD recorder + TTS playback параллельно с passive recording"}
-{"file": "telemost-bot/config.py", "reason": "Settings — добавить OPENWAKEWORD_MODEL, VAD_AGGRESSIVENESS, TTS_VOICE, VOICE_QUERY_KAFKA_TOPIC"}
-{"file": "telemost-bot/chunk_sender.py", "reason": "Паттерн MinIO upload + Kafka publish — reuse для voice.query события"}
-{"file": "llm-worker/processor.py", "reason": "Главный процессор — добавить новую ветку для voice.query топика с 4 tools (get_task_stats, search_tasks, create_task, get_meeting_summary)"}
-{"file": "llm-worker/models.py", "reason": "Существующие event модели — добавить VoiceQueryEvent и VoiceResponseEvent"}
-{"file": "llm-worker/infra/kafka.py", "reason": "Kafka consumer/producer паттерн — reuse для voice.query / voice.response топиков"}
-{"file": "llm-worker/infra/minio.py", "reason": "MinIO download паттерн — скачать WAV с вопросом для Whisper"}
-{"file": "telemost-bot/main.py", "reason": "FastAPI app — reference для структуры сервиса"}
+{"file": ".trellis/tasks/06-11-meeting-bot-voice-qa-agent/prd.md", "reason": "PRD — sync-HTTP архитектура, always-listen+STT, 5 tools, latency-бюджет, scope"}
+{"file": "backend/monolith/src/main/java/ru/team42/monolith/dto/response/TaskStatsResponse.java", "reason": "НОВЫЙ DTO: счётчики беклог/в работе/done/overdue/dueToday/dueTomorrow + byColumn"}
+{"file": "backend/monolith/src/main/java/ru/team42/monolith/dto/response/TaskBriefResponse.java", "reason": "НОВЫЙ DTO: краткая задача для голоса — title, assignee, deadline, column"}
+{"file": "backend/monolith/src/main/java/ru/team42/monolith/service/TaskService.java", "reason": "Добавить statsByTeam(teamId) и voiceQuery(teamId, overdue, dueBefore, assigneeName, column)"}
+{"file": "backend/monolith/src/main/java/ru/team42/monolith/repository/TaskRepository.java", "reason": "Запросы по team_id: счётчики и фильтрованный список (deadline, assignee, column, completed, deleted)"}
+{"file": "backend/monolith/src/main/java/ru/team42/monolith/rest/TaskController.java", "reason": "GET /tasks/stats и GET /tasks/voice-query под @PreAuthorize hasRole('BOT')"}
+{"file": "llm-worker/settings.py", "reason": "TTS_API_BASE/KEY/MODEL/VOICE, BACKEND_URL, BOT_TOKEN — конфиг голосового пути"}
+{"file": "llm-worker/infra/tts.py", "reason": "НОВЫЙ: synthesize(text)->wav через OpenRouter POST /audio/speech (pcm->WAV-контейнер)"}
+{"file": "llm-worker/infra/backend_client.py", "reason": "НОВЫЙ: httpx-клиент к Spring /tasks (get_stats, voice_query, create_task) с токеном роли BOT"}
+{"file": "llm-worker/llm/chains.py", "reason": "Reference LLM-клиента (_cheap ChatOpenAI на OpenRouter) — переиспользовать для bind_tools"}
+{"file": "llm-worker/llm/voice_agent.py", "reason": "НОВЫЙ: answer(text, team_id, meeting_id)->str. LLM + bind_tools(5 tools) + цикл tool-calling + system-prompt с датой"}
+{"file": "llm-worker/infra/qdrant.py", "reason": "Reuse search_knowledge для tool search_tasks (семантика)"}
+{"file": "llm-worker/api.py", "reason": "POST /voice/answer: voice_agent.answer -> tts.synthesize -> Response(audio/wav); лог латентности по стадиям"}
+{"file": "telemost-bot/config.py", "reason": "WORKER_URL, WHISPER_API_BASE/KEY/MODEL (Groq), WAKE_WORDS, VAD_* настройки"}
+{"file": "telemost-bot/voice_qa.py", "reason": "НОВЫЙ: listener поверх bot_sink.monitor — VAD->STT->триггер->POST воркеру->paplay в mic-sink + анти-эхо гейт"}
+{"file": "telemost-bot/session_manager.py", "reason": "Запустить voice_qa третьим таском сессии; прокинуть sink_name/mic_sink_name/team_id"}
+{"file": "telemost-bot/pyproject.toml", "reason": "deps: webrtcvad, httpx, openai (STT-клиент)"}
+{"file": "infrastructure/docker/docker-compose.services.yml", "reason": "Проброс WORKER_URL/WHISPER env в telemost-bot и TTS/BACKEND env в llm-worker (если есть compose сервисов)"}

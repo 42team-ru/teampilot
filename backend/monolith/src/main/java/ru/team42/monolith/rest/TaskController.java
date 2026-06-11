@@ -12,14 +12,18 @@ import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.request.CreateUserTaskRequest;
 import ru.team42.monolith.dto.request.UpdateTaskRequest;
+import ru.team42.monolith.dto.request.VoiceCreateTaskRequest;
+import ru.team42.monolith.dto.response.TaskBriefResponse;
 import ru.team42.monolith.dto.response.TaskColumnResponse;
 import ru.team42.monolith.dto.response.TaskResponse;
+import ru.team42.monolith.dto.response.TaskStatsResponse;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.kanban.YouGileService;
 import ru.team42.monolith.service.TaskService;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -111,6 +115,35 @@ public class TaskController {
             page = taskService.list(chatId, assignee, completed, pendingApproval, pageable).map(TaskResponse::from);
         }
         return ResponseUtils.page(PageResponse.fromPage(page));
+    }
+
+    // ───────────────────────── Голосовой ассистент (роль BOT) ─────────────────────────
+
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    @GetMapping("/stats")
+    public ResponseEntity<TaskStatsResponse> stats(@RequestParam UUID teamId) {
+        return ResponseUtils.ok(taskService.statsByTeam(teamId));
+    }
+
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    @GetMapping("/voice-query")
+    public ResponseEntity<List<TaskBriefResponse>> voiceQuery(
+            @RequestParam UUID teamId,
+            @RequestParam(required = false, defaultValue = "false") boolean overdue,
+            @RequestParam(required = false) Instant dueBefore,
+            @RequestParam(required = false) String assigneeName,
+            @RequestParam(required = false) String column,
+            @RequestParam(required = false, defaultValue = "15") int limit) {
+        return ResponseUtils.ok(taskService.voiceQuery(teamId, overdue, dueBefore, assigneeName, column, limit));
+    }
+
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    @PostMapping("/voice-create")
+    public ResponseEntity<TaskResponse> voiceCreate(@RequestBody VoiceCreateTaskRequest request) {
+        Task saved = taskService.voiceCreate(
+                request.teamId(), request.title(), request.assigneeName(),
+                request.deadline(), request.description());
+        return ResponseUtils.created("/tasks/" + saved.getId(), TaskResponse.from(saved));
     }
 
 // ============================================== ПАРАША ДЛЯ ТЕСТОВ ПОТОМ УДАЛИТЬ ==================================================
