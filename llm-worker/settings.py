@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_KNOWLEDGE: str = "team_knowledge"
     DEDUP_THRESHOLD: float = 0.92
     STATUS_HINT_THRESHOLD: float = 0.25
+    SYNC_MATCH_THRESHOLD: float = 0.80
+    SYNC_MATCH_MARGIN: float = 0.08
 
     # Классификатор
     CLASSIFIER_THRESHOLD: float = 0.65
