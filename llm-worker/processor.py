@@ -1182,3 +1182,4 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
         len(tasks),
         len(statuses),
     )
+    print(f"{transcript}")
