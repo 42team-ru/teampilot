@@ -6,7 +6,7 @@ from html import escape
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message
 
 from keyboards.member import (
     back_to_member_keyboard,
@@ -15,7 +15,6 @@ from keyboards.member import (
     member_main_keyboard,
     my_tasks_team_keyboard,
     no_team_keyboard,
-    report_choice_keyboard,
     team_context_manager_keyboard,
     team_context_manager_files_keyboard,
     team_context_manager_manage_keyboard,
@@ -28,9 +27,6 @@ from keyboards.member import (
 from services.task_service import get_team_columns
 from services.admin_service import get_user_by_telegram_id
 from services.backend_error import BackendApiError
-from services.excel_report import build_official_report_xlsx
-from services.pdf_report import build_team_report_pdf
-from services.report_service import get_team_report
 from services.task_service import get_tasks_page
 from services.team_service import get_member_teams, get_my_teams, get_team_files, update_yougile_profile
 from states.auth import UpdateYouGileStates
@@ -261,67 +257,6 @@ async def team_manager_manage_menu(callback: CallbackQuery) -> None:
         reply_markup=team_context_manager_manage_keyboard(team_id),
     )
     await callback.answer()
-
-
-@router.callback_query(F.data.startswith("tm:m:r:"))
-async def team_manager_report_menu(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_manager_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-
-    await callback.message.edit_text(
-        "📄 <b>Отчёт по команде</b>\n\nВыберите формат отчёта:",
-        reply_markup=report_choice_keyboard(team_id),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("tm:m:rp:"))
-async def team_manager_report_pdf(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_manager_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-
-    await callback.answer("⏳ Формирую отчёт...")
-    try:
-        report = await get_team_report(team_id)
-        pdf_bytes = build_team_report_pdf(report)
-    except BackendApiError:
-        await callback.message.answer("⚠️ Не удалось сформировать отчёт. Попробуйте позже.")
-        return
-
-    title = (team.get("chatTitle") or team_id).replace(" ", "_")
-    await callback.message.answer_document(
-        BufferedInputFile(pdf_bytes, filename=f"report_{title}.pdf"),
-        caption="📄 Отчёт по команде",
-    )
-
-
-@router.callback_query(F.data.startswith("tm:m:rx:"))
-async def team_manager_report_excel(callback: CallbackQuery) -> None:
-    team_id = callback.data.split(":", 3)[3]
-    team = await _get_manager_team(callback.from_user.id, team_id)
-    if team is None:
-        await callback.answer("Команда недоступна.", show_alert=True)
-        return
-
-    await callback.answer("⏳ Формирую отчёт...")
-    try:
-        report = await get_team_report(team_id)
-        xlsx_bytes = build_official_report_xlsx(report)
-    except BackendApiError:
-        await callback.message.answer("⚠️ Не удалось сформировать отчёт. Попробуйте позже.")
-        return
-
-    title = (team.get("chatTitle") or team_id).replace(" ", "_")
-    await callback.message.answer_document(
-        BufferedInputFile(xlsx_bytes, filename=f"official_report_{title}.xlsx"),
-        caption="📊 Официальный отчёт по команде",
-    )
 
 
 @router.callback_query(F.data.startswith("tm:u:t:"))

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import ru.team42.backend.kafka_common.AbstractEventPublisher;
 import ru.team42.backend.kafka_common.event.KafkaTopics;
 import ru.team42.monolith.event.BotSyncEvent;
+import ru.team42.monolith.event.SyncDraftEvent;
 import ru.team42.monolith.event.SyncRequestEvent;
 
 import java.util.List;
@@ -31,20 +32,41 @@ public class SyncEventPublisher extends AbstractEventPublisher {
         log.info("Sync request published requestId={} user={}", event.getRequestId(), event.getTelegramUserId());
     }
 
-    public void publishSyncSummary(List<Long> managerTelegramIds, UUID teamId,
-                                   List<String> responded, List<String> notResponded,
-                                   int completed, int pending) {
-        publishSyncSummary(managerTelegramIds, teamId, responded, notResponded, completed, pending, List.of(), List.of());
+    public void publishDraftToUser(Long telegramUserId, Long chatId, List<SyncDraftEvent.DraftItem> items) {
+        List<BotSyncEvent.DraftItem> botItems = items.stream()
+                .map(i -> BotSyncEvent.DraftItem.builder()
+                        .index(i.getIndex())
+                        .userText(i.getUserText())
+                        .taskId(i.getTaskId())
+                        .taskTitle(i.getTaskTitle())
+                        .isNewTask(i.isNewTask())
+                        .assigneeTelegramId(i.getAssigneeTelegramId())
+                        .assigneeName(i.getAssigneeName())
+                        .build())
+                .toList();
+
+        send(KafkaTopics.BOTS_NOTIFICATIONS, telegramUserId.toString(),
+                BotSyncEvent.builder()
+                        .type(BotSyncEvent.TYPE_SYNC_DRAFT)
+                        .chatId(chatId)
+                        .recipientTelegramId(telegramUserId)
+                        .draft(botItems)
+                        .build());
+        log.info("Sync draft sent to user={} chatId={}", telegramUserId, chatId);
     }
 
     public void publishSyncSummary(List<Long> managerTelegramIds, UUID teamId,
                                    List<String> responded, List<String> notResponded,
-                                   int completed, int pending, List<String> excused,
-                                   List<BotSyncEvent.SyncSummary.MemberSummary> members) {
+                                   int completed, int pending) {
+        publishSyncSummary(managerTelegramIds, teamId, responded, notResponded, completed, pending, List.of());
+    }
+
+    public void publishSyncSummary(List<Long> managerTelegramIds, UUID teamId,
+                                   List<String> responded, List<String> notResponded,
+                                   int completed, int pending, List<String> excused) {
         send(KafkaTopics.BOTS_NOTIFICATIONS, teamId.toString(),
                 BotSyncEvent.builder()
                         .type(BotSyncEvent.TYPE_SYNC_SUMMARY)
-                        .teamId(teamId.toString())
                         .recipientTelegramIds(managerTelegramIds)
                         .summary(BotSyncEvent.SyncSummary.builder()
                                 .respondedUsernames(responded)
@@ -52,7 +74,6 @@ public class SyncEventPublisher extends AbstractEventPublisher {
                                 .tasksCompleted(completed)
                                 .newTasksPendingApproval(pending)
                                 .excusedEntries(excused)
-                                .members(members)
                                 .build())
                         .build());
         log.info("Sync summary sent to {} manager(s) for team={}", managerTelegramIds.size(), teamId);
