@@ -263,6 +263,8 @@ public class EveningSyncService {
                 .filter(m -> m.getRole() == TeamRole.MANAGER && m.getUser() != null && m.getUser().getTelegramId() != null)
                 .toList();
 
+        excuseService.persistSickLeaveHistory(session.teamId(), excusedMap);
+
         if (managers.isEmpty()) {
             log.warn("No managers found for team={}", session.teamId());
             excuseService.clearTeam(session.teamId());

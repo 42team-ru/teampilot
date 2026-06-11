@@ -7,10 +7,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
+import ru.team42.monolith.dto.response.TeamReportResponse;
 import ru.team42.monolith.entity.enums.UserSyncStatus;
 import ru.team42.monolith.service.EveningSyncService;
 import ru.team42.monolith.service.ExcuseService;
 import ru.team42.monolith.service.SyncStateService;
+import ru.team42.monolith.service.TeamReportService;
 import ru.team42.monolith.repository.TeamUserRepository;
 
 import java.util.List;
@@ -25,6 +27,7 @@ public class SyncController {
     private final EveningSyncService eveningSyncService;
     private final SyncStateService syncStateService;
     private final ExcuseService excuseService;
+    private final TeamReportService teamReportService;
     private final TeamUserRepository teamUserRepository;
 
     @PostMapping("/submit")
@@ -60,6 +63,13 @@ public class SyncController {
     public ResponseEntity<?> triggerSummary() {
         eveningSyncService.closeSyncAndSendSummary();
         return ResponseUtils.noContent();
+    }
+
+    /** Отчёт по команде (статистика по задачам) — для скачивания PDF в боте */
+    @GetMapping("/report")
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<TeamReportResponse> getTeamReport(@RequestParam UUID teamId) {
+        return ResponseUtils.ok(teamReportService.buildReport(teamId));
     }
 
     /** Возвращает список команд пользователя для выбора при /excuse */

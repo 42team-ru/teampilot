@@ -113,6 +113,7 @@ def team_context_manager_keyboard(
             InlineKeyboardButton(text="🎙 Созвон", callback_data=f"team_ctx:meeting:{team_id}"),
         ])
     menu_buttons.append(InlineKeyboardButton(text="⚙️ Управление командой", callback_data=f"tm:m:g:{team_id}"))
+    menu_buttons.append(InlineKeyboardButton(text="📄 Скачать отчёт", callback_data=f"tm:m:r:{team_id}"))
 
     buttons = _rows(menu_buttons)
     buttons.append([
@@ -121,6 +122,14 @@ def team_context_manager_keyboard(
     ])
     buttons.append([InlineKeyboardButton(text="← Мои команды", callback_data="member:teams_overview")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def report_choice_keyboard(team_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📈 Аналитический отчёт (PDF)", callback_data=f"tm:m:rp:{team_id}")],
+        [InlineKeyboardButton(text="📊 Официальный отчёт (Excel)", callback_data=f"tm:m:rx:{team_id}")],
+        [InlineKeyboardButton(text="← К команде", callback_data=f"team_ctx:manager:{team_id}")],
+    ])
 
 
 def team_tasks_keyboard(

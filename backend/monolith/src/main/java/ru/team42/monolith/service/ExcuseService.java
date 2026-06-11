@@ -3,7 +3,9 @@ package ru.team42.monolith.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.team42.monolith.entity.SickLeaveRecord;
 import ru.team42.monolith.entity.SyncExcuse;
+import ru.team42.monolith.repository.SickLeaveRecordRepository;
 import ru.team42.monolith.repository.SyncExcuseRepository;
 
 import java.time.LocalDate;
@@ -17,6 +19,7 @@ import java.util.stream.Collectors;
 public class ExcuseService {
 
     private final SyncExcuseRepository syncExcuseRepository;
+    private final SickLeaveRecordRepository sickLeaveRecordRepository;
 
     @Transactional
     public void excuse(Long telegramId, UUID teamId, String reason) {
@@ -55,5 +58,25 @@ public class ExcuseService {
     @Transactional
     public void clearTeam(UUID teamId) {
         syncExcuseRepository.deleteByTeamIdAndExcuseDate(teamId, LocalDate.now());
+    }
+
+    /**
+     * Persists a permanent history entry for each excused user so that
+     * больничные/отгулы statistics survive {@link #clearTeam(UUID)}.
+     */
+    @Transactional
+    public void persistSickLeaveHistory(UUID teamId, Map<Long, String> excusedByTelegramId) {
+        LocalDate today = LocalDate.now();
+        for (Map.Entry<Long, String> entry : excusedByTelegramId.entrySet()) {
+            if (sickLeaveRecordRepository.existsByTeamIdAndTelegramIdAndRecordDate(teamId, entry.getKey(), today)) {
+                continue;
+            }
+            SickLeaveRecord record = new SickLeaveRecord();
+            record.setTeamId(teamId);
+            record.setTelegramId(entry.getKey());
+            record.setReason(entry.getValue());
+            record.setRecordDate(today);
+            sickLeaveRecordRepository.save(record);
+        }
     }
 }
