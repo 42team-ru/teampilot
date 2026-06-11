@@ -74,6 +74,35 @@ public class MeetingAudioChunkService {
         );
     }
 
+    @Transactional
+    public void acceptBotChunk(UUID meetingId, MeetingAudioChunkRequest request) {
+        var meeting = meetingService.getActiveMeeting(meetingId);
+
+        byte[] audioBytes = decodeAudio(request.audioBase64());
+        if (audioBytes.length == 0) {
+            throw AppException.badRequest("Audio chunk is empty");
+        }
+
+        String contentType = normalizeContentType(request.contentType());
+        String originalFilename = normalizeFilename(request.originalFilename(), request.chunkIndex(), contentType);
+        String bucket = s3Properties.getDefaultBucket() != null && !s3Properties.getDefaultBucket().isBlank()
+                ? s3Properties.getDefaultBucket()
+                : DEFAULT_BUCKET;
+        String s3Key = buildS3Key(meetingId, request.chunkIndex(), originalFilename);
+
+        s3Service.upload(bucket, s3Key, new ByteArrayInputStream(audioBytes), audioBytes.length, contentType);
+        meetingAudioChunkPublisher.publishChunk(
+                meeting,
+                request.chunkIndex(),
+                Boolean.TRUE.equals(request.finalChunk()),
+                bucket,
+                s3Key,
+                originalFilename,
+                contentType,
+                audioBytes.length
+        );
+    }
+
     private byte[] decodeAudio(String audioBase64) {
         String payload = audioBase64;
         int commaIndex = payload.indexOf(',');

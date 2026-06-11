@@ -1,0 +1,6 @@
+{"file": "llm-worker/models.py", "reason": "MeetingAudioChunkEvent — exact fields the telemost bot must publish to meetings.audio.chunks"}
+{"file": "llm-worker/infra/minio.py", "reason": "upload_file pattern — bucket, key, bytes, content_type"}
+{"file": "llm-worker/infra/kafka.py", "reason": "Kafka producer publish() signature used across all Python services"}
+{"file": "bot/kafka/producer.py", "reason": "Async EventProducer pattern used in Telegram bot — reuse same approach"}
+{"file": "bot/config.py", "reason": "Settings pattern — MINIO_BUCKET_AUDIO, KAFKA_BOOTSTRAP_SERVERS to mirror in telemost-bot config"}
+{"file": ".trellis/tasks/06-11-telemost-playwright-bot-passive-listener/prd.md", "reason": "PRD — full architecture, scope, and flow"}

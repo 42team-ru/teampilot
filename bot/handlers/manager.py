@@ -1093,21 +1093,17 @@ async def team_ctx_meeting_url(message: Message, state: FSMContext) -> None:
 
     await state.clear()
     meeting_id = meeting.get("id") or "—"
-    if sent_to_group:
-        await message.answer(
-            f"✅ Встреча создана и ссылка отправлена в чат команды <b>{escape(team_title)}</b>.\n\n"
-            f"Meeting ID: <code>{escape(str(meeting_id))}</code>",
-            reply_markup=back_to_team_ctx_keyboard(team_id),
-        )
-        return
 
-    await message.answer(
-        f"✅ Встреча создана, но бот не смог отправить ссылку в чат команды.\n\n"
-        f"Проверьте, что бот добавлен в чат и может писать сообщения.\n"
-        f"Meeting ID: <code>{escape(str(meeting_id))}</code>\n"
-        f"Ссылка: {escape(meeting_url)}",
-        reply_markup=back_to_team_ctx_keyboard(team_id),
+    from handlers.meeting_bot import register_pending
+    kb = register_pending(str(meeting_id), meeting_url, team_id)
+
+    base_text = (
+        "✅ Встреча создана"
+        + (f" и ссылка отправлена в чат команды <b>{escape(team_title)}</b>" if sent_to_group else "")
+        + f".\n\nMeeting ID: <code>{escape(str(meeting_id))}</code>\n\n"
+        + "Как записывать встречу?"
     )
+    await message.answer(base_text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("team_ctx:members:"))

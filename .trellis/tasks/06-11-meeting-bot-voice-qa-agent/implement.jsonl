@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/06-11-meeting-bot-voice-qa-agent/prd.md", "reason": "PRD — полная архитектура, user flow, Kafka топики, tools для LLM, latency бюджет"}
+{"file": "telemost-bot/session_manager.py", "reason": "Основной сервис — нужно добавить wake word loop + VAD recorder + TTS playback параллельно с passive recording"}
+{"file": "telemost-bot/config.py", "reason": "Settings — добавить OPENWAKEWORD_MODEL, VAD_AGGRESSIVENESS, TTS_VOICE, VOICE_QUERY_KAFKA_TOPIC"}
+{"file": "telemost-bot/chunk_sender.py", "reason": "Паттерн MinIO upload + Kafka publish — reuse для voice.query события"}
+{"file": "llm-worker/processor.py", "reason": "Главный процессор — добавить новую ветку для voice.query топика с 4 tools (get_task_stats, search_tasks, create_task, get_meeting_summary)"}
+{"file": "llm-worker/models.py", "reason": "Существующие event модели — добавить VoiceQueryEvent и VoiceResponseEvent"}
+{"file": "llm-worker/infra/kafka.py", "reason": "Kafka consumer/producer паттерн — reuse для voice.query / voice.response топиков"}
+{"file": "llm-worker/infra/minio.py", "reason": "MinIO download паттерн — скачать WAV с вопросом для Whisper"}
+{"file": "telemost-bot/main.py", "reason": "FastAPI app — reference для структуры сервиса"}

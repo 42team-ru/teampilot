@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.team42.backend.web_common.exception.AppException;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.request.CreateMeetingRequest;
+import ru.team42.monolith.dto.request.MeetingAudioChunkRequest;
 import ru.team42.monolith.dto.response.MeetingResponse;
 import ru.team42.monolith.entity.User;
+import ru.team42.monolith.service.MeetingAudioChunkService;
 import ru.team42.monolith.service.MeetingService;
 
 import java.util.List;
@@ -35,6 +37,7 @@ import static ru.team42.monolith.security.RestSecurityErrorHandler.AUTH_FAILURE_
 public class MeetingController {
 
     private final MeetingService meetingService;
+    private final MeetingAudioChunkService meetingAudioChunkService;
 
     @PostMapping
     public ResponseEntity<MeetingResponse> create(
@@ -43,6 +46,16 @@ public class MeetingController {
             @Valid @RequestBody CreateMeetingRequest request
     ) {
         return ResponseUtils.ok(meetingService.create(request, requireTelegramId(currentUser, servletRequest)));
+    }
+
+    @PostMapping("/{meetingId}/bot-chunks")
+    @PreAuthorize("hasRole('BOT')")
+    public ResponseEntity<Void> acceptBotChunk(
+            @PathVariable UUID meetingId,
+            @Valid @RequestBody MeetingAudioChunkRequest request
+    ) {
+        meetingAudioChunkService.acceptBotChunk(meetingId, request);
+        return ResponseUtils.noContent();
     }
 
     @GetMapping("/by-url")

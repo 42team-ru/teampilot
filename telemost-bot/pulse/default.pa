@@ -1,0 +1,3 @@
+load-module module-native-protocol-unix
+load-module module-null-sink sink_name=default_output sink_properties=device.description=DefaultOutput
+set-default-sink default_output

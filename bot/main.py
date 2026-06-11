@@ -13,6 +13,7 @@ from loguru import logger
 
 from config import settings
 from handlers.admin import router as admin_router
+from handlers.meeting_bot import router as meeting_bot_router
 from handlers.team_create import router as team_create_router
 from handlers.courses import router as courses_router
 from handlers.knowledge import router as knowledge_router
@@ -158,6 +159,7 @@ async def main() -> None:
     dp.include_router(manager_router)
     dp.include_router(member_router)
     dp.include_router(meeting_speakers_router)
+    dp.include_router(meeting_bot_router)
     dp.include_router(auth_router)
     dp.include_router(sync_router)
     dp.include_router(sync_summary_router)

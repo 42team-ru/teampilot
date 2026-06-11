@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     MOCK_YOUGILE: bool = False
     MOCK_YOUGILE_TOKEN: str = "mock_token"
     MOCK_YOUGILE_BOARD_ID: str = "mock_board"
+    TELEMOST_BOT_URL: str = "http://telemost-bot:8002"
 
     class Config:
         env_file = ".env"
