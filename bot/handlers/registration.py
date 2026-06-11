@@ -17,10 +17,13 @@ router = Router()
 
 REGISTRATION_PROMPT = (
     "Сначала нужно зарегистрироваться.\n"
-    "Введите фамилию и имя одним сообщением. Например: <b>Петров Иван</b>"
+    "Введите имя. Например: <b>Иван</b>"
+)
+REGISTRATION_LAST_NAME_PROMPT = (
+    "Теперь введите фамилию. Например: <b>Петров</b>"
 )
 REGISTRATION_INVALID_TEXT = (
-    "Введите фамилию и имя через пробел. Например: <b>Петров Иван</b>"
+    "Введите имя одним словом. Например: <b>Иван</b>"
 )
 REGISTRATION_DONE_TEXT = "Готово, данные сохранены."
 
@@ -28,6 +31,9 @@ REGISTRATION_DONE_TEXT = "Готово, данные сохранены."
 class NeedsRegistration(BaseFilter):
     async def __call__(self, message: Message) -> bool | dict:
         if message.from_user is None or not message.text:
+            return False
+        command = message.text.split(maxsplit=1)[0].split("@", 1)[0].lower()
+        if command in {"/app", "/miniapp"}:
             return False
 
         try:
@@ -80,7 +86,7 @@ async def confirm_extension_login_code(message: Message) -> None:
 async def cancel_registration(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
-        "Регистрация отменена. Чтобы пользоваться ботом, отправьте /start и введите фамилию и имя."
+        "Регистрация отменена. Чтобы пользоваться ботом, отправьте /start и введите имя, потом фамилию."
     )
 
 
@@ -112,7 +118,7 @@ async def process_first_name(message: Message, state: FSMContext) -> None:
     await state.update_data(registration_first_name=first_name)
     await state.set_state(RegistrationStates.waiting_for_last_name)
     await message.answer(
-        "Теперь введите фамилию. Например: <b>Петров</b>",
+        REGISTRATION_LAST_NAME_PROMPT,
         parse_mode="HTML",
     )
 
@@ -173,7 +179,7 @@ async def require_registration_in_group(message: Message, lookup_failed: bool = 
         )
     ]])
     await message.answer(
-        "Сначала зарегистрируйтесь в личке бота: введите фамилию и имя, потом повторите команду.",
+        "Сначала зарегистрируйтесь в личке бота: введите имя, потом фамилию, потом повторите команду.",
         reply_markup=keyboard,
     )
 
@@ -189,7 +195,7 @@ async def start_registration(
         registration_pending_command=pending_command,
         registration_user_id=existing_user.get("userId") if existing_user else None,
     )
-    await state.set_state(RegistrationStates.waiting_for_full_name)
+    await state.set_state(RegistrationStates.waiting_for_first_name)
     await message.answer(REGISTRATION_PROMPT, parse_mode="HTML")
 
 

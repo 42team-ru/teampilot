@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { TeamMemberResponse, TeamResponse, UploadedFileResponse } from './types'
+import type { TeamMemberResponse, TeamResponse, TeamWorkloadEntry, UploadedFileResponse } from './types'
 
 export const teamsApi = {
   listMyTeams: () =>
@@ -24,4 +24,7 @@ export const teamsApi = {
     apiClient
       .patch<TeamMemberResponse>(`/teams/${teamId}/members/${teamUserId}/role`, { role })
       .then((r) => r.data),
+
+  getWorkload: (teamId: string) =>
+    apiClient.get<TeamWorkloadEntry[]>(`/teams/${teamId}/workload`).then((r) => r.data),
 }

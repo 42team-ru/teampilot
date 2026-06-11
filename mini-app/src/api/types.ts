@@ -120,3 +120,33 @@ export interface TeamPaymentInitiateResponse {
   paymentUrl: string
   sessionId: string
 }
+
+export interface AchievementDto {
+  key: string
+  emoji: string
+  name: string
+  awardedAt: string | null
+}
+
+export interface TeamWorkloadEntry {
+  teamUserId: string
+  firstName?: string
+  lastName?: string
+  telegramLogin?: string
+  telegramId: number
+  openTaskCount: number
+  overdueTaskCount: number
+}
+
+export interface UserStatsResponse {
+  completedCount: number
+  overdueCount: number
+  onTimeRate: number
+  streakDays: number
+  xp: number
+  level: number
+  levelName: string
+  xpForCurrentLevel: number
+  xpForNextLevel: number
+  achievements: AchievementDto[]
+}

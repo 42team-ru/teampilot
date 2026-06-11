@@ -3,12 +3,12 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardMarkup, Message
 from loguru import logger
 
 from config import settings
 from handlers.member import show_member_panel
-from keyboards.member import home_keyboard
+from keyboards.member import home_keyboard, mini_app_button
 from services.admin_service import get_user_by_telegram_id
 from services.backend_error import BackendApiError
 from services.http_client import HttpRequestError, http_client
@@ -22,6 +22,14 @@ from storage import register_user
 router = Router()
 
 _BOT_HEADERS = {"X-Bot-Secret": settings.BOT_SECRET}
+
+
+@router.message(Command("app", "miniapp"), F.chat.type == "private")
+async def cmd_app(message: Message) -> None:
+    await message.answer(
+        "Откройте Mini App кнопкой ниже. Так Telegram передаст initData для входа.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[mini_app_button()]]),
+    )
 
 
 # ── /start join_{teamId} — вступить в команду ────────────────────────────────
@@ -217,10 +225,10 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     user = await get_user_by_telegram_id(message.from_user.id)
     if user is None:
         await state.update_data(registration_pending_command=message.text)
-        await state.set_state(RegistrationStates.waiting_for_full_name)
+        await state.set_state(RegistrationStates.waiting_for_first_name)
         await message.answer(
             "Сначала нужно зарегистрироваться.\n"
-            "Введите фамилию и имя одним сообщением. Например: <b>Петров Иван</b>",
+            "Введите имя. Например: <b>Иван</b>",
             parse_mode="HTML",
         )
         return

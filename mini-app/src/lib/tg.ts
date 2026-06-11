@@ -55,6 +55,8 @@ interface TelegramWebApp {
   close(): void
   ready(): void
   openLink(url: string): void
+  onEvent(eventType: string, eventHandler: () => void): void
+  offEvent(eventType: string, eventHandler: () => void): void
 }
 
 export const tg = window.Telegram?.WebApp

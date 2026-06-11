@@ -115,7 +115,6 @@ services:
             - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
             - ./infrastructure/caddy/data:/data
             - ./infrastructure/caddy/config:/config
-            - ../../mini-app/dist:/srv/mini-app:ro
         restart: unless-stopped
 
 volumes:

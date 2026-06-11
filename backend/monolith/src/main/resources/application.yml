@@ -1,75 +1,75 @@
 app:
-    jwt:
-        secret: ${APP_JWT_SECRET:bXlfc3VwZXJfc2VjcmV0X2tleV9mb3JfaGFja2F0aG9uXzIwMjQ=}
-        expiration-days: 7
-    bot:
-        secret: ${BOT_SECRET:changeme}
-    telegram:
-        bot-token: ${TELEGRAM_BOT_TOKEN:8976661282:AAHos6j12XE5MgwRWdkh8K53a636mYpIMpg}
-    invite:
-        expiration-days: 7
-        bot-url: ${BOT_URL:t.me/prorab_bot}
-    s3:
-        endpoint: ${S3_ENDPOINT:http://localhost:9000}
-        access-key: ${S3_ACCESS_KEY:minioadmin}
-        secret-key: ${S3_SECRET_KEY:minioadmin}
-        region: ${S3_REGION:us-east-1}
-        default-bucket: ${S3_DEFAULT_BUCKET:audio}
-        presigned-url-expiry: ${S3_PRESIGNED_URL_EXPIRY:15m}
-        presigned-endpoint: ${S3_PRESIGNED_ENDPOINT:http://localhost:9000}
-    llm:
-        auto-confirm-threshold: ${LLM_AUTO_CONFIRM_THRESHOLD:0.90}
+  jwt:
+    secret: ${APP_JWT_SECRET:bXlfc3VwZXJfc2VjcmV0X2tleV9mb3JfaGFja2F0aG9uXzIwMjQ=}
+    expiration-days: 7
+  bot:
+    secret: ${BOT_SECRET:changeme}
+  telegram:
+    bot-token: ${TELEGRAM_BOT_TOKEN:7879761733:AAFGS3hHFZfj9TRloVZSwDSUlX9Ped5VB24}
+  invite:
+    expiration-days: 7
+    bot-url: ${BOT_URL:t.me/prorab_bot}
+  s3:
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    access-key: ${S3_ACCESS_KEY:minioadmin}
+    secret-key: ${S3_SECRET_KEY:minioadmin}
+    region: ${S3_REGION:us-east-1}
+    default-bucket: ${S3_DEFAULT_BUCKET:audio}
+    presigned-url-expiry: ${S3_PRESIGNED_URL_EXPIRY:15m}
+    presigned-endpoint: ${S3_PRESIGNED_ENDPOINT:http://localhost:9000}
+  llm:
+    auto-confirm-threshold: ${LLM_AUTO_CONFIRM_THRESHOLD:0.90}
 
-    yookassa:
-        api-url: ${YOOKASSA_API_URL:https://api.yookassa.ru/v3}
-        shop-id: ${YOOKASSA_SHOP_ID:}
-        secret-key: ${YOOKASSA_SECRET_KEY:}
-        return-url: ${YOOKASSA_RETURN_URL:https://t.me/prorab_bot}
+  yookassa:
+    api-url: ${YOOKASSA_API_URL:https://api.yookassa.ru/v3}
+    shop-id: ${YOOKASSA_SHOP_ID:}
+    secret-key: ${YOOKASSA_SECRET_KEY:}
+    return-url: ${YOOKASSA_RETURN_URL:https://t.me/prorab_bot}
 
-    team-creation:
-        price-rub: ${TEAM_CREATION_PRICE_RUB:2500.00}
+  team-creation:
+    price-rub: ${TEAM_CREATION_PRICE_RUB:2500.00}
 
-    batching:
-        min-messages: 3
-        max-age-minutes: 5
+  batching:
+    min-messages: 3
+    max-age-minutes: 5
 
 spring:
-    application:
-        name: monolith
-    profiles:
-        default: dev
+  application:
+    name: monolith
+  profiles:
+    default: dev
 
-    kafka:
-        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-        consumer:
-            group-id: ${KAFKA_CONSUMER_GROUP_ID:monolith-consumer}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:monolith-consumer}
 
-    datasource:
-        url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase}
-        username: ${SPRING_DATASOURCE_USERNAME:myuser}
-        password: ${SPRING_DATASOURCE_PASSWORD:mypassword}
-        driver-class-name: org.postgresql.Driver
-    jpa:
-        hibernate:
-            ddl-auto: update
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase}
+    username: ${SPRING_DATASOURCE_USERNAME:myuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:mypassword}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
 
 server:
-    port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:8080}
 
 springdoc:
-    api-docs:
-        path: /v3/api-docs
-    swagger-ui:
-        path: /swagger-ui.html
-        config-url: /api/v3/api-docs/swagger-config
-        url: /api/v3/api-docs
-    packages-to-scan: ru.team42.monolith.rest
-    default-produces-media-type: application/json
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    config-url: /api/v3/api-docs/swagger-config
+    url: /api/v3/api-docs
+  packages-to-scan: ru.team42.monolith.rest
+  default-produces-media-type: application/json
 
 management:
-    endpoints:
-        web:
-            exposure:
-                include: health,info
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 #debug: true
 

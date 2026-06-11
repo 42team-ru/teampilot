@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+from config import settings
 
 _MAX_TITLE = 30
 _MAX_TEAMS = 8
@@ -8,6 +10,18 @@ _MAX_TEAMS = 8
 
 def _rows(buttons: list[InlineKeyboardButton], width: int = 2) -> list[list[InlineKeyboardButton]]:
     return [buttons[index:index + width] for index in range(0, len(buttons), width)]
+
+
+def _mini_app_url() -> str:
+    url = settings.MINI_APP_URL.strip()
+    if url.rstrip("/").endswith("/app"):
+        return f"{url.rstrip('/')}/"
+    return url
+
+
+def mini_app_button(text: str = "🚀 Открыть Mini App") -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=_mini_app_url()))
+
 
 
 def member_main_keyboard() -> InlineKeyboardMarkup:
@@ -206,5 +220,6 @@ def back_to_member_keyboard() -> InlineKeyboardMarkup:
 
 def no_team_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [mini_app_button()],
         [InlineKeyboardButton(text="➕ Создать команду", callback_data="team:create")],
     ])

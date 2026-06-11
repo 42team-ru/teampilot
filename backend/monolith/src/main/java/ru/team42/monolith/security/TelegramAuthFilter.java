@@ -30,6 +30,7 @@ public class TelegramAuthFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     private final AppProperties appProperties;
     private final JwtService jwtService;
+    private final TelegramInitDataVerifier initDataVerifier;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -40,7 +41,10 @@ public class TelegramAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        boolean authenticated = tryAuthenticateWithTelegramId(request);
+        boolean authenticated = tryAuthenticateWithInitData(request);
+        if (!authenticated) {
+            authenticated = tryAuthenticateWithTelegramId(request);
+        }
         if (!authenticated) {
             tryAuthenticateAsBot(request);
         }
@@ -68,6 +72,29 @@ public class TelegramAuthFilter extends OncePerRequestFilter {
                 return false;
             }
         }).orElse(false);
+    }
+
+    private boolean tryAuthenticateWithInitData(HttpServletRequest request) {
+        String initData = request.getHeader(TelegramInitDataVerifier.INIT_DATA_HEADER);
+        if (initData == null || initData.isBlank()) return false;
+
+        if (!initDataVerifier.verify(initData)) {
+            request.setAttribute(AUTH_FAILURE_DETAIL_ATTRIBUTE, "Invalid X-Telegram-Init-Data signature");
+            return false;
+        }
+
+        return initDataVerifier.extractUserInfo(initData).flatMap(info ->
+                userRepository.findByTelegramId(info.id()).map(user -> {
+                    var authority = new SimpleGrantedAuthority("ROLE_" + user.getSystemRole().name());
+                    var auth = new UsernamePasswordAuthenticationToken(user, null, List.of(authority));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                    return true;
+                })
+        ).orElseGet(() -> {
+            request.setAttribute(AUTH_FAILURE_DETAIL_ATTRIBUTE,
+                    "User from Mini App initData not found — use /auth/telegram/mini-app to login first");
+            return false;
+        });
     }
 
     private boolean tryAuthenticateWithTelegramId(HttpServletRequest request) {

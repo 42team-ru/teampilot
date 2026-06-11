@@ -41,6 +41,7 @@ import ru.team42.monolith.repository.TeamUserRepository;
 import ru.team42.monolith.repository.UserRepository;
 import ru.team42.monolith.repository.YouGileCompanyRepository;
 import ru.team42.monolith.security.JwtService;
+import ru.team42.monolith.security.TelegramInitDataVerifier;
 import ru.team42.monolith.security.TelegramOAuthVerifier;
 
 import java.util.List;
@@ -66,6 +67,7 @@ public class AuthService {
     private final TeamService teamService;
     private final DefaultApi yougileUnauthenticatedApi;
     private final TelegramOAuthVerifier telegramOAuthVerifier;
+    private final TelegramInitDataVerifier telegramInitDataVerifier;
     private final JwtService jwtService;
     private final Map<String, ExtensionLoginSession> extensionLoginSessions = new ConcurrentHashMap<>();
     private final SecureRandom secureRandom = new SecureRandom();
@@ -447,6 +449,28 @@ public class AuthService {
         user.setLastName(request.lastName());
         user = userRepository.save(user);
         return new AuthResponse(user.getId(), user.getTelegramId(), user.getSystemRole());
+    }
+
+    @Transactional
+    public TelegramAuthResponse loginWithMiniApp(String initData) {
+        if (initData == null || initData.isBlank()) {
+            throw AppException.unauthorized("X-Telegram-Init-Data header is missing");
+        }
+        if (!telegramInitDataVerifier.verify(initData)) {
+            throw AppException.unauthorized("Telegram Mini App initData signature invalid");
+        }
+        TelegramInitDataVerifier.TelegramUserInfo info = telegramInitDataVerifier.extractUserInfo(initData)
+                .orElseThrow(() -> AppException.badRequest("Cannot extract user from initData"));
+
+        User user = userRepository.findByTelegramId(info.id()).orElseGet(User::new);
+        user.setTelegramId(info.id());
+        if (info.firstName() != null) user.setFirstName(info.firstName());
+        if (info.lastName() != null) user.setLastName(info.lastName());
+        if (info.username() != null) user.setTelegramLogin(info.username());
+        user = userRepository.save(user);
+
+        String token = jwtService.generateToken(user);
+        return new TelegramAuthResponse(user.getId(), user.getTelegramId(), user.getSystemRole(), token);
     }
 
     private User createUser(LoginRequest request) {

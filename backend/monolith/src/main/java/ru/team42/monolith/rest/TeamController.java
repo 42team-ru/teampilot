@@ -18,6 +18,7 @@ import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.response.PendingTeamChatResponse;
 import ru.team42.monolith.dto.response.TeamMemberResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
+import ru.team42.monolith.dto.response.TeamWorkloadEntry;
 import ru.team42.monolith.dto.response.UploadedFileResponse;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.service.TeamService;
@@ -131,6 +132,15 @@ public class TeamController {
         return ResponseUtils.ok(
                 teamService.updateMemberRole(teamId, teamUserId, request.role(), requireTelegramId(currentUser, servletRequest))
         );
+    }
+
+    @Operation(summary = "Карта нагрузки команды — кол-во открытых задач на участника")
+    @GetMapping("/{teamId}/workload")
+    public ResponseEntity<List<TeamWorkloadEntry>> getWorkload(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            HttpServletRequest servletRequest,
+            @PathVariable UUID teamId) {
+        return ResponseUtils.ok(teamService.getWorkload(teamId, requireTelegramId(currentUser, servletRequest)));
     }
 
     @Operation(summary = "Деактивировать команду")

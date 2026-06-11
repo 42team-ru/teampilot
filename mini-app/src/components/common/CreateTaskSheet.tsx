@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateTask } from '@/hooks/useTasks'
-import { useTeamMembers, useMyTeams } from '@/hooks/useTeams'
+import { useTeamMembers } from '@/hooks/useTeams'
 import { useAppStore } from '@/stores/appStore'
 import { useTaskColumns } from '@/hooks/useTasks'
 
@@ -29,7 +29,7 @@ export function CreateTaskSheet({ open, onClose }: CreateTaskSheetProps) {
   const activeTeam = useAppStore((s) => s.activeTeam)
   const createTask = useCreateTask()
   const { data: members } = useTeamMembers(activeTeam?.id)
-  const { data: columns } = useTaskColumns(activeTeam?.telegramChatId)
+  const { data: columns } = useTaskColumns(activeTeam?.telegramChatId, activeTeam?.id)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),

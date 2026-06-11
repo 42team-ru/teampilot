@@ -11,6 +11,7 @@ import ru.team42.monolith.dto.request.UpdateTeamRequest;
 import ru.team42.monolith.dto.response.PendingTeamChatResponse;
 import ru.team42.monolith.dto.response.TeamMemberResponse;
 import ru.team42.monolith.dto.response.TeamResponse;
+import ru.team42.monolith.dto.response.TeamWorkloadEntry;
 import ru.team42.monolith.dto.response.UploadedFileResponse;
 import ru.team42.monolith.entity.PendingTeamChat;
 import ru.team42.monolith.entity.Team;
@@ -22,6 +23,7 @@ import ru.team42.monolith.entity.enums.SystemRole;
 import ru.team42.monolith.entity.enums.TeamRole;
 import ru.team42.monolith.mapper.TeamMapper;
 import ru.team42.monolith.repository.PendingTeamChatRepository;
+import ru.team42.monolith.repository.TaskRepository;
 import ru.team42.monolith.repository.TeamRepository;
 import ru.team42.monolith.repository.TeamUserRepository;
 import ru.team42.monolith.repository.UploadedFileRepository;
@@ -42,6 +44,7 @@ public class TeamService {
     private final UserRepository userRepository;
     private final PendingTeamChatRepository pendingTeamChatRepository;
     private final UploadedFileRepository uploadedFileRepository;
+    private final TaskRepository taskRepository;
     private final S3Service s3Service;
     private final TeamMapper teamMapper;
 
@@ -262,6 +265,24 @@ public class TeamService {
                 file.getCreatedAt(),
                 downloadUrl
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<TeamWorkloadEntry> getWorkload(UUID teamId, Long callerTelegramId) {
+        teamUserRepository.findByTeamIdAndUserTelegramId(teamId, callerTelegramId)
+            .orElseThrow(() -> AppException.forbidden("You are not a member of this team"));
+        Instant now = Instant.now();
+        return taskRepository.findWorkloadByTeamId(teamId, now).stream()
+            .map(row -> new TeamWorkloadEntry(
+                row[0].toString(),
+                (String) row[1],
+                (String) row[2],
+                (String) row[3],
+                ((Number) row[4]).longValue(),
+                ((Number) row[5]).longValue(),
+                ((Number) row[6]).longValue()
+            ))
+            .toList();
     }
 
     private void requireMember(UUID teamId, Long telegramId) {

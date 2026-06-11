@@ -8,7 +8,7 @@ export const taskKeys = {
   all: ['tasks'] as const,
   my: (telegramId: number) => ['tasks', 'my', telegramId] as const,
   list: (params: object) => ['tasks', 'list', params] as const,
-  columns: (chatId: number) => ['tasks', 'columns', chatId] as const,
+  columns: (key: string) => ['tasks', 'columns', key] as const,
   detail: (id: string) => ['tasks', id] as const,
 }
 
@@ -40,11 +40,12 @@ export function useTasksByColumn(columnId: string | undefined) {
   })
 }
 
-export function useTaskColumns(chatId: number | undefined) {
+export function useTaskColumns(chatId: number | undefined, teamId: string | undefined) {
+  const key = chatId?.toString() ?? teamId ?? ''
   return useQuery({
-    queryKey: taskKeys.columns(chatId ?? 0),
-    queryFn: () => tasksApi.listColumns(chatId!),
-    enabled: !!chatId,
+    queryKey: taskKeys.columns(key),
+    queryFn: () => tasksApi.listColumns({ chatId, teamId }),
+    enabled: !!(chatId || teamId),
     staleTime: 60_000,
   })
 }

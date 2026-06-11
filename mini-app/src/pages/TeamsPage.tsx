@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Crown, UserMinus, RefreshCw } from 'lucide-react'
-import { useMyTeams, useMemberOfTeams, useTeamMembers, useTeamFiles, useRemoveMember, useUpdateMemberRole } from '@/hooks/useTeams'
+import { useMyTeams, useMemberOfTeams, useTeamMembers, useTeamFiles, useRemoveMember, useUpdateMemberRole, useTeamWorkload } from '@/hooks/useTeams'
 import { useAppStore } from '@/stores/appStore'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -11,12 +12,69 @@ import { cn } from '@/lib/utils'
 import { authApi } from '@/api/auth'
 import { toast } from 'sonner'
 
+function WorkloadSheet({ teamId, onClose }: { teamId: string; onClose: () => void }) {
+  const { data: workload, isLoading } = useTeamWorkload(teamId)
+  const max = Math.max(1, ...(workload?.map((w) => w.openTaskCount) ?? []))
+
+  return (
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="bottom" className="pb-8 max-h-[80vh] overflow-y-auto">
+        <SheetHeader className="pt-4">
+          <SheetTitle>Нагрузка команды</SheetTitle>
+        </SheetHeader>
+        <div className="px-4 mt-4 space-y-3">
+          {isLoading && <p className="text-sm text-muted-foreground">Загрузка...</p>}
+          {!isLoading && workload?.length === 0 && (
+            <p className="text-sm text-muted-foreground">Нет активных задач</p>
+          )}
+          {workload?.map((w) => {
+            const pct = Math.round((w.openTaskCount / max) * 100)
+            const color =
+              w.openTaskCount >= 7
+                ? 'bg-destructive'
+                : w.openTaskCount >= 4
+                  ? 'bg-yellow-500'
+                  : 'bg-green-500'
+            const name =
+              [w.firstName, w.lastName].filter(Boolean).join(' ') ||
+              w.telegramLogin ||
+              String(w.telegramId)
+            return (
+              <div key={w.teamUserId}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium">{name}</span>
+                  <div className="flex items-center gap-2">
+                    {w.overdueTaskCount > 0 && (
+                      <span className="text-xs text-destructive font-medium">
+                        {w.overdueTaskCount} просрочено
+                      </span>
+                    )}
+                    <span className="text-xs font-bold">{w.openTaskCount}</span>
+                  </div>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div
+                    className={`${color} h-2 rounded-full transition-all`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 function TeamDetailSheet({ team, onClose }: { team: TeamResponse; onClose: () => void }) {
   const { data: members } = useTeamMembers(team.id)
   const { data: files } = useTeamFiles(team.id)
   const removeMember = useRemoveMember()
   const updateRole = useUpdateMemberRole()
   const setActiveTeam = useAppStore((s) => s.setActiveTeam)
+  const navigate = useNavigate()
+  const [workloadOpen, setWorkloadOpen] = useState(false)
 
   const handleCopyInvite = async () => {
     if (!team.telegramChatId) {
@@ -32,6 +90,11 @@ function TeamDetailSheet({ team, onClose }: { team: TeamResponse; onClose: () =>
     }
   }
 
+  const handleYouGileSetup = () => {
+    setActiveTeam(team)
+    navigate('/onboarding/yougile')
+  }
+
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="bottom" className="pb-8">
@@ -40,6 +103,23 @@ function TeamDetailSheet({ team, onClose }: { team: TeamResponse; onClose: () =>
         </SheetHeader>
 
         <div className="px-4 space-y-4 mt-2">
+          {/* YouGile settings */}
+          <Card>
+            <CardHeader className="p-3 pb-2">
+              <CardTitle className="text-sm">⚙️ Настройки YouGile</CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0 space-y-2">
+              {team.kanbanId ? (
+                <p className="text-xs text-green-600">Доска подключена</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">YouGile не настроен</p>
+              )}
+              <Button size="sm" variant="outline" className="w-full" onClick={handleYouGileSetup}>
+                Настроить YouGile
+              </Button>
+            </CardContent>
+          </Card>
+
           <div className="flex gap-2">
             <Button size="sm" variant="outline" className="flex-1" onClick={handleCopyInvite}>
               Пригласить
@@ -47,7 +127,14 @@ function TeamDetailSheet({ team, onClose }: { team: TeamResponse; onClose: () =>
             <Button size="sm" variant="outline" className="flex-1" onClick={() => { setActiveTeam(team); onClose() }}>
               Выбрать
             </Button>
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => setWorkloadOpen(true)}>
+              Нагрузка
+            </Button>
           </div>
+
+          {workloadOpen && (
+            <WorkloadSheet teamId={team.id} onClose={() => setWorkloadOpen(false)} />
+          )}
 
           {members && members.length > 0 && (
             <div>

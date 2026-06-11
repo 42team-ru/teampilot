@@ -37,8 +37,8 @@ export const tasksApi = {
     size?: number
   }) => apiClient.get<PageResponse<TaskResponse>>('/tasks', { params }).then((r) => r.data),
 
-  listColumns: (chatId: number) =>
-    apiClient.get<TaskColumnResponse[]>('/tasks/columns', { params: { chatId } }).then((r) => r.data),
+  listColumns: (params: { chatId?: number; teamId?: string }) =>
+    apiClient.get<TaskColumnResponse[]>('/tasks/columns', { params }).then((r) => r.data),
 
   create: (data: CreateUserTaskRequest) =>
     apiClient.post<TaskResponse>('/tasks/user', data).then((r) => r.data),

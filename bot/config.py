@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     UPDATE_SLOW_HANDLER_MS: float = 1000.0
     KAFKA_SLOW_PUBLISH_MS: float = 250.0
     LOGIN_REDIRECT_URL: str = "http://localhost:8080/auth/telegram"
+    MINI_APP_URL: str = "https://42team.ru/app"
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"

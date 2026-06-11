@@ -457,10 +457,18 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public List<TaskColumn> listColumns(Long chatId) {
-        Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
-                .orElseThrow(() -> AppException.notFound("Team not found for chatId %d".formatted(chatId)));
-        return taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId());
+    public List<TaskColumn> listColumns(Long chatId, UUID teamId) {
+        if (chatId != null) {
+            Team team = teamRepository.findByTelegramChatIdAndActiveTrue(chatId)
+                    .orElseThrow(() -> AppException.notFound("Team not found for chatId %d".formatted(chatId)));
+            return taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId());
+        }
+        if (teamId != null) {
+            teamRepository.findById(teamId)
+                    .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
+            return taskColumnRepository.findByTeamIdAndDeletedFalse(teamId);
+        }
+        throw AppException.badRequest("Either chatId or teamId is required");
     }
 
     @Transactional(readOnly = true)

@@ -3,6 +3,7 @@ package ru.team42.monolith.rest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ru.team42.monolith.security.TelegramInitDataVerifier;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.dto.request.CreateInviteRequest;
 import ru.team42.monolith.dto.request.CreateUserRequest;
@@ -46,6 +48,19 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService authService;
+
+    @Operation(
+            summary = "Войти через Telegram Mini App (initData)",
+            description = """
+                    Верифицирует X-Telegram-Init-Data HMAC-SHA256 (алгоритм Mini App).
+                    При первом входе автоматически создаёт пользователя. Возвращает JWT.
+                    """
+    )
+    @PostMapping("/telegram/mini-app")
+    public ResponseEntity<TelegramAuthResponse> loginWithMiniApp(HttpServletRequest request) {
+        String initData = request.getHeader(TelegramInitDataVerifier.INIT_DATA_HEADER);
+        return ResponseEntity.ok(authService.loginWithMiniApp(initData));
+    }
 
     @Operation(
             summary = "Войти через Telegram OAuth (расширение)",

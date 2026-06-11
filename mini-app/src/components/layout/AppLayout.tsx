@@ -1,19 +1,27 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Kanban, RefreshCw, Users, User } from 'lucide-react'
+import { Activity, LayoutDashboard, Kanban, Users, User } from 'lucide-react'
+import { useMyTeams } from '@/hooks/useTeams'
+import { useAppStore } from '@/stores/appStore'
 import { cn } from '@/lib/utils'
 import { haptic } from '@/lib/tg'
 
 const tabs = [
   { path: '/', label: 'Главная', icon: LayoutDashboard },
   { path: '/board', label: 'Доска', icon: Kanban },
-  { path: '/sync', label: 'Дайджест', icon: RefreshCw },
   { path: '/teams', label: 'Команды', icon: Users },
   { path: '/profile', label: 'Профиль', icon: User },
 ]
 
+const managerTab = { path: '/workload', label: 'Нагрузка', icon: Activity }
+
 export function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const activeTeam = useAppStore((s) => s.activeTeam)
+  const { data: managerTeams } = useMyTeams()
+
+  const isActiveTeamManaged = !!activeTeam && !!managerTeams?.some((team) => team.id === activeTeam.id)
+  const visibleTabs = isActiveTeamManaged ? [...tabs.slice(0, 3), managerTab, tabs[3]] : tabs
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -23,7 +31,7 @@ export function AppLayout() {
 
       <nav className="border-t bg-background safe-bottom">
         <div className="flex">
-          {tabs.map(({ path, label, icon: Icon }) => {
+          {visibleTabs.map(({ path, label, icon: Icon }) => {
             const active = path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
             return (
               <button

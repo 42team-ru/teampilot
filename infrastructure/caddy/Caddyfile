@@ -1,4 +1,12 @@
 42team.ru {
+    handle / {
+        redir /app/ 302
+    }
+
+    handle /app {
+        redir /app/ 302
+    }
+
     handle /api/ws* {
         uri strip_prefix /api
         reverse_proxy monolith:8080 {
@@ -27,10 +35,8 @@
         }
     }
 
-    handle /app* {
-        root * /srv/mini-app
-        try_files {path} /app/index.html
-        file_server
+    handle_path /app* {
+        reverse_proxy mini-app:80
     }
 
     handle /redpanda* {

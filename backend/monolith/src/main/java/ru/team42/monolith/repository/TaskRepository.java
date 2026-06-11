@@ -198,4 +198,18 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
             @Param("since") Instant since,
             @Param("now") Instant now
     );
+
+    @Query("""
+        SELECT tu.id, tu.user.firstName, tu.user.lastName, tu.user.telegramLogin, tu.user.telegramId,
+               COUNT(t) as openCount,
+               SUM(CASE WHEN t.deadline IS NOT NULL AND t.deadline < :now THEN 1L ELSE 0L END) as overdueCount
+        FROM Task t
+        JOIN t.assignee tu
+        WHERE tu.team.id = :teamId
+          AND t.completed = false
+          AND t.deleted = false
+          AND t.localStatus = ru.team42.monolith.entity.enums.TaskLocalStatus.ACTIVE
+        GROUP BY tu.id, tu.user.firstName, tu.user.lastName, tu.user.telegramLogin, tu.user.telegramId
+        """)
+    List<Object[]> findWorkloadByTeamId(@Param("teamId") UUID teamId, @Param("now") Instant now);
 }

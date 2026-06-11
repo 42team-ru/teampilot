@@ -8,6 +8,7 @@ export const teamKeys = {
   memberOf: () => ['teams', 'member-of'] as const,
   members: (teamId: string) => ['teams', teamId, 'members'] as const,
   files: (teamId: string) => ['teams', teamId, 'files'] as const,
+  workload: (teamId: string) => ['teams', teamId, 'workload'] as const,
 }
 
 export function useMyTeams() {
@@ -41,6 +42,15 @@ export function useTeamFiles(teamId: string | undefined) {
     queryFn: () => teamsApi.getFiles(teamId!),
     enabled: !!teamId,
     staleTime: 60_000,
+  })
+}
+
+export function useTeamWorkload(teamId: string | undefined) {
+  return useQuery({
+    queryKey: teamKeys.workload(teamId ?? ''),
+    queryFn: () => teamsApi.getWorkload(teamId!),
+    enabled: !!teamId,
+    staleTime: 30_000,
   })
 }
 

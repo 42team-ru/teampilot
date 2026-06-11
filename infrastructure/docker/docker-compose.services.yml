@@ -40,6 +40,7 @@ services:
       BOT_TOKEN: ${BOT_TOKEN}
       KAFKA_BOOTSTRAP_SERVERS: redpanda:19092
       BACKEND_URL: http://monolith:8080
+      MINI_APP_URL: ${MINI_APP_URL:-https://42team.ru/app}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
@@ -125,6 +126,14 @@ services:
       MEETING_EXTRACTION_STEP_CHARS: ${MEETING_EXTRACTION_STEP_CHARS:-200}
       # Сколько секунд ждать после последнего чанка перед финализацией встречи.
       MEETING_FINALIZE_WAIT_SECONDS: ${MEETING_FINALIZE_WAIT_SECONDS:-10}
+
+  mini-app:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/mini-app:latest
+    container_name: mini-app
+    pull_policy: always
+    restart: unless-stopped
+    expose:
+      - "80"
 
 networks:
   default:

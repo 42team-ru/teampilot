@@ -86,8 +86,10 @@ public class TaskController {
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/columns")
-    public ResponseEntity<List<TaskColumnResponse>> listColumns(@RequestParam Long chatId) {
-        return ResponseUtils.ok(taskService.listColumns(chatId).stream()
+    public ResponseEntity<List<TaskColumnResponse>> listColumns(
+            @RequestParam(required = false) Long chatId,
+            @RequestParam(required = false) UUID teamId) {
+        return ResponseUtils.ok(taskService.listColumns(chatId, teamId).stream()
                 .map(TaskColumnResponse::from)
                 .toList());
     }
