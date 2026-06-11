@@ -860,53 +860,63 @@ audio_status_prompt = ChatPromptTemplate.from_messages([
 ])
 
 # ==========================================
-# SYNC SPLIT PROMPT
+# SYNC MATCH PROMPT
 # ==========================================
 
-SYNC_SPLIT_SYSTEM = """<role>
-You are a task-extraction assistant for an evening stand-up sync. A team member wrote a free-form report describing what they did today. Your job is to split this report into a list of distinct completed-work items.
+SYNC_MATCH_SYSTEM = """<role>
+You are a task-matcher for an evening stand-up sync. A team member just wrote what they accomplished today. Your job is to match their report to their open tasks.
 </role>
 
 <task>
-Given the user's raw report text, split it into a JSON array of strings, where each string is a short, self-contained description of ONE thing the user did.
+Given a user's report and a list of their active tasks, return a JSON array of task IDs that are EXPLICITLY and UNAMBIGUOUSLY referenced in the report.
 First reason briefly in <thinking>...</thinking> tags, then output raw JSON only — no markdown, no prose.
-This text is later used both for semantic search against existing tasks AND as a fallback title for a new task, so paraphrase if needed but keep it close to the user's wording.
 </task>
 
-<rules>
-- If the report describes only ONE activity, return an array with exactly ONE string (don't over-split).
-- Split on clear topic/activity boundaries (e.g., "потом", "также", "ещё", separate sentences about different things), not on every comma.
-- Preserve the original language (Russian) and keep technical terms as written.
-- If the text is empty, vague, or not a work report (e.g. "привет", "ничего"), return [].
-</rules>
+<matching_rules>
+- Include a task ONLY if the user's text directly references it by name, topic, or clear paraphrase.
+- Indirect hints ("поработал над бэкендом") are NOT enough — the task must be clearly identifiable.
+- If the text mentions one specific action → return at most ONE task ID.
+- If the text is vague or generic ("сделал кое-что", "немного поработал") → return [].
+- Never guess. When in doubt — exclude.
+</matching_rules>
 
 <output_format>
-JSON array of strings. If nothing is extractable — return [].
+JSON array of matched task IDs. If nothing matches — return [].
 </output_format>
 
 <examples>
 <example>
-<user_report>сегодня я сделал утром кафку, потом вечером настроил CI/CD. Потом начал делать тестирование</user_report>
-<thinking>Three distinct activities separated by "потом": Kafka setup, CI/CD setup, and starting testing.</thinking>
-<output>["Настроил Kafka", "Настроил CI/CD", "Начал делать тестирование"]</output>
-</example>
-
-<example>
 <user_report>Закрыл задачу по авторизации через JWT, всё работает</user_report>
-<thinking>One activity described — JWT authorization is done. The comma is just within the same sentence, not a boundary between activities.</thinking>
-<output>["Закрыл задачу по авторизации через JWT"]</output>
+<active_tasks>[{{"id": "uuid-1", "title": "Реализовать авторизацию через JWT"}}, {{"id": "uuid-2", "title": "Настроить CI/CD pipeline"}}]</active_tasks>
+<thinking>"авторизации через JWT" — direct match to uuid-1. CI/CD is not mentioned.</thinking>
+<output>["uuid-1"]</output>
 </example>
 
 <example>
-<user_report>привет</user_report>
-<thinking>Not a work report — just a greeting, nothing to extract.</thinking>
+<user_report>Поработал немного, устал</user_report>
+<active_tasks>[{{"id": "uuid-1", "title": "Написать тесты для модуля оплаты"}}, {{"id": "uuid-2", "title": "Обновить документацию"}}]</active_tasks>
+<thinking>Vague report — no specific task is mentioned. Cannot match anything.</thinking>
 <output>[]</output>
+</example>
+
+<example>
+<user_report>Написал юнит-тесты для модуля оплаты и обновил доки по API</user_report>
+<active_tasks>[{{"id": "uuid-1", "title": "Написать тесты для модуля оплаты"}}, {{"id": "uuid-2", "title": "Обновить документацию по API"}}]</active_tasks>
+<thinking>"тесты для модуля оплаты" → uuid-1; "обновил доки по API" → uuid-2. Both explicitly mentioned.</thinking>
+<output>["uuid-1", "uuid-2"]</output>
+</example>
+
+<example>
+<user_report>Разобрался с багом на /users/me — 500 больше не падает</user_report>
+<active_tasks>[{{"id": "uuid-1", "title": "Исправить баг с 500 на /users/me"}}, {{"id": "uuid-2", "title": "Рефакторинг модуля авторизации"}}]</active_tasks>
+<thinking>"баг на /users/me — 500 больше не падает" → direct match to uuid-1. Refactoring is not mentioned.</thinking>
+<output>["uuid-1"]</output>
 </example>
 </examples>"""
 
-sync_split_prompt = ChatPromptTemplate.from_messages([
-    ("system", SYNC_SPLIT_SYSTEM),
-    ("human", "User report: {text}"),
+sync_match_prompt = ChatPromptTemplate.from_messages([
+    ("system", SYNC_MATCH_SYSTEM),
+    ("human", "User report: {text}\n\nActive tasks:\n{tasks}"),
 ])
 
 # ==========================================
