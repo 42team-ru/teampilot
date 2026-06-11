@@ -46,6 +46,7 @@ services:
       MINIO_BUCKET: ${S3_DEFAULT_BUCKET:-uploads}
       MINIO_BUCKET_AUDIO: ${MINIO_BUCKET_AUDIO:-audio-recordings}
       LLM_WORKER_URL: http://llm-worker:8001
+      BOT_SECRET: ${BOT_SECRET}
       MOCK_YOUGILE: ${MOCK_YOUGILE:-false}
       DEBUG_MODE: ${DEBUG_MODE:-false}
       DEBUG_ADMIN_IDS: ${DEBUG_ADMIN_IDS:-[]}

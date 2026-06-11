@@ -1,5 +1,20 @@
 yookassa-proxy.42team.ru {
-	reverse_proxy https://api.yookassa.ru {
-		header_up Host api.yookassa.ru
+	# Test endpoint
+	handle /hello {
+		respond "hello from proxy" 200
+	}
+
+	# Webhook from YooKassa -> US VPS
+	handle /api/payments/webhook* {
+		reverse_proxy https://42team.ru {
+			header_up Host 42team.ru
+		}
+	}
+
+	# YooKassa API proxy
+	handle {
+		reverse_proxy https://api.yookassa.ru {
+			header_up Host api.yookassa.ru
+		}
 	}
 }
