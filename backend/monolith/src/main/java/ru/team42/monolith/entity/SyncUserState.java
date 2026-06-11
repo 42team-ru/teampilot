@@ -7,8 +7,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import ru.team42.monolith.entity.enums.UserSyncStatus;
-import ru.team42.monolith.event.SyncDraftEvent;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,13 +44,17 @@ public class SyncUserState {
     @Column(name = "request_id", unique = true)
     private String requestId;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "draft", columnDefinition = "jsonb")
-    private List<SyncDraftEvent.DraftItem> draft;
-
     @Column(name = "confirmed_tasks_count")
     private int confirmedTasksCount;
 
     @Column(name = "pending_tasks_count")
     private int pendingTasksCount;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "confirmed_task_titles", columnDefinition = "jsonb")
+    private List<String> confirmedTaskTitles = new ArrayList<>();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "pending_task_titles", columnDefinition = "jsonb")
+    private List<String> pendingTaskTitles = new ArrayList<>();
 }

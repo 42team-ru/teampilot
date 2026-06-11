@@ -27,43 +27,6 @@ public class SyncController {
     private final ExcuseService excuseService;
     private final TeamUserRepository teamUserRepository;
 
-    /**
-     * Бот вызывает этот endpoint когда пользователь нажимает кнопки в вечернем синке.
-     *
-     * action:
-     *   CONFIRM_ALL — подтвердить все задачи из черновика
-     *   REJECT      — отклонить синк
-     *   EDIT_ITEM   — отредактировать одну задачу (нужны itemIndex + newTaskTitle)
-     */
-    @PostMapping("/confirm")
-    public ResponseEntity<?> confirm(@RequestBody SyncConfirmRequest request) {
-        return switch (request.action()) {
-            case "CONFIRM_ALL" -> {
-                eveningSyncService.confirmAll(request.chatId(), request.telegramUserId());
-                yield ResponseUtils.noContent();
-            }
-            case "REJECT" -> {
-                eveningSyncService.rejectSync(request.chatId(), request.telegramUserId());
-                yield ResponseUtils.noContent();
-            }
-            case "EDIT_ITEM" -> {
-                eveningSyncService.editSyncItem(
-                        request.chatId(), request.telegramUserId(),
-                        request.itemIndex(), request.newTaskTitle());
-                yield ResponseUtils.noContent();
-            }
-            case "COMPLETE_TASK" -> {
-                eveningSyncService.completeSingleTask(request.chatId(), request.telegramUserId(), request.taskId());
-                yield ResponseUtils.noContent();
-            }
-            case "CREATE_NEW" -> {
-                eveningSyncService.createNewTaskFromSync(request.chatId(), request.telegramUserId(), request.newTaskTitle());
-                yield ResponseUtils.noContent();
-            }
-            default -> throw AppException.badRequest("Unknown sync action: " + request.action());
-        };
-    }
-
     @PostMapping("/submit")
     @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<?> submit(@RequestBody SyncSubmitRequest request) {
@@ -71,11 +34,6 @@ public class SyncController {
                 .orElseThrow(() -> AppException.badRequest("No active sync session for user"));
         eveningSyncService.handleSyncMessage(request.telegramUserId(), request.text(), teamId);
         return ResponseUtils.noContent();
-    }
-
-    @GetMapping("/active-tasks")
-    public ResponseEntity<?> getActiveTasks(@RequestParam Long telegramUserId) {
-        return ResponseUtils.ok(eveningSyncService.getActiveTasks(telegramUserId));
     }
 
     @PostMapping("/approve-task")
@@ -87,18 +45,6 @@ public class SyncController {
     @PostMapping("/reject-task")
     public ResponseEntity<?> rejectTask(@RequestBody TaskActionRequest request) {
         eveningSyncService.rejectTask(request.taskId(), request.telegramUserId());
-        return ResponseUtils.noContent();
-    }
-
-    @PostMapping("/approve-proposal")
-    public ResponseEntity<?> approveProposal(@RequestBody ProposalActionRequest request) {
-        eveningSyncService.approveProposal(request.proposalId(), request.telegramUserId());
-        return ResponseUtils.noContent();
-    }
-
-    @PostMapping("/reject-proposal")
-    public ResponseEntity<?> rejectProposal(@RequestBody ProposalActionRequest request) {
-        eveningSyncService.rejectProposal(request.proposalId(), request.telegramUserId());
         return ResponseUtils.noContent();
     }
 
@@ -134,7 +80,7 @@ public class SyncController {
 
     /** Пользователь отписывается от вечернего синка для одной или всех команд */
     @PostMapping("/excuse")
-    @Transactional(readOnly = true)
+    @Transactional
     public ResponseEntity<?> excuse(@RequestBody ExcuseRequest request) {
         if (request.teamId() != null) {
             excuseService.excuse(request.telegramUserId(), request.teamId(), request.reason());
@@ -165,15 +111,6 @@ public class SyncController {
         return ResponseUtils.noContent();
     }
 
-    public record SyncConfirmRequest(
-            Long chatId,
-            Long telegramUserId,
-            String action,
-            int itemIndex,
-            String newTaskTitle,
-            String taskId
-    ) {}
-
     public record SyncSubmitRequest(
             Long telegramUserId,
             String text
@@ -181,11 +118,6 @@ public class SyncController {
 
     public record TaskActionRequest(
             String taskId,
-            Long telegramUserId
-    ) {}
-
-    public record ProposalActionRequest(
-            String proposalId,
             Long telegramUserId
     ) {}
 

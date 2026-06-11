@@ -6,7 +6,6 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.team42.monolith.entity.SyncSession;
 import ru.team42.monolith.entity.SyncUserState;
 import ru.team42.monolith.entity.enums.UserSyncStatus;
-import ru.team42.monolith.event.SyncDraftEvent;
 import ru.team42.monolith.repository.SyncSessionRepository;
 import ru.team42.monolith.repository.SyncUserStateRepository;
 
@@ -25,25 +24,19 @@ public class SyncStateService {
             UserSyncStatus status,
             String rawText,
             String requestId,
-            List<SyncDraftEvent.DraftItem> draft,
             int confirmedTasksCount,
-            int pendingTasksCount
+            int pendingTasksCount,
+            List<String> confirmedTaskTitles,
+            List<String> pendingTaskTitles
     ) {
         public UserSyncState withStatus(UserSyncStatus newStatus) {
-            return new UserSyncState(telegramId, username, newStatus, rawText, requestId, draft, confirmedTasksCount, pendingTasksCount);
+            return new UserSyncState(telegramId, username, newStatus, rawText, requestId, confirmedTasksCount, pendingTasksCount,
+                    confirmedTaskTitles, pendingTaskTitles);
         }
 
         public UserSyncState withResponse(String text, String reqId) {
-            return new UserSyncState(telegramId, username, UserSyncStatus.AWAITING, text, reqId, draft, confirmedTasksCount, pendingTasksCount);
-        }
-
-        public UserSyncState withDraft(List<SyncDraftEvent.DraftItem> items) {
-            return new UserSyncState(telegramId, username, UserSyncStatus.DRAFT_SENT, rawText, requestId, items, confirmedTasksCount, pendingTasksCount);
-        }
-
-        public UserSyncState addConfirmCounts(int addConfirmed, int addPending) {
-            return new UserSyncState(telegramId, username, UserSyncStatus.CONFIRMED, rawText, requestId, draft,
-                    confirmedTasksCount + addConfirmed, pendingTasksCount + addPending);
+            return new UserSyncState(telegramId, username, UserSyncStatus.AWAITING, text, reqId, confirmedTasksCount, pendingTasksCount,
+                    confirmedTaskTitles, pendingTaskTitles);
         }
     }
 
@@ -58,7 +51,8 @@ public class SyncStateService {
     private final SyncUserStateRepository syncUserStateRepository;
 
     @Transactional
-    public void openSession(UUID teamId, Long chatId, List<Long> memberTelegramIds, List<String> usernames) {
+    public void openSession(UUID teamId, Long chatId, List<Long> memberTelegramIds, List<String> usernames,
+                             Set<Long> excusedTelegramIds) {
         // Delete existing session if any (with cascade)
         syncSessionRepository.deleteById(teamId);
         syncSessionRepository.flush();
@@ -77,10 +71,11 @@ public class SyncStateService {
             userState.setSession(session);
             userState.setTelegramId(id);
             userState.setUsername(name);
-            userState.setStatus(UserSyncStatus.AWAITING);
-            userState.setDraft(List.of());
+            userState.setStatus(excusedTelegramIds.contains(id) ? UserSyncStatus.EXCUSED : UserSyncStatus.AWAITING);
             userState.setConfirmedTasksCount(0);
             userState.setPendingTasksCount(0);
+            userState.setConfirmedTaskTitles(new ArrayList<>());
+            userState.setPendingTaskTitles(new ArrayList<>());
             syncUserStateRepository.save(userState);
         }
     }
@@ -115,25 +110,17 @@ public class SyncStateService {
     }
 
     @Transactional
-    public void storeDraft(UUID teamId, String requestId, List<SyncDraftEvent.DraftItem> items) {
-        syncUserStateRepository.findByRequestId(requestId).ifPresent(userState -> {
-            userState.setDraft(items);
-            userState.setStatus(UserSyncStatus.DRAFT_SENT);
-            syncUserStateRepository.save(userState);
-        });
-    }
-
-    @Transactional(readOnly = true)
-    public Optional<UserSyncState> getUserState(UUID teamId, Long telegramId) {
-        return syncUserStateRepository.findBySessionTeamIdAndTelegramId(teamId, telegramId)
-                .map(this::toUserSyncState);
-    }
-
-    @Transactional
-    public void addConfirmCounts(UUID teamId, Long telegramId, int confirmed, int pending) {
+    public void recordSyncResults(UUID teamId, Long telegramId, List<String> confirmedTitles, List<String> pendingTitles) {
         syncUserStateRepository.findBySessionTeamIdAndTelegramId(teamId, telegramId).ifPresent(userState -> {
-            userState.setConfirmedTasksCount(userState.getConfirmedTasksCount() + confirmed);
-            userState.setPendingTasksCount(userState.getPendingTasksCount() + pending);
+            List<String> confirmed = new ArrayList<>(Optional.ofNullable(userState.getConfirmedTaskTitles()).orElseGet(ArrayList::new));
+            List<String> pending = new ArrayList<>(Optional.ofNullable(userState.getPendingTaskTitles()).orElseGet(ArrayList::new));
+            confirmed.addAll(confirmedTitles);
+            pending.addAll(pendingTitles);
+
+            userState.setConfirmedTaskTitles(confirmed);
+            userState.setPendingTaskTitles(pending);
+            userState.setConfirmedTasksCount(userState.getConfirmedTasksCount() + confirmedTitles.size());
+            userState.setPendingTasksCount(userState.getPendingTasksCount() + pendingTitles.size());
             userState.setStatus(UserSyncStatus.CONFIRMED);
             syncUserStateRepository.save(userState);
         });
@@ -179,9 +166,10 @@ public class SyncStateService {
                 entity.getStatus(),
                 entity.getRawText(),
                 entity.getRequestId(),
-                entity.getDraft() != null ? entity.getDraft() : List.of(),
                 entity.getConfirmedTasksCount(),
-                entity.getPendingTasksCount()
+                entity.getPendingTasksCount(),
+                Optional.ofNullable(entity.getConfirmedTaskTitles()).orElseGet(List::of),
+                Optional.ofNullable(entity.getPendingTaskTitles()).orElseGet(List::of)
         );
     }
 }
