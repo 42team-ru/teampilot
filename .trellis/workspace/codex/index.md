@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
-- **Last Active**: 2026-06-09
+- **Total Sessions**: 8
+- **Last Active**: 2026-06-11
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~238 | Active |
+| `journal-1.md` | ~271 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-06-11 | Telegram Mini App + PATCH /tasks/{id} | `2f2bc62` | `master` |
 | 7 | 2026-06-09 | Extension realtime events UX | `3f72a43` | `master` |
 | 6 | 2026-06-07 | Fix AudioContext auto-suspend in offscreen recording | `26b655b` | `master` |
 | 5 | 2026-06-06 | Diagnose slow bot backend requests | `910a305` | `master` |

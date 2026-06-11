@@ -16,6 +16,9 @@ import ru.team42.monolith.entity.*;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
 import ru.team42.monolith.entity.enums.TeamRole;
+import ru.team42.monolith.dto.request.CreateUserTaskRequest;
+import ru.team42.monolith.dto.request.UpdateTaskRequest;
+import ru.team42.monolith.entity.enums.TaskSource;
 import ru.team42.monolith.event.LlmStatusChangeEvent;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.event.LlmUpdateTaskEvent;
@@ -118,6 +121,111 @@ public class TaskService {
 
         task.setLocalStatus(TaskLocalStatus.PENDING_APPROVAL);
         return taskRepository.save(task);
+    }
+
+    @Transactional
+    public Task createUserTask(CreateUserTaskRequest request, User currentUser) {
+        Team team = teamRepository.findById(request.teamId())
+                .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(request.teamId())));
+
+        TeamUser membership = teamUserRepository.findByTeamIdAndUserId(team.getId(), currentUser.getId())
+                .orElseThrow(() -> AppException.forbidden("You are not a member of this team"));
+
+        Task task = new Task();
+        task.setTeam(team);
+        task.setTitle(request.title());
+        task.setDescription(request.description());
+        task.setDeadline(request.deadline());
+        task.setLocalStatus(TaskLocalStatus.ACTIVE);
+        task.setSyncStatus(TaskSyncStatus.PENDING_SYNC);
+        task.setSource(TaskSource.USER);
+        task.setAuthor(membership);
+
+        if (request.columnId() != null) {
+            taskColumnRepository.findById(request.columnId())
+                    .filter(col -> col.getTeam().getId().equals(team.getId()))
+                    .ifPresent(task::setColumn);
+        }
+
+        if (request.assigneeTeamUserId() != null) {
+            teamUserRepository.findById(request.assigneeTeamUserId())
+                    .filter(tu -> tu.getTeam().getId().equals(team.getId()))
+                    .ifPresent(task::setAssignee);
+        }
+
+        Task saved = taskRepository.save(task);
+        youGileService.createTask(saved.getTeam(), saved).ifPresent(externalId -> {
+            saved.setExternalId(externalId);
+            saved.setSyncStatus(TaskSyncStatus.SYNCED);
+            taskRepository.save(saved);
+        });
+        taskEventPublisher.publishCreated(saved);
+        messagingTemplate.convertAndSend(
+                "/topic/teams/%s/task-updates".formatted(saved.getTeam().getId()),
+                TaskUpdateMessage.created(saved.getId(), saved.getTitle())
+        );
+        return saved;
+    }
+
+    @Transactional
+    public Task updateTask(UUID taskId, UpdateTaskRequest request, User currentUser) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> AppException.notFound("Task %s not found".formatted(taskId)));
+
+        teamUserRepository.findByTeamIdAndUserId(task.getTeam().getId(), currentUser.getId())
+                .orElseThrow(() -> AppException.forbidden("You are not a member of this team"));
+
+        if (task.getLocalStatus() == TaskLocalStatus.DELETED_FROM_YOUGILE) {
+            throw AppException.badRequest("Cannot update a deleted task");
+        }
+
+        boolean detailsChanged = false;
+
+        if (request.title() != null && !request.title().equals(task.getTitle())) {
+            task.setTitle(request.title());
+            detailsChanged = true;
+        }
+        if (request.description() != null && !request.description().equals(task.getDescription())) {
+            task.setDescription(request.description());
+            detailsChanged = true;
+        }
+        if (request.deadline() != null && !request.deadline().equals(task.getDeadline())) {
+            task.setDeadline(request.deadline());
+            detailsChanged = true;
+        }
+
+        if (request.assigneeTeamUserId() != null) {
+            UUID currentAssigneeId = task.getAssignee() != null ? task.getAssignee().getId() : null;
+            if (!request.assigneeTeamUserId().equals(currentAssigneeId)) {
+                teamUserRepository.findById(request.assigneeTeamUserId())
+                        .filter(tu -> tu.getTeam().getId().equals(task.getTeam().getId()))
+                        .ifPresent(tu -> {
+                            task.setAssignee(tu);
+                        });
+                detailsChanged = true;
+            }
+        }
+
+        if (request.columnId() != null) {
+            UUID currentColumnId = task.getColumn() != null ? task.getColumn().getId() : null;
+            if (!request.columnId().equals(currentColumnId)) {
+                taskColumnRepository.findById(request.columnId())
+                        .filter(col -> col.getTeam().getId().equals(task.getTeam().getId()))
+                        .ifPresent(col -> {
+                            TaskColumn prev = task.getColumn();
+                            task.setColumn(col);
+                            recordHistory(task, prev, col, telegramIdOf(task));
+                            taskEventPublisher.publishColumnChanged(task, col);
+                        });
+            }
+        }
+
+        Task saved = taskRepository.save(task);
+        if (detailsChanged) {
+            youGileService.updateTask(saved.getTeam(), saved);
+            taskEventPublisher.publishUpdated(saved);
+        }
+        return saved;
     }
 
     @Transactional

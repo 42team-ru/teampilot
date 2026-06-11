@@ -236,3 +236,36 @@ Wired all live meeting events to extension: STOMP team topic for task updates (c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Telegram Mini App + PATCH /tasks/{id}
+
+**Date**: 2026-06-11
+**Task**: Telegram Mini App + PATCH /tasks/{id}
+**Branch**: `master`
+
+### Summary
+
+Created full Telegram Mini App (React 19 + Vite + shadcn/ui + TanStack Query + Zustand) with Dashboard, Kanban, Sync, Teams, Profile pages, Onboarding and YouGile wizard. Added backend PATCH /tasks/{id} and POST /tasks/user endpoints. Caddy configured to serve /app/* static files.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2f2bc62` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

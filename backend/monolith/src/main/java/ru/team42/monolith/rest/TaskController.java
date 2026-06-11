@@ -10,8 +10,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
+import ru.team42.monolith.dto.request.CreateUserTaskRequest;
+import ru.team42.monolith.dto.request.UpdateTaskRequest;
 import ru.team42.monolith.dto.response.TaskColumnResponse;
 import ru.team42.monolith.dto.response.TaskResponse;
+import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.User;
 import ru.team42.monolith.event.LlmTaskCreateEvent;
 import ru.team42.monolith.kanban.YouGileService;
@@ -31,6 +34,24 @@ public class TaskController {
     @GetMapping("/{id}")
     public ResponseEntity<TaskResponse> getById(@PathVariable UUID id) {
         return ResponseUtils.ok(TaskResponse.from(taskService.getById(id)));
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @PatchMapping("/{id}")
+    public ResponseEntity<TaskResponse> update(
+            @PathVariable UUID id,
+            @RequestBody UpdateTaskRequest request,
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseUtils.ok(TaskResponse.from(taskService.updateTask(id, request, currentUser)));
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/user")
+    public ResponseEntity<TaskResponse> createUserTask(
+            @RequestBody @jakarta.validation.Valid CreateUserTaskRequest request,
+            @AuthenticationPrincipal User currentUser) {
+        Task saved = taskService.createUserTask(request, currentUser);
+        return ResponseUtils.created("/tasks/" + saved.getId(), TaskResponse.from(saved));
     }
 
     @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")

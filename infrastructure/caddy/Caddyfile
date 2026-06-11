@@ -27,6 +27,12 @@
         }
     }
 
+    handle /app* {
+        root * /srv/mini-app
+        try_files {path} /app/index.html
+        file_server
+    }
+
     handle /redpanda* {
         uri strip_prefix /redpanda
         reverse_proxy redpanda-console:8080

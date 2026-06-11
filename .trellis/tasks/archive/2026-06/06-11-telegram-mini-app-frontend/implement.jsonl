@@ -1,0 +1,10 @@
+{"file": ".trellis/tasks/06-11-telegram-mini-app-frontend/prd.md", "reason": "PRD с полным описанием задачи: страницы, API, стек, решения по хостингу и аутентификации"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Структура директорий для нового mini-app/ проекта"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Правила создания компонентов — shadcn/ui, naming, props"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Паттерны кастомных хуков и TanStack Query"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand стор — структура, паттерны, когда использовать"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript strict, типизация API-ответов и Zod-схем"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Общие правила качества фронтенд-кода"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Структура Spring монолита — куда класть новый PATCH /tasks/{id}"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppException паттерны — обязательны для нового эндпоинта"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Spring код-стандарты: ResponseUtils, контроллеры, DTO"}

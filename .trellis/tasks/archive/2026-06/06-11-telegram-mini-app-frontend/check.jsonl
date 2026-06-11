@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/06-11-telegram-mini-app-frontend/prd.md", "reason": "Acceptance Criteria и Definition of Done для проверки"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Правила качества — lint, typecheck, строгий TS"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Проверка типобезопасности: strict mode, Zod-схемы, API-типы"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Проверка соответствия компонентов гайдлайнам"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Проверка: AppException используется везде, нет RuntimeException"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Проверка ResponseUtils, отсутствия /api в маппингах"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Проверка на дублирование — переиспользование существующих утилит"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Согласованность типов между фронтом и бэком"}
