@@ -14,6 +14,8 @@ public interface SyncExcuseRepository extends JpaRepository<SyncExcuse, UUID> {
 
     List<SyncExcuse> findByTeamIdAndExcuseDate(UUID teamId, LocalDate date);
 
+    List<SyncExcuse> findByTeamId(UUID teamId);
+
     @Transactional
     void deleteByTeamIdAndExcuseDate(UUID teamId, LocalDate date);
 }
