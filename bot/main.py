@@ -27,6 +27,7 @@ from handlers.registration import router as registration_router
 from handlers.setup import router as setup_router
 from handlers.sync import router as sync_router
 from handlers.sync import sync_report_router
+from handlers.sync_summary import router as sync_summary_router
 from handlers.tasks import router as tasks_router
 from handlers.tasks_commands import router as tasks_commands_router
 from handlers.upload import router as upload_router
@@ -159,6 +160,7 @@ async def main() -> None:
     dp.include_router(meeting_speakers_router)
     dp.include_router(auth_router)
     dp.include_router(sync_router)
+    dp.include_router(sync_summary_router)
     dp.include_router(tasks_router)
     dp.include_router(tasks_commands_router)
     dp.include_router(upload_router)

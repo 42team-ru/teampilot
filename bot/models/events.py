@@ -169,20 +169,20 @@ class BotNotificationEvent(BackendEvent):
     )
 
 
-class SyncDraftItem(BackendEvent):
-    index: int
-    user_text: str = Field(validation_alias=AliasChoices("userText", "user_text"))
-    task_id: str | None = Field(default=None, validation_alias=AliasChoices("taskId", "task_id"))
-    task_title: str | None = Field(default=None, validation_alias=AliasChoices("taskTitle", "task_title"))
-    is_new_task: bool = Field(default=False, validation_alias=AliasChoices("isNewTask", "is_new_task"))
-    assignee_telegram_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("assigneeTelegramId", "assignee_telegram_id"),
+class SyncMemberSummary(BackendEvent):
+    telegram_id: int | None = Field(default=None, validation_alias=AliasChoices("telegramId", "telegram_id"))
+    username: str | None = Field(default=None, validation_alias=AliasChoices("username"))
+    status: str | None = Field(default=None, validation_alias=AliasChoices("status"))
+    excuse_reason: str | None = Field(default=None, validation_alias=AliasChoices("excuseReason", "excuse_reason"))
+    confirmed_tasks: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("confirmedTasks", "confirmed_tasks"),
     )
-    assignee_name: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("assigneeName", "assignee_name"),
+    pending_tasks: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("pendingTasks", "pending_tasks"),
     )
+    raw_text: str | None = Field(default=None, validation_alias=AliasChoices("rawText", "raw_text"))
 
 
 class SyncSummary(BackendEvent):
@@ -203,23 +203,23 @@ class SyncSummary(BackendEvent):
         default_factory=list,
         validation_alias=AliasChoices("excusedEntries", "excused_entries"),
     )
+    members: list[SyncMemberSummary] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("members"),
+    )
 
 
 class BotSyncEvent(BackendEvent):
     type: str
     chat_id: int | None = Field(default=None, validation_alias=AliasChoices("chatId", "chat_id"))
-    recipient_telegram_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("recipientTelegramId", "recipient_telegram_id"),
-    )
+    team_id: str | None = Field(default=None, validation_alias=AliasChoices("teamId", "team_id"))
     recipient_telegram_ids: list[int] = Field(
         default_factory=list,
         validation_alias=AliasChoices("recipientTelegramIds", "recipient_telegram_ids"),
     )
-    draft: list[SyncDraftItem] = Field(default_factory=list)
     summary: SyncSummary | None = None
 
-    @field_validator("draft", "recipient_telegram_ids", mode="before")
+    @field_validator("recipient_telegram_ids", mode="before")
     @classmethod
     def _coerce_list(cls, v: object) -> object:
         return v if v is not None else []
@@ -227,7 +227,6 @@ class BotSyncEvent(BackendEvent):
 
 class TaskConfirmationEvent(BackendEvent):
     task_id: str | None = Field(default=None, validation_alias=AliasChoices("taskId", "task_id"))
-    proposal_id: str | None = Field(default=None, validation_alias=AliasChoices("proposalId", "proposal_id"))
     chat_id: int | None = Field(
         default=None,
         validation_alias=AliasChoices("chatId", "chat_id"),
