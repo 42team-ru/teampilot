@@ -1,79 +1,33 @@
+import json
+
 from loguru import logger
 
 from infra.kafka import publish
 from infra.qdrant import search_tasks
-from llm.chains import sync_split_chain
+from llm.chains import sync_match_chain
 from models import SyncDraftEvent, SyncDraftItem, SyncRequestEvent
 from settings import settings
 
 TOPIC_SYNC_DRAFT = "sync.draft"
 
 
-def _split_into_tasks(raw_text: str) -> list[str]:
-    text = raw_text.strip()
-    if not text:
+def _llm_match_tasks(raw_text: str, active_tasks: list) -> list[str]:
+    if not active_tasks:
         return []
+    tasks_json = json.dumps(
+        [{"id": t.id, "title": t.title, "description": (t.description or "")[:120]}
+         for t in active_tasks],
+        ensure_ascii=False,
+    )
     try:
-        result = sync_split_chain.invoke({"text": text})
-        if isinstance(result, list) and all(isinstance(x, str) and x.strip() for x in result) and result:
-            return [x.strip() for x in result]
+        result = sync_match_chain.invoke({"text": raw_text, "tasks": tasks_json})
+        if not isinstance(result, list):
+            return []
+        valid_ids = {t.id for t in active_tasks}
+        return [m for m in result if isinstance(m, str) and m in valid_ids]
     except Exception as e:
-        logger.warning(f"[SYNC] Task splitting failed: {e}")
-    # Fallback: treat the whole report as a single task
-    return [text]
-
-
-def _process_single_line(
-    line: str,
-    event: SyncRequestEvent,
-    active_by_id: dict,
-    candidates_limit: int = 10,
-) -> list[SyncDraftItem]:
-    items: list[SyncDraftItem] = []
-
-    candidates = sorted(
-        search_tasks(line, event.team_id, limit=candidates_limit),
-        key=lambda c: c["score"],
-        reverse=True,
-    )
-
-    top = candidates[0] if candidates else None
-    second_score = candidates[1]["score"] if len(candidates) > 1 else 0.0
-    confident = (
-        top is not None
-        and top["score"] >= settings.SYNC_MATCH_THRESHOLD
-        and (top["score"] - second_score) >= settings.SYNC_MATCH_MARGIN
-    )
-
-    logger.debug(
-        f"[SYNC] Qdrant top_score={top['score'] if top else None} "
-        f"second_score={second_score} confident={confident} "
-        f"candidates={len(candidates)} for line={line!r:.80}"
-    )
-
-    if confident:
-        task_id = top["task_id"]
-        task = active_by_id.get(task_id)
-        title = task.title if task else top["title"]
-        items.append(SyncDraftItem(
-            index=0,
-            user_text=line,
-            task_id=task_id,
-            task_title=title,
-            is_new_task=False,
-        ))
-
-    if not items:
-        logger.info(f"[SYNC] No confident qdrant match — treating as new task for requestId={event.request_id}")
-        items.append(SyncDraftItem(
-            index=0,
-            user_text=line,
-            task_id=None,
-            task_title=line,
-            is_new_task=True,
-        ))
-
-    return items
+        logger.warning(f"[SYNC] LLM matching failed: {e}")
+    return []
 
 
 def process_sync_request(event: SyncRequestEvent) -> None:
@@ -82,16 +36,57 @@ def process_sync_request(event: SyncRequestEvent) -> None:
         f"tasks={len(event.active_tasks)} text={event.raw_text!r:.80}"
     )
 
+    candidates = search_tasks(event.raw_text, event.team_id, limit=10)
+    matched_ids = {
+        c["task_id"]
+        for c in candidates
+        if c["score"] >= settings.STATUS_HINT_THRESHOLD
+    }
+    logger.debug(
+        f"[SYNC] Qdrant matched {len(matched_ids)}/{len(candidates)} tasks "
+        f"above threshold={settings.STATUS_HINT_THRESHOLD}"
+    )
+
     active_by_id = {t.id: t for t in event.active_tasks}
-
-    task_descriptions = _split_into_tasks(event.raw_text)
-
     items: list[SyncDraftItem] = []
-    for description in task_descriptions:
-        items.extend(_process_single_line(description, event, active_by_id))
 
-    for idx, item in enumerate(items, start=1):
-        item.index = idx
+    for idx, task_id in enumerate(matched_ids, start=1):
+        task = active_by_id.get(task_id)
+        title = task.title if task else next(
+            (c["title"] for c in candidates if c["task_id"] == task_id), task_id
+        )
+        items.append(SyncDraftItem(
+            index=idx,
+            user_text=event.raw_text,
+            task_id=task_id,
+            task_title=title,
+            is_new_task=False,
+        ))
+
+    if not items and event.active_tasks:
+        logger.info(f"[SYNC] Qdrant empty — falling back to LLM for requestId={event.request_id}")
+        llm_ids = _llm_match_tasks(event.raw_text, event.active_tasks)
+        logger.info(f"[SYNC] LLM matched task_ids={llm_ids}")
+        for idx, task_id in enumerate(llm_ids, start=1):
+            task = active_by_id.get(task_id)
+            if task:
+                items.append(SyncDraftItem(
+                    index=idx,
+                    user_text=event.raw_text,
+                    task_id=task_id,
+                    task_title=task.title,
+                    is_new_task=False,
+                ))
+
+    if not items:
+        logger.info(f"[SYNC] No tasks matched — treating as new task for requestId={event.request_id}")
+        items.append(SyncDraftItem(
+            index=1,
+            user_text=event.raw_text,
+            task_id=None,
+            task_title=event.raw_text,
+            is_new_task=True,
+        ))
 
     draft = SyncDraftEvent(
         request_id=event.request_id,
