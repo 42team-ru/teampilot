@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
+import tempfile
 import wave
 from collections import deque
 from typing import TYPE_CHECKING
@@ -89,20 +91,39 @@ async def _ask_worker(question: str, team_id: str, meeting_id: str) -> bytes:
 
 
 async def _play_to_mic(audio: bytes, mic_sink: str) -> None:
-    """Проиграть mp3-ответ в mic-sink через ffmpeg → PulseAudio."""
-    # -re: отдавать в realtime. PipeWire null-sink не throttle'ит продюсера по
-    # часам сcsink'а — без -re ffmpeg «выстреливает» весь звук пачкой за доли
-    # секунды, и Chrome успевает захватить с монитора только огрызок («пфф»).
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-re", "-i", "pipe:0",
-        "-ac", "2", "-ar", "48000",
-        "-f", "pulse", "-device", mic_sink, "TeamPilotVoice",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    await proc.communicate(input=audio)
+    """Проиграть mp3-ответ в mic-sink через ffmpeg → PulseAudio.
+
+    Telemost/WebRTC съедает первые ~1.5 c после тишины (ramp-up канала: DTX/
+    comfort-noise → speech), и короткий ответ теряется целиком. Поэтому играем
+    ответ ДВАЖДЫ (-stream_loop 1): первый проход «прогревает» канал, второй
+    слышен полностью. -re — realtime; -af — нормализация тихой TTS-речи (~-25 dB)
+    до ~0 dB, чтобы пробить ещё и noise-gate/AGC.
+    """
+    # -stream_loop требует seekable-вход → пишем во временный файл (pipe не годится).
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        f.write(audio)
+        path = f.name
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-stream_loop", "1", "-re", "-i", path,
+            "-af", "speechnorm=e=12.5:r=0.0001:l=1,volume=4dB,alimiter=limit=0.95",
+            "-ac", "2", "-ar", "48000",
+            "-f", "pulse", "-device", mic_sink, "TeamPilotVoice",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await proc.communicate()
+        if proc.returncode != 0:
+            logger.warning(
+                "voice: ffmpeg play rc={} err={}",
+                proc.returncode, err.decode("utf-8", "replace")[:300],
+            )
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 async def _handle_utterance(
