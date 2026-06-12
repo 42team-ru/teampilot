@@ -52,6 +52,10 @@ async def start_session(meeting_id: str, meeting_url: str, team_id: str = "") ->
         _remove_virtual_sink(sink_module_id)
         raise RuntimeError(f"Failed to create PulseAudio virtual mic sink {mic_sink_name!r}")
 
+    # Set PA defaults BEFORE Chrome starts — no race condition, no post-hoc move-sink-input.
+    # Chrome picks up the default sink/source when it opens its audio stream.
+    _pa_set_default(sink_name, f"{mic_sink_name}.monitor")
+
     session = TelemostSession(
         meeting_id=meeting_id,
         meeting_url=meeting_url,
@@ -94,14 +98,48 @@ def is_active(meeting_id: str) -> bool:
 
 
 async def _ensure_audio_enabled(page) -> None:
-    """On the Telemost pre-join screen, click 'turn-on-mic-button' if the mic is muted."""
+    """On the Telemost pre-join screen, click 'turn-on-mic-button' if the mic is muted.
+
+    Clicking the button may open a device-selector modal (Orb-Modal2-Wrapper).
+    We dismiss it so it doesn't block the join button.
+    """
     try:
         btn = page.locator('[data-testid="turn-on-mic-button"]')
         await btn.wait_for(state="visible", timeout=5_000)
         await btn.click()
         logger.info("Playwright: microphone was muted on pre-join screen — enabled")
     except Exception:
-        logger.debug("Playwright: turn-on-mic-button not found — mic already enabled or pre-join differs")
+        logger.debug("Playwright: turn-on-mic-button not found — mic already enabled")
+        return
+
+    # After enabling mic, a device-selector modal may appear — dismiss it
+    try:
+        modal = page.locator(".Orb-Modal2-Wrapper")
+        await modal.wait_for(state="visible", timeout=2_000)
+        logger.debug("Playwright: device-selector modal appeared — dismissing")
+        # Try explicit close/OK button first
+        closed = False
+        for close_sel in [
+            '[data-testid="modal-close-button"]',
+            '[data-testid="close-button"]',
+            'button[aria-label="Закрыть"]',
+            'button[aria-label="Close"]',
+        ]:
+            try:
+                close_btn = modal.locator(close_sel)
+                if await close_btn.count() > 0:
+                    await close_btn.click()
+                    closed = True
+                    logger.info("Playwright: closed device-selector modal via {}", close_sel)
+                    break
+            except Exception:
+                pass
+        if not closed:
+            await page.keyboard.press("Escape")
+            logger.info("Playwright: dismissed device-selector modal via Escape")
+        await asyncio.sleep(0.3)
+    except Exception:
+        pass  # modal didn't appear — that's fine
 
 
 async def _browser_task(session: TelemostSession) -> None:
@@ -175,10 +213,9 @@ async def _browser_task(session: TelemostSession) -> None:
 
                 await _ensure_audio_enabled(page)
 
-                await join_btn.click()
+                # force=True bypasses overlay-interception check in case a modal still lingers
+                await join_btn.click(force=True)
                 logger.info("Playwright: joined Telemost call meeting_id={}", session.meeting_id)
-                # Don't block — reroute runs in background while call is active
-                asyncio.create_task(_reroute_chrome_audio(session.sink_name))
             except Exception as e:
                 logger.error("Playwright: failed to click join button: {}", e)
                 await browser.close()
@@ -286,53 +323,21 @@ async def _capture_chunk(source: str, duration: int) -> bytes:
             pass
 
 
-def _parse_chrome_sink_input(pactl_output: str) -> int | None:
-    """Parse 'pactl list sink-inputs' output and return Chrome's sink-input ID."""
-    current_id: int | None = None
-    chrome_keywords = ("google-chrome", "chromium", "chrome")
+def _pa_set_default(sink_name: str, source_name: str) -> None:
+    """Set PulseAudio default sink/source before Chrome starts.
 
-    for line in pactl_output.splitlines():
-        line = line.strip()
-        if line.startswith("Sink Input #"):
-            try:
-                current_id = int(line.split("#")[1])
-            except (IndexError, ValueError):
-                current_id = None
-        elif current_id is not None and any(kw in line.lower() for kw in chrome_keywords):
-            return current_id
-    return None
-
-
-async def _reroute_chrome_audio(sink_name: str) -> bool:
-    """Find Chrome's PulseAudio sink-input and move it to our virtual sink.
-    Polls for up to 20 seconds (10 attempts × 2s).
+    Chrome picks up the default when it opens its audio stream, so there is
+    no race condition and no need for post-hoc move-sink-input.
     """
-    for attempt in range(10):
-        await asyncio.sleep(2)
-        try:
-            result = subprocess.run(
-                ["pactl", "list", "sink-inputs"],
-                capture_output=True, text=True, timeout=5,
-            )
-        except Exception as e:
-            logger.warning("pactl list sink-inputs failed: {}", e)
-            continue
-
-        sink_input_id = _parse_chrome_sink_input(result.stdout)
-        if sink_input_id is not None:
-            move = subprocess.run(
-                ["pactl", "move-sink-input", str(sink_input_id), sink_name],
-                capture_output=True, text=True, timeout=5,
-            )
-            if move.returncode == 0:
-                logger.info("Chrome audio rerouted: sink-input={} → sink={}", sink_input_id, sink_name)
-                return True
-            else:
-                logger.warning("move-sink-input failed: {}", move.stderr.strip())
+    for cmd in (
+        ["pactl", "set-default-sink", sink_name],
+        ["pactl", "set-default-source", source_name],
+    ):
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            logger.info("PA default set: {}", " ".join(cmd[2:]))
         else:
-            logger.debug("Chrome sink-input not found yet (attempt {})", attempt + 1)
-    logger.error("Failed to reroute Chrome audio after 10 attempts")
-    return False
+            logger.warning("pactl failed ({}): {}", " ".join(cmd), result.stderr.strip())
 
 
 def _create_virtual_sink(sink_name: str, description: str = "TeamPilotBot") -> Optional[str]:
