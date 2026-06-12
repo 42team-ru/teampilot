@@ -12,10 +12,11 @@ import ru.team42.backend.web_common.dto.PageResponse;
 import ru.team42.backend.web_common.util.ResponseUtils;
 import ru.team42.monolith.dto.request.CreateUserTaskRequest;
 import ru.team42.monolith.dto.request.UpdateTaskRequest;
-import ru.team42.monolith.dto.request.VoiceCreateTaskRequest;
 import ru.team42.monolith.dto.response.TaskBriefResponse;
 import ru.team42.monolith.dto.response.TaskColumnResponse;
 import ru.team42.monolith.dto.response.TaskResponse;
+import ru.team42.monolith.dto.response.VoiceMemberResponse;
+import ru.team42.monolith.dto.response.VoiceContextResponse;
 import ru.team42.monolith.dto.response.TaskStatsResponse;
 import ru.team42.monolith.entity.Task;
 import ru.team42.monolith.entity.User;
@@ -138,12 +139,21 @@ public class TaskController {
     }
 
     @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
-    @PostMapping("/voice-create")
-    public ResponseEntity<TaskResponse> voiceCreate(@RequestBody VoiceCreateTaskRequest request) {
-        Task saved = taskService.voiceCreate(
-                request.teamId(), request.title(), request.assigneeName(),
-                request.deadline(), request.description());
-        return ResponseUtils.created("/tasks/" + saved.getId(), TaskResponse.from(saved));
+    @GetMapping("/voice-context")
+    public ResponseEntity<VoiceContextResponse> voiceContext(@RequestParam UUID teamId) {
+        return ResponseUtils.ok(taskService.voiceContext(teamId));
+    }
+
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    @GetMapping("/voice-members")
+    public ResponseEntity<List<VoiceMemberResponse>> voiceMembers(@RequestParam UUID teamId) {
+        return ResponseUtils.ok(taskService.voiceTeamMembers(teamId));
+    }
+
+    @PreAuthorize("hasRole('BOT') or hasRole('SYSTEM_ADMIN')")
+    @GetMapping("/voice-columns")
+    public ResponseEntity<List<String>> voiceColumns(@RequestParam UUID teamId) {
+        return ResponseUtils.ok(taskService.voiceColumns(teamId));
     }
 
 // ============================================== ПАРАША ДЛЯ ТЕСТОВ ПОТОМ УДАЛИТЬ ==================================================

@@ -14,6 +14,8 @@ import ru.team42.monolith.config.AppProperties;
 import ru.team42.monolith.dto.response.TaskBriefResponse;
 import ru.team42.monolith.dto.response.TaskStatsResponse;
 import ru.team42.monolith.dto.response.TaskUpdateMessage;
+import ru.team42.monolith.dto.response.VoiceMemberResponse;
+import ru.team42.monolith.dto.response.VoiceContextResponse;
 import ru.team42.monolith.entity.*;
 import ru.team42.monolith.entity.enums.TaskLocalStatus;
 import ru.team42.monolith.entity.enums.TaskSyncStatus;
@@ -92,6 +94,13 @@ public class TaskService {
             } catch (IllegalArgumentException e) {
                 log.warn("Invalid columnId '{}' in LlmTaskCreateEvent, skipping column assignment", event.getColumnId());
             }
+        }
+
+        // Если колонка не задана явно — кладём на первую колонку доски. Иначе YouGile
+        // создаёт задачу «без доски» (columnId=null), и её не видно на канбане.
+        if (task.getColumn() == null) {
+            taskColumnRepository.findByTeamIdAndDeletedFalse(team.getId()).stream()
+                    .findFirst().ifPresent(task::setColumn);
         }
 
         if (event.getAssigneeId() != null) {
@@ -579,41 +588,45 @@ public class TaskService {
                 .toList();
     }
 
-    /** Создание задачи голосовой командой: резолвим имя исполнителя и переиспользуем
-     *  основной путь createFromLlmEvent (авто-подтверждение, YouGile-синк, события). */
-    @Transactional
-    public Task voiceCreate(UUID teamId, String title, String assigneeName, Instant deadline, String description) {
-        Team team = teamRepository.findById(teamId)
+    /** Участники команды (внутренний id + имя) — для голосового агента. */
+    public List<VoiceMemberResponse> voiceTeamMembers(UUID teamId) {
+        teamRepository.findById(teamId)
                 .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
+        return teamUserRepository.findByTeamIdWithUser(teamId).stream()
+                .map(tu -> new VoiceMemberResponse(tu.getId(), memberDisplayName(tu)))
+                .filter(m -> !m.name().isBlank())
+                .toList();
+    }
 
-        Long assigneeId = null;
-        if (assigneeName != null && !assigneeName.isBlank()) {
-            assigneeId = resolveAssigneeByName(team, assigneeName)
-                    .map(tu -> tu.getUser().getTelegramId())
-                    .orElse(null);
+    /** Единый контекст доски (участники + колонки + сводка) одним запросом — для голосового агента. */
+    public VoiceContextResponse voiceContext(UUID teamId) {
+        return new VoiceContextResponse(voiceTeamMembers(teamId), voiceColumns(teamId), statsByTeam(teamId));
+    }
+
+    /** Названия колонок доски — чтобы агент сам решал, куда класть задачу. */
+    public List<String> voiceColumns(UUID teamId) {
+        teamRepository.findById(teamId)
+                .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
+        return taskColumnRepository.findByTeamIdAndDeletedFalse(teamId).stream()
+                .map(TaskColumn::getTitle)
+                .filter(t -> t != null && !t.isBlank())
+                .toList();
+    }
+
+    private String memberDisplayName(TeamUser tu) {
+        User u = tu.getUser();
+        String fn = u.getFirstName() != null ? u.getFirstName() : "";
+        String ln = u.getLastName() != null ? u.getLastName() : "";
+        String name = (fn + " " + ln).trim();
+        if (name.isBlank() && u.getTelegramLogin() != null) {
+            name = u.getTelegramLogin();
         }
-
-        LlmTaskCreateEvent event = LlmTaskCreateEvent.builder()
-                .teamId(teamId.toString())
-                .title(title)
-                .description(description)
-                .deadline(deadline)
-                .assigneeId(assigneeId)
-                .confidence(1.0f) // голосовая команда — явное намерение, авто-подтверждаем
-                .build();
-        return createFromLlmEvent(event);
+        return name;
     }
 
     private boolean assigneeMatches(Task t, String nameQ) {
         if (t.getAssignee() == null) return false;
         return assigneeHaystack(t.getAssignee()).contains(nameQ);
-    }
-
-    private Optional<TeamUser> resolveAssigneeByName(Team team, String name) {
-        String q = name.toLowerCase().trim();
-        return teamUserRepository.findByTeamId(team.getId()).stream()
-                .filter(tu -> assigneeHaystack(tu).contains(q))
-                .findFirst();
     }
 
     private String assigneeHaystack(TeamUser tu) {
