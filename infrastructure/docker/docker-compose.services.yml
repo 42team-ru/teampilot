@@ -78,6 +78,20 @@ services:
       EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-text-embedding-3-small}
       EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-1536}
+
+      # ------------------------------------------------------------------
+      # RAG hybrid search: BM25 sparse (локально, fastembed) + RRF + rerank
+      # ------------------------------------------------------------------
+      BM25_MODEL: ${BM25_MODEL:-Qdrant/bm25}
+      BM25_LANGUAGE: ${BM25_LANGUAGE:-russian}
+      # Реранкер (OpenRouter rerank API). Пустой ключ → реранк off, фолбэк на hybrid+RRF
+      RERANK_ENABLED: ${RERANK_ENABLED:-true}
+      RERANK_API_BASE: ${RERANK_API_BASE:-https://openrouter.ai/api/v1}
+      RERANK_API_KEY: ${RERANK_API_KEY:-}
+      RERANK_MODEL: ${RERANK_MODEL:-cohere/rerank-v3.5}
+      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-20}
+      RERANK_TIMEOUT_SECONDS: ${RERANK_TIMEOUT_SECONDS:-15}
+
       WHISPER_API_BASE: ${WHISPER_API_BASE}
       WHISPER_API_KEY: ${WHISPER_API_KEY}
       WHISPER_MODEL: ${WHISPER_MODEL:-whisper-large-v3}
