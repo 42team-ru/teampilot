@@ -414,7 +414,7 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
     if event.team_id is not None:
         for e in extracted_events:
             if isinstance(e, TaskCreateEvent):
-                similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.80)
+                similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.5)
                 if similar:
                     hints.append(f"Похожая задача уже есть: «{similar[0]['title']}»")
 
@@ -449,7 +449,7 @@ def process_meeting_audio(event: MeetingAudioChunkEvent) -> None:
                 if event.team_id is not None:
                     for e in new_full_events:
                         if isinstance(e, TaskCreateEvent):
-                            similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.80)
+                            similar = search_tasks(e.title, event.team_id, limit=1, score_threshold=0.5)
                             if similar:
                                 hints.append(f"Похожая задача уже есть: «{similar[0]['title']}»")
                 logger.info(

@@ -31,10 +31,24 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION_TASKS: str = "tasks"
     QDRANT_COLLECTION_KNOWLEDGE: str = "team_knowledge"
+    # dense: cosine на text-embedding-3-small; dedup — по dense-косинусу
     DEDUP_THRESHOLD: float = 0.92
-    STATUS_HINT_THRESHOLD: float = 0.25
-    SYNC_MATCH_THRESHOLD: float = 0.80
-    SYNC_MATCH_MARGIN: float = 0.08
+    # Пороги ниже — на шкале relevance_score реранкера (0..1), НЕ косинуса.
+    # Калибровались грубо; уточнять eval-харнессом (отдельная задача).
+    STATUS_HINT_THRESHOLD: float = 0.02  # флор-шум для статус-кандидатов (LLM выбирает из топа)
+    SYNC_MATCH_THRESHOLD: float = 0.35
+    SYNC_MATCH_MARGIN: float = 0.05
+    # BM25 sparse (fastembed, локально)
+    BM25_MODEL: str = "Qdrant/bm25"
+    BM25_LANGUAGE: str = "russian"
+
+    # Реранкер (OpenRouter rerank API, Cohere v3.5)
+    RERANK_ENABLED: bool = True
+    RERANK_API_BASE: str = "https://openrouter.ai/api/v1"
+    RERANK_API_KEY: str = ""
+    RERANK_MODEL: str = "cohere/rerank-v3.5"
+    RERANK_CANDIDATES: int = 20  # сколько достаём hybrid+RRF перед реранком
+    RERANK_TIMEOUT_SECONDS: int = 15
 
     # Классификатор
     CLASSIFIER_THRESHOLD: float = 0.65

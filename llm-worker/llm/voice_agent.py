@@ -78,7 +78,11 @@ def _build_tools(team_id: str) -> list:
     def search_tasks(query: str) -> str:
         """Семантический поиск задач команды по смыслу — когда надо найти задачу по теме,
         а не по точному названию (например «что-нибудь про оплату»)."""
-        return json.dumps(qdrant_search_tasks(query, team_id, limit=5), ensure_ascii=False)
+        # rerank=False: в живом звонке важна латентность, хватает hybrid+RRF
+        return json.dumps(
+            qdrant_search_tasks(query, team_id, limit=5, rerank=False),
+            ensure_ascii=False,
+        )
 
     @tool
     def list_team_members() -> str:

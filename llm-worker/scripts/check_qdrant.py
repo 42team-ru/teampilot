@@ -12,15 +12,10 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from infra.qdrant import _embedder, _normalize_text, get_qdrant_client
+from infra.qdrant import search_tasks as hybrid_search_tasks
+from infra.qdrant import get_qdrant_client
 from settings import settings
 from qdrant_client.models import Filter, FieldCondition, MatchValue
-import numpy as np
-
-
-def cosine(a, b):
-    a, b = np.array(a), np.array(b)
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
 def list_tasks(team_id: str):
@@ -48,58 +43,34 @@ def list_tasks(team_id: str):
             tasks.append({
                 "task_id": tid,
                 "title": p.payload.get("title", ""),
-                "kind": p.payload.get("kind", ""),
             })
 
     print(f"\n{'─'*60}")
     print(f"Tasks in Qdrant for team {team_id}: {len(tasks)}")
     print(f"{'─'*60}")
     for t in tasks:
-        print(f"  [{t['kind']:12s}] {t['task_id'][:8]}…  {t['title']}")
+        print(f"  {t['task_id'][:8]}…  {t['title']}")
 
 
 def search_tasks(team_id: str, query: str, threshold: float):
-    embedder = _embedder()
-    client = get_qdrant_client()
-    normalized = _normalize_text(query)
-    vector = embedder.embed_query(normalized)
-
-    raw = client.query_points(
-        collection_name=settings.QDRANT_COLLECTION_TASKS,
-        query=vector,
-        limit=20,
-        score_threshold=None,
-        query_filter=Filter(must=[FieldCondition(key="team_id", match=MatchValue(value=team_id))]),
-    )
-
     print(f"\n{'─'*60}")
     print(f"Query: {query!r}")
-    print(f"Normalized: {normalized!r}")
-    print(f"STATUS_HINT_THRESHOLD = {settings.STATUS_HINT_THRESHOLD}  |  DEDUP_THRESHOLD = {settings.DEDUP_THRESHOLD}  |  custom = {threshold}")
+    print(f"RERANK_ENABLED = {settings.RERANK_ENABLED}  |  candidates = {settings.RERANK_CANDIDATES}")
     print(f"{'─'*60}")
 
-    by_task: dict[str, list] = {}
-    for p in raw.points:
-        tid = p.payload.get("task_id", "?")
-        by_task.setdefault(tid, []).append(p)
+    hybrid = hybrid_search_tasks(team_id=team_id, query=query, limit=10, rerank=False)
+    reranked = hybrid_search_tasks(team_id=team_id, query=query, limit=10, score_threshold=threshold)
 
-    rows = []
-    for tid, pts in by_task.items():
-        best = max(pts, key=lambda p: p.score)
-        title = best.payload.get("title", "")
-        rows.append((best.score, tid, title, pts))
+    print("HYBRID (dense+bm25 RRF, no rerank):")
+    for r in hybrid:
+        print(f"  {r['score']:.4f}  {r['task_id'][:8]}…  {r['title']!r}")
+    if not hybrid:
+        print("  (no results)")
 
-    rows.sort(reverse=True)
-
-    for score, tid, title, pts in rows[:10]:
-        kinds = {p.payload.get("kind", "?"): f"{p.score:.3f}" for p in pts}
-        hit_status = "✅ STATUS" if score >= settings.STATUS_HINT_THRESHOLD else "❌ below status"
-        hit_dedup = "✅ DEDUP" if score >= settings.DEDUP_THRESHOLD else ""
-        flags = f"{hit_status}  {hit_dedup}".strip()
-        print(f"  {score:.4f}  [{flags}]  {tid[:8]}…  {title!r}")
-        print(f"           kinds: {kinds}")
-
-    if not rows:
+    print(f"\nRERANKED (top, threshold={threshold}):")
+    for r in reranked:
+        print(f"  {r['score']:.4f}  [{r['matched_kind']}]  {r['task_id'][:8]}…  {r['title']!r}")
+    if not reranked:
         print("  (no results)")
 
 

@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 from uuid import UUID
 
+import numpy as np
+
 from infra import qdrant
 from settings import settings
 
@@ -17,6 +19,23 @@ class FakeEmbedder:
     def embed_query(self, text: str) -> list[float]:
         self.queries.append(text)
         return [1.0, 0.0]
+
+
+class FakeSparse:
+    """Имитация fastembed SparseTextEmbedding (passage/query embed)."""
+
+    def _emb(self, texts):
+        for _ in texts:
+            yield SimpleNamespace(
+                indices=np.array([1, 2], dtype=np.int64),
+                values=np.array([0.5, 0.6], dtype=np.float32),
+            )
+
+    def passage_embed(self, texts):
+        return self._emb(texts)
+
+    def query_embed(self, texts):
+        return self._emb(texts)
 
 
 class FakeClient:
@@ -37,7 +56,13 @@ class FakeClient:
         return SimpleNamespace(points=self.points)
 
 
-def _point(task_id: str, title: str, kind: str, score: float, description: str = ""):
+def _patch_embedders(monkeypatch, client):
+    monkeypatch.setattr(qdrant, "_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(qdrant, "_bm25", lambda: FakeSparse())
+    monkeypatch.setattr(qdrant, "get_qdrant_client", lambda: client)
+
+
+def _point(task_id: str, title: str, score: float, description: str = ""):
     return SimpleNamespace(
         score=score,
         payload={
@@ -45,17 +70,14 @@ def _point(task_id: str, title: str, kind: str, score: float, description: str =
             "title": title,
             "description": description,
             "team_id": "team-1",
-            "kind": kind,
-            "text": f"{kind}: {title} {description}",
+            "text": f"Задача: {title}. Описание: {description}",
         },
     )
 
 
-def test_store_task_writes_multiple_search_representations(monkeypatch):
-    embedder = FakeEmbedder()
+def test_store_task_writes_single_hybrid_point(monkeypatch):
     client = FakeClient()
-    monkeypatch.setattr(qdrant, "_embedder", lambda: embedder)
-    monkeypatch.setattr(qdrant, "get_qdrant_client", lambda: client)
+    _patch_embedders(monkeypatch, client)
 
     task_id = "11111111-1111-1111-1111-111111111111"
     qdrant.store_task(
@@ -66,53 +88,55 @@ def test_store_task_writes_multiple_search_representations(monkeypatch):
     )
 
     points = client.upserts[0]["points"]
-    kinds = {point.payload["kind"] for point in points}
+    assert len(points) == 1
+    point = points[0]
+    # один point с двумя именованными векторами
+    assert set(point.vector.keys()) == {qdrant._DENSE, qdrant._SPARSE}
+    assert point.payload["task_id"] == task_id
+    assert "Уверенность ИИ" not in point.payload["description"]
+    assert UUID(str(point.id))
 
-    assert kinds == {"summary", "title", "description", "status"}
-    assert all(point.payload["task_id"] == task_id for point in points)
-    assert all("Уверенность ИИ" not in point.payload["description"] for point in points)
-    assert all(UUID(str(point.id)) for point in points)
-    assert len(embedder.documents[0]) == 4
 
-
-def test_search_tasks_aggregates_points_by_task(monkeypatch):
+def test_search_tasks_uses_hybrid_prefetch_and_rerank(monkeypatch):
     task_1 = "11111111-1111-1111-1111-111111111111"
     task_2 = "22222222-2222-2222-2222-222222222222"
     client = FakeClient(points=[
-        _point(
-            task_1,
-            "Пересоздать коллекцию Qdrant",
-            "title",
-            0.74,
-            "Эмбеддинги поплыли",
-        ),
-        _point(
-            task_1,
-            "Пересоздать коллекцию Qdrant",
-            "status",
-            0.73,
-            "Эмбеддинги поплыли",
-        ),
-        _point(
-            task_2,
-            "Написать документацию по REST API",
-            "summary",
-            0.75,
-        ),
+        _point(task_1, "Пересоздать коллекцию Qdrant", 0.5, "Эмбеддинги поплыли"),
+        _point(task_2, "Написать документацию по REST API", 0.33),
     ])
-    monkeypatch.setattr(qdrant, "_embedder", lambda: FakeEmbedder())
-    monkeypatch.setattr(qdrant, "get_qdrant_client", lambda: client)
+    _patch_embedders(monkeypatch, client)
+    # реранк переворачивает порядок: индекс 1 первым
+    monkeypatch.setattr(qdrant, "_rerank", lambda q, docs, top_n: [(1, 0.9), (0, 0.4)])
 
     result = qdrant.search_tasks("qdrant готов", "team-1", limit=2)
 
-    assert [candidate["task_id"] for candidate in result] == [task_1, task_2]
-    assert result[0]["matched_kind"] == "title"
-    assert [match["kind"] for match in result[0]["matches"]] == ["title", "status"]
-    assert client.query_calls[0]["limit"] >= 2 * len(qdrant._TASK_VECTOR_KINDS)
-    assert client.query_calls[0]["score_threshold"] == settings.STATUS_HINT_THRESHOLD
+    # hybrid: prefetch из dense + bm25, fusion RRF
+    call = client.query_calls[0]
+    assert len(call["prefetch"]) == 2
+    usings = {p.using for p in call["prefetch"]}
+    assert usings == {qdrant._DENSE, qdrant._SPARSE}
+    # rerank применён: порядок и score из реранкера
+    assert [c["task_id"] for c in result] == [task_2, task_1]
+    assert result[0]["matched_kind"] == "rerank"
+    assert result[0]["score"] == 0.9
 
 
-def test_delete_task_removes_old_single_point_and_all_new_representations(monkeypatch):
+def test_search_tasks_without_rerank_keeps_rrf_order(monkeypatch):
+    task_1 = "11111111-1111-1111-1111-111111111111"
+    task_2 = "22222222-2222-2222-2222-222222222222"
+    client = FakeClient(points=[
+        _point(task_1, "Задача А", 0.5),
+        _point(task_2, "Задача Б", 0.33),
+    ])
+    _patch_embedders(monkeypatch, client)
+
+    result = qdrant.search_tasks("что-то", "team-1", limit=5, rerank=False)
+
+    assert [c["task_id"] for c in result] == [task_1, task_2]
+    assert result[0]["matched_kind"] == "hybrid"
+
+
+def test_delete_task_removes_main_and_legacy_ids(monkeypatch):
     client = FakeClient()
     monkeypatch.setattr(qdrant, "get_qdrant_client", lambda: client)
 
@@ -120,22 +144,23 @@ def test_delete_task_removes_old_single_point_and_all_new_representations(monkey
     qdrant.delete_task(task_id)
 
     point_ids = client.deletes[0]["points_selector"].points
-
+    # основной id + legacy (raw + 4 старых kind-представления)
+    assert qdrant._task_point_id(task_id) in point_ids
     assert task_id in point_ids
-    assert len(point_ids) == 1 + len(qdrant._TASK_VECTOR_KINDS)
-    assert all(UUID(point_id) for point_id in point_ids[1:])
+    assert len(point_ids) == 1 + len(qdrant._legacy_task_point_ids(task_id))
 
 
-def test_duplicate_detection_uses_dedup_threshold(monkeypatch):
+def test_duplicate_detection_uses_dense_path_and_threshold(monkeypatch):
     task_id = "11111111-1111-1111-1111-111111111111"
-    client = FakeClient(points=[
-        _point(task_id, "Пересоздать коллекцию Qdrant", "summary", 0.94),
-    ])
-    monkeypatch.setattr(qdrant, "_embedder", lambda: FakeEmbedder())
-    monkeypatch.setattr(qdrant, "get_qdrant_client", lambda: client)
+    client = FakeClient(points=[_point(task_id, "Пересоздать коллекцию Qdrant", 0.94)])
+    _patch_embedders(monkeypatch, client)
 
     assert qdrant.is_task_duplicate("Пересоздать коллекцию Qdrant", "", "team-1")
-    assert client.query_calls[0]["score_threshold"] == settings.DEDUP_THRESHOLD
+    call = client.query_calls[0]
+    # дедуп — чистый dense с косинус-порогом, без prefetch/fusion
+    assert call["using"] == qdrant._DENSE
+    assert "prefetch" not in call
+    assert call["score_threshold"] == settings.DEDUP_THRESHOLD
 
 
 def test_search_knowledge_includes_extra_team_ids(monkeypatch):
@@ -151,8 +176,8 @@ def test_search_knowledge_includes_extra_team_ids(monkeypatch):
             },
         ),
     ])
-    monkeypatch.setattr(qdrant, "_embedder", lambda: FakeEmbedder())
-    monkeypatch.setattr(qdrant, "get_qdrant_client", lambda: client)
+    _patch_embedders(monkeypatch, client)
+    monkeypatch.setattr(qdrant, "_rerank", lambda q, docs, top_n: None)  # фолбэк на RRF-порядок
 
     result = qdrant.search_knowledge(
         "python",
@@ -162,7 +187,9 @@ def test_search_knowledge_includes_extra_team_ids(monkeypatch):
         limit=5,
     )
 
-    query_filter = client.query_calls[0]["query_filter"]
+    # фильтр теперь живёт внутри prefetch
+    prefetch = client.query_calls[0]["prefetch"]
+    query_filter = prefetch[0].filter
     conditions = query_filter.min_should.conditions
 
     assert [item["source_id"] for item in result] == ["course-1"]
@@ -193,14 +220,33 @@ def test_format_task_candidates_includes_retrieval_context():
     assert 'query: "qdrant готов"' in text
 
 
-def test_status_queries_from_batch_use_only_status_like_messages():
+def _msg(text: str):
+    from datetime import datetime
+    return SimpleNamespace(
+        text=text,
+        message_id="m",
+        timestamp=datetime(2026, 6, 12, 10, 0),
+        username="user",
+        full_name="User",
+    )
+
+
+def test_status_queries_from_batch_use_only_status_like_messages(monkeypatch):
+    import processor
     from processor import _status_queries_from_batch
 
     batch = SimpleNamespace(messages=[
-        SimpleNamespace(text="Пошел обедать, вернусь через час"),
-        SimpleNamespace(text="Авторизацию закрыл, смотри в мастере"),
-        SimpleNamespace(text="ф"),
+        _msg("Пошел обедать, вернусь через час"),
+        _msg("Авторизацию закрыл, смотри в мастере"),
+        _msg("ф"),
     ])
+
+    # LLM-экстрактор выделяет только статус-подобные фразы
+    monkeypatch.setattr(
+        processor,
+        "status_query_chain",
+        SimpleNamespace(invoke=lambda _: ["Авторизацию закрыл, смотри в мастере"]),
+    )
 
     assert _status_queries_from_batch(batch) == [
         "Авторизацию закрыл, смотри в мастере"
