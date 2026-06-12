@@ -137,6 +137,9 @@ async def run_voice_qa(session: "TelemostSession") -> None:
     """Главный таск: непрерывный захват + VAD + диспетчеризация вопросов."""
     if not settings.VOICE_QA_ENABLED:
         return
+    if settings.WAKE_MODE.lower() == "openwakeword":
+        await run_voice_qa_oww(session)
+        return
     if not settings.WHISPER_API_KEY:
         logger.warning("voice: WHISPER_API_KEY пуст — голосовой Q&A отключён")
         return
@@ -225,3 +228,110 @@ async def run_voice_qa(session: "TelemostSession") -> None:
         except Exception:
             proc.kill()
         logger.info("voice: слушатель остановлен meeting_id={}", session.meeting_id)
+
+
+# ── Режим openWakeWord (локальный wake-word, без STT на каждую фразу) ──────────
+async def _answer_from_pcm(session: "TelemostSession", pcm: bytes) -> None:
+    """Распознать вопрос (один STT) и ответить голосом в звонок."""
+    text = (await _transcribe(pcm)).strip()
+    if len(text) < 2:
+        return
+    logger.info("voice(oww): вопрос: {!r}", text)
+    audio = await _ask_worker(text, session.team_id, session.meeting_id)
+    await _play_to_mic(audio, session.mic_sink_name)
+    await asyncio.sleep(0.5)  # хвост против эха
+
+
+async def _record_question(stdout, vad) -> bytes:
+    """После триггера пишем фразу до тишины (VAD). 20мс-кадры."""
+    sil_limit = max(1, settings.VAD_SILENCE_MS // _FRAME_MS)
+    max_frames = max(2, settings.MAX_UTTERANCE_MS // _FRAME_MS)
+    start_budget = 1500 // _FRAME_MS  # ждём начала речи до 1.5с после wake
+    frames: list[bytes] = []
+    started = False
+    silence = 0
+    while True:
+        try:
+            frame = await stdout.readexactly(_FRAME_BYTES)
+        except asyncio.IncompleteReadError:
+            break
+        speech = vad.is_speech(frame, _SAMPLE_RATE)
+        if not started:
+            if speech:
+                started = True
+                frames.append(frame)
+            else:
+                start_budget -= 1
+                if start_budget <= 0:
+                    return b""
+            continue
+        frames.append(frame)
+        silence = 0 if speech else silence + 1
+        if silence >= sil_limit or len(frames) >= max_frames:
+            break
+    return b"".join(frames)
+
+
+async def run_voice_qa_oww(session: "TelemostSession") -> None:
+    """Wake-word через openWakeWord: триггер локально → запись вопроса → один STT → воркер."""
+    if not settings.WHISPER_API_KEY:
+        logger.warning("voice(oww): WHISPER_API_KEY пуст — нечем распознать вопрос")
+        return
+    try:
+        import numpy as np
+        import webrtcvad
+        from openwakeword.model import Model as OWWModel
+    except ImportError as e:
+        logger.error("voice(oww): нет зависимостей ({}) — `uv add openwakeword`", e)
+        return
+
+    try:
+        kwargs = {"inference_framework": settings.OWW_INFERENCE_FRAMEWORK}
+        if settings.OWW_MODEL_PATH:
+            kwargs["wakeword_models"] = [settings.OWW_MODEL_PATH]
+        try:
+            oww = OWWModel(**kwargs)
+        except Exception:
+            import openwakeword.utils
+            openwakeword.utils.download_models()
+            oww = OWWModel(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        logger.error("voice(oww): не удалось загрузить модель ({}) — режим отключён", e)
+        return
+
+    await asyncio.sleep(8)
+    source = f"{session.sink_name}.monitor"
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-f", "pulse", "-i", source,
+        "-ar", str(_SAMPLE_RATE), "-ac", "1", "-f", "s16le", "pipe:1",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+    )
+    vad = webrtcvad.Vad(settings.VAD_AGGRESSIVENESS)
+    oww_bytes = 1280 * 2  # 80мс кадр для openWakeWord
+    model_label = settings.OWW_MODEL_PATH or "встроенные"
+    logger.info("voice(oww): слушаю звонок (модель: {}, порог {})", model_label, settings.OWW_THRESHOLD)
+
+    try:
+        while not session._stop_event.is_set():
+            try:
+                chunk = await proc.stdout.readexactly(oww_bytes)
+            except asyncio.IncompleteReadError:
+                break
+            scores = oww.predict(np.frombuffer(chunk, dtype=np.int16))
+            if scores and max(scores.values()) >= settings.OWW_THRESHOLD:
+                logger.info("voice(oww): триггер! ({:.2f})", max(scores.values()))
+                pcm = await _record_question(proc.stdout, vad)
+                if pcm:
+                    try:
+                        await _answer_from_pcm(session, pcm)
+                    except Exception as e:  # noqa: BLE001
+                        logger.opt(exception=True).warning("voice(oww): ошибка ответа: {}", e)
+                oww.reset()
+    finally:
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=3)
+        except Exception:
+            proc.kill()
+        logger.info("voice(oww): слушатель остановлен meeting_id={}", session.meeting_id)

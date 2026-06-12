@@ -22,7 +22,12 @@ class Settings(BaseSettings):
     WHISPER_API_KEY: str = ""
     WHISPER_MODEL: str = "whisper-large-v3"
     WHISPER_LANGUAGE: str = "ru"
-    WAKE_WORDS: str = "пилот,pilot"                    # через запятую
+    WAKE_WORDS: str = "пилот,pilot"                    # через запятую (для WAKE_MODE=stt)
+    # Режим детекта триггера: "stt" (always-listen+Whisper) | "openwakeword" (локальный движок)
+    WAKE_MODE: str = "stt"
+    OWW_MODEL_PATH: str = ""                            # путь к кастомной .onnx («пилот»); пусто → встроенные модели
+    OWW_THRESHOLD: float = 0.5
+    OWW_INFERENCE_FRAMEWORK: str = "onnx"               # onnx | tflite
     VAD_AGGRESSIVENESS: int = 2                         # 0..3, выше = агрессивнее режет тишину
     VAD_SILENCE_MS: int = 700                           # пауза, считающаяся концом фразы
     MIN_UTTERANCE_MS: int = 600                         # короче — игнорируем (шум)

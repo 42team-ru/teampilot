@@ -12,4 +12,13 @@ dependencies = [
     "minio>=7.2.7",
     "confluent-kafka>=2.5.0",
     "webrtcvad-wheels>=2.0.14",
+    "openwakeword>=0.6.0",
+    "onnxruntime>=1.17.0",
+    "numpy>=1.24.0",
 ]
+
+[tool.uv]
+# openwakeword тянет tflite-runtime, у которого нет wheels под cp312 (только cp311).
+# Мы используем onnxruntime (inference_framework=onnx), tflite не нужен — исключаем
+# его недостижимым маркером платформы.
+override-dependencies = ["tflite-runtime; sys_platform == 'disabled'"]
