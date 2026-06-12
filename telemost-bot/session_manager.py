@@ -197,23 +197,52 @@ async def _unmute_in_call(page, session: TelemostSession) -> None:
     The in-call toolbar exposes the same data-testid as the pre-join screen
     ('turn-on-mic-button' while muted, flips to 'turn-off-mic-button' once on).
     We deliberately click it ONLY post-join — doing it on pre-join broke joining.
+
+    A single click races the React handler (and may hit a device picker), so we
+    click and then VERIFY the toggle actually flipped to 'turn-off-mic-button',
+    retrying a few times.
     """
+    on_btn = '[data-testid="turn-off-mic-button"]'
+    off_btn = '[data-testid="turn-on-mic-button"]'
+    await asyncio.sleep(4)  # let the in-call toolbar render
     try:
-        await asyncio.sleep(4)  # let the in-call toolbar render
-        btn = page.locator('[data-testid="turn-on-mic-button"]')
-        await btn.wait_for(state="visible", timeout=15_000)
-        await btn.click()
-        logger.info("Playwright: mic unmuted in call meeting_id={}", session.meeting_id)
-    except Exception as e:
-        logger.warning(
-            "Playwright: could not unmute mic in call (already on?): {}", e
-        )
+        await page.bring_to_front()  # foreground tab — Chrome may gate getUserMedia on it
+    except Exception:
+        pass
+
+    for attempt in range(1, 5):
         try:
-            shot = f"/tmp/unmute_fail_{session.meeting_id}.png"
-            await page.screenshot(path=shot)
-            logger.warning("Playwright: saved unmute-fail screenshot {}", shot)
-        except Exception:
-            pass
+            if await page.locator(on_btn).count() > 0:
+                logger.info("Playwright: mic already on (attempt {})", attempt)
+                return
+            btn = page.locator(off_btn)
+            await btn.wait_for(state="visible", timeout=8_000)
+            await btn.click()
+            # Verify the toggle actually flipped — not just that the click landed.
+            await page.locator(on_btn).wait_for(state="visible", timeout=3_000)
+            logger.info(
+                "Playwright: mic unmuted in call (attempt {}) meeting_id={}",
+                attempt, session.meeting_id,
+            )
+            return
+        except Exception as e:
+            logger.warning(
+                "Playwright: mic still muted after click (attempt {}): {} — retry",
+                attempt, e,
+            )
+            try:
+                await page.keyboard.press("Escape")  # dismiss a device picker if any
+            except Exception:
+                pass
+            await asyncio.sleep(1.5)
+
+    # Gave up — screenshot for blind debugging on the VPS.
+    try:
+        shot = f"/tmp/unmute_fail_{session.meeting_id}.png"
+        await page.screenshot(path=shot)
+        logger.warning("Playwright: unmute failed after retries, screenshot {}", shot)
+    except Exception:
+        pass
 
 
 async def _record_loop(session: TelemostSession) -> None:
