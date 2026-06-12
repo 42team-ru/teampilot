@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-12-make-voice-call-agent-read-only-drop-create-status-assign-tools/prd.md", "reason": "Scope: drop mutating tools from voice agent, keep read-only; remove dead backend_client fns"}
+{"file": "llm-worker/docs/kafka_contract.md", "reason": "Transcription path (audio_task_chain/audio_status_chain -> TaskCreateEvent/StatusChangeEvent) is the replacement for live mutations - must stay intact"}

@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/06-12-make-voice-call-agent-read-only-drop-create-status-assign-tools/prd.md", "reason": "Acceptance criteria: agent is read-only, transcription mutations still work, no dead backend_client code"}
