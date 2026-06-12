@@ -52,6 +52,11 @@ async def start_session(meeting_id: str, meeting_url: str, team_id: str = "") ->
         _remove_virtual_sink(sink_module_id)
         raise RuntimeError(f"Failed to create PulseAudio virtual mic sink {mic_sink_name!r}")
 
+    # Set PA defaults BEFORE Chrome starts — Chrome/Telemost open the "default"
+    # input device, so the default source MUST point at our virtual mic, else the
+    # bot transmits the empty default_output.monitor and is silent in the call.
+    _pa_set_default(sink_name, f"{mic_sink_name}.monitor")
+
     session = TelemostSession(
         meeting_id=meeting_id,
         meeting_url=meeting_url,
@@ -319,6 +324,23 @@ async def _reroute_chrome_audio(sink_name: str) -> bool:
             logger.debug("Chrome sink-input not found yet (attempt {})", attempt + 1)
     logger.error("Failed to reroute Chrome audio after 10 attempts")
     return False
+
+
+def _pa_set_default(sink_name: str, source_name: str) -> None:
+    """Set PulseAudio default sink/source before Chrome starts.
+
+    Chrome picks up the default when it opens its audio stream, so there is no
+    race condition and no need for post-hoc move-sink-input.
+    """
+    for cmd in (
+        ["pactl", "set-default-sink", sink_name],
+        ["pactl", "set-default-source", source_name],
+    ):
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            logger.info("PA default set: {}", " ".join(cmd[2:]))
+        else:
+            logger.warning("pactl failed ({}): {}", " ".join(cmd), result.stderr.strip())
 
 
 def _create_virtual_sink(sink_name: str, description: str = "TeamPilotBot") -> Optional[str]:
