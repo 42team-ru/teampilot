@@ -199,27 +199,27 @@ services:
   # Drop-in замена облачного TTS: в llm-worker/.env выставить
   #   TTS_API_BASE=http://voice-rvc:5050/v1  и  TTS_MODEL=<имя папки в rvc_models>
   # ────────────────────────────────────────────────────────────────────────
-  voice-rvc:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/voice-rvc:latest
-    build:
-      context: ../../voice-rvc
-      dockerfile: Dockerfile
-    container_name: voice-rvc
-    pull_policy: always
-    restart: unless-stopped
-    ports:
-      - "5050:5050"
-    environment:
-      RVC_DEVICE: ${RVC_DEVICE:-cpu:0}
-      BASE_TTS_VOICE: ${BASE_TTS_VOICE:-ru-RU-DmitryNeural}
-      RVC_F0METHOD: ${RVC_F0METHOD:-rmvpe}
-      RVC_INDEX_RATE: ${RVC_INDEX_RATE:-0.75}
-      RVC_PROTECT: ${RVC_PROTECT:-0.33}
-      RVC_F0UP_KEY: ${RVC_F0UP_KEY:-0}
-      PORT: "5050"
-    volumes:
+#  voice-rvc:
+#    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/voice-rvc:latest
+#    build:
+#      context: ../../voice-rvc
+#      dockerfile: Dockerfile
+#    container_name: voice-rvc
+#    pull_policy: always
+#    restart: unless-stopped
+#    ports:
+#      - "5050:5050"
+#    environment:
+#      RVC_DEVICE: ${RVC_DEVICE:-cpu:0}
+#      BASE_TTS_VOICE: ${BASE_TTS_VOICE:-ru-RU-DmitryNeural}
+#      RVC_F0METHOD: ${RVC_F0METHOD:-rmvpe}
+#      RVC_INDEX_RATE: ${RVC_INDEX_RATE:-0.75}
+#      RVC_PROTECT: ${RVC_PROTECT:-0.33}
+#      RVC_F0UP_KEY: ${RVC_F0UP_KEY:-0}
+#      PORT: "5050"
+#    volumes:
       # RVC-модели лежат на хосте (веса .pth/.index в git не коммитятся)
-      - ../../voice-rvc/rvc_models:/app/rvc_models
+#      - ../../voice-rvc/rvc_models:/app/rvc_models
     # ── GPU (опционально) ──
     # Для cuda:0 раскомментируй блок ниже и поставь nvidia-container-toolkit на хосте,
     # а также собери образ с CUDA-версией torch. На CPU работает без этого.
