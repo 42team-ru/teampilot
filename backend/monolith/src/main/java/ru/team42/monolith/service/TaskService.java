@@ -589,6 +589,7 @@ public class TaskService {
     }
 
     /** Участники команды (внутренний id + имя) — для голосового агента. */
+    @Transactional(readOnly = true)
     public List<VoiceMemberResponse> voiceTeamMembers(UUID teamId) {
         teamRepository.findById(teamId)
                 .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
@@ -599,11 +600,13 @@ public class TaskService {
     }
 
     /** Единый контекст доски (участники + колонки + сводка) одним запросом — для голосового агента. */
+    @Transactional(readOnly = true)
     public VoiceContextResponse voiceContext(UUID teamId) {
         return new VoiceContextResponse(voiceTeamMembers(teamId), voiceColumns(teamId), statsByTeam(teamId));
     }
 
     /** Названия колонок доски — чтобы агент сам решал, куда класть задачу. */
+    @Transactional(readOnly = true)
     public List<String> voiceColumns(UUID teamId) {
         teamRepository.findById(teamId)
                 .orElseThrow(() -> AppException.notFound("Team %s not found".formatted(teamId)));
