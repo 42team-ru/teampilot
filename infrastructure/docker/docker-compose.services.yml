@@ -70,12 +70,12 @@ services:
       MINIO_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
       MINIO_SECURE: "false"
-      LLM_API_BASE: ${LLM_API_BASE}
-      LLM_API_KEY: ${LLM_API_KEY}
-      LLM_CHEAP_MODEL: ${LLM_CHEAP_MODEL}
-      LLM_EXPENSIVE_MODEL: ${LLM_EXPENSIVE_MODEL}
-      EMBEDDINGS_API_BASE: ${EMBEDDINGS_API_BASE}
-      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY}
+      LLM_API_BASE: ${LLM_API_BASE:-https://openrouter.ai/api/v1}
+      LLM_API_KEY: ${OPENROUTER_API_KEY}
+      LLM_CHEAP_MODEL: ${LLM_CHEAP_MODEL:-openai/gpt-4o-mini}
+      LLM_EXPENSIVE_MODEL: ${LLM_EXPENSIVE_MODEL:-openai/gpt-4.1-mini}
+      EMBEDDINGS_API_BASE: ${EMBEDDINGS_API_BASE:-https://openrouter.ai/api/v1}
+      EMBEDDINGS_API_KEY: ${OPENROUTER_API_KEY}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-text-embedding-3-small}
       EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-1536}
 
@@ -87,7 +87,7 @@ services:
       # Реранкер (OpenRouter rerank API). Пустой ключ → реранк off, фолбэк на hybrid+RRF
       RERANK_ENABLED: ${RERANK_ENABLED:-true}
       RERANK_API_BASE: ${RERANK_API_BASE:-https://openrouter.ai/api/v1}
-      RERANK_API_KEY: ${RERANK_API_KEY:-}
+      RERANK_API_KEY: ${OPENROUTER_API_KEY}
       RERANK_MODEL: ${RERANK_MODEL:-cohere/rerank-v3.5}
       RERANK_CANDIDATES: ${RERANK_CANDIDATES:-20}
       RERANK_TIMEOUT_SECONDS: ${RERANK_TIMEOUT_SECONDS:-15}
@@ -105,7 +105,7 @@ services:
       BOT_SECRET: ${BOT_SECRET:-changeme}
       VOICE_LLM_MODEL: ${VOICE_LLM_MODEL:-}
       TTS_API_BASE: ${TTS_API_BASE:-https://openrouter.ai/api/v1}
-      TTS_API_KEY: ${TTS_API_KEY:-}
+      TTS_API_KEY: ${OPENROUTER_API_KEY}
       TTS_MODEL: ${TTS_MODEL:-x-ai/grok-voice-tts-1.0}
       TTS_VOICE: ${TTS_VOICE:-Ara}
       TTS_FORMAT: ${TTS_FORMAT:-mp3}
@@ -193,43 +193,6 @@ services:
       WAKE_WORDS: ${WAKE_WORDS:-пилот,pilot}
     devices:
       - /dev/snd:/dev/snd
-
-  # ────────────────────────────────────────────────────────────────────────
-  # voice-rvc — локальный OpenAI-совместимый TTS с мем-голосами (edge-tts → RVC).
-  # Drop-in замена облачного TTS: в llm-worker/.env выставить
-  #   TTS_API_BASE=http://voice-rvc:5050/v1  и  TTS_MODEL=<имя папки в rvc_models>
-  # ────────────────────────────────────────────────────────────────────────
-#  voice-rvc:
-#    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-42team-ru}/voice-rvc:latest
-#    build:
-#      context: ../../voice-rvc
-#      dockerfile: Dockerfile
-#    container_name: voice-rvc
-#    pull_policy: always
-#    restart: unless-stopped
-#    ports:
-#      - "5050:5050"
-#    environment:
-#      RVC_DEVICE: ${RVC_DEVICE:-cpu:0}
-#      BASE_TTS_VOICE: ${BASE_TTS_VOICE:-ru-RU-DmitryNeural}
-#      RVC_F0METHOD: ${RVC_F0METHOD:-rmvpe}
-#      RVC_INDEX_RATE: ${RVC_INDEX_RATE:-0.75}
-#      RVC_PROTECT: ${RVC_PROTECT:-0.33}
-#      RVC_F0UP_KEY: ${RVC_F0UP_KEY:-0}
-#      PORT: "5050"
-#    volumes:
-      # RVC-модели лежат на хосте (веса .pth/.index в git не коммитятся)
-#      - ../../voice-rvc/rvc_models:/app/rvc_models
-    # ── GPU (опционально) ──
-    # Для cuda:0 раскомментируй блок ниже и поставь nvidia-container-toolkit на хосте,
-    # а также собери образ с CUDA-версией torch. На CPU работает без этого.
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
 
 networks:
   default:
