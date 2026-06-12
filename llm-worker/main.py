@@ -27,7 +27,8 @@ from models import (
     TaskLifecycleEvent,
     proto_to_batch_event,
 )
-from processor import process_audio, process_batch, process_meeting_audio
+from meeting_processor import process_meeting_audio
+from processor import process_audio, process_batch
 from proto_generated.ru.team42.events import message_batch_pb2
 from settings import settings
 from sync_processor import process_sync_request

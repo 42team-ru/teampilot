@@ -5,82 +5,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# ── Kafka: Spring → LLM Worker ─────────────────────────────────────────────
+# ── Shared team / board models ───────────────────────────────────────────────
 
-class AudioTeamMember(BaseModel):
+class TeamMember(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     telegram_id: int = Field(alias="telegramId")
     username: str = ""
     full_name: str = Field(alias="fullName", default="")
     role: str = ""
-    position: str | None = None
-
-
-class AudioColumnInfo(BaseModel):
-    id: str
-    title: str
-
-
-class AudioStickerState(BaseModel):
-    id: str
-    title: str
-
-
-class AudioStickerInfo(BaseModel):
-    id: str
-    title: str
-    type: str
-    states: list[AudioStickerState] = Field(default_factory=list)
-
-
-class AudioNewEvent(BaseModel):
-    """Incoming event from audio.new — Spring sends camelCase JSON."""
-    model_config = ConfigDict(populate_by_name=True)
-
-    file_id: str = Field(alias="fileId")
-    team_id: str | None = Field(alias="teamId", default=None)
-    team_chat_id: int | None = Field(alias="teamChatId", default=None)
-    bucket: str
-    s3_key: str = Field(alias="s3Key")
-    original_filename: str = Field(alias="originalFilename", default="audio")
-    content_type: str = Field(alias="contentType", default="audio/ogg")
-    team: list[AudioTeamMember] = Field(default_factory=list)
-    columns: list[AudioColumnInfo] = Field(default_factory=list)
-    stickers: list[AudioStickerInfo] = Field(default_factory=list)
-
-
-class MeetingAudioChunkEvent(BaseModel):
-    """Incoming event from meetings.audio.chunks — Spring sends camelCase JSON."""
-    model_config = ConfigDict(populate_by_name=True)
-
-    meeting_id: str = Field(alias="meetingId")
-    team_id: str = Field(alias="teamId")
-    recorder_telegram_id: int | None = Field(alias="recorderTelegramId", default=None)
-    chunk_index: int = Field(alias="chunkIndex")
-    final_chunk: bool = Field(alias="finalChunk", default=False)
-    bucket: str
-    s3_key: str = Field(alias="s3Key")
-    original_filename: str = Field(alias="originalFilename", default="meeting-chunk")
-    content_type: str = Field(alias="contentType", default="audio/webm")
-    team: list[AudioTeamMember] = Field(default_factory=list)
-    columns: list[AudioColumnInfo] = Field(default_factory=list)
-    stickers: list[AudioStickerInfo] = Field(default_factory=list)
-
-
-class MessageDto(BaseModel):
-    user_id: int
-    username: str | None = None
-    full_name: str
-    text: str
-    timestamp: datetime
-    message_id: str | None = None
-
-
-class TeamMember(BaseModel):
-    telegram_id: int
-    username: str
-    full_name: str
-    role: str
     position: str | None = None
 
 
@@ -99,6 +31,51 @@ class StickerInfo(BaseModel):
     title: str
     type: str
     states: list[StickerStateInfo] = Field(default_factory=list)
+
+
+# ── Kafka: Spring → LLM Worker ─────────────────────────────────────────────
+
+class AudioNewEvent(BaseModel):
+    """Incoming event from audio.new — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_id: str = Field(alias="fileId")
+    team_id: str | None = Field(alias="teamId", default=None)
+    team_chat_id: int | None = Field(alias="teamChatId", default=None)
+    bucket: str
+    s3_key: str = Field(alias="s3Key")
+    original_filename: str = Field(alias="originalFilename", default="audio")
+    content_type: str = Field(alias="contentType", default="audio/ogg")
+    team: list[TeamMember] = Field(default_factory=list)
+    columns: list[ColumnInfo] = Field(default_factory=list)
+    stickers: list[StickerInfo] = Field(default_factory=list)
+
+
+class MeetingAudioChunkEvent(BaseModel):
+    """Incoming event from meetings.audio.chunks — Spring sends camelCase JSON."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    meeting_id: str = Field(alias="meetingId")
+    team_id: str = Field(alias="teamId")
+    recorder_telegram_id: int | None = Field(alias="recorderTelegramId", default=None)
+    chunk_index: int = Field(alias="chunkIndex")
+    final_chunk: bool = Field(alias="finalChunk", default=False)
+    bucket: str
+    s3_key: str = Field(alias="s3Key")
+    original_filename: str = Field(alias="originalFilename", default="meeting-chunk")
+    content_type: str = Field(alias="contentType", default="audio/webm")
+    team: list[TeamMember] = Field(default_factory=list)
+    columns: list[ColumnInfo] = Field(default_factory=list)
+    stickers: list[StickerInfo] = Field(default_factory=list)
+
+
+class MessageDto(BaseModel):
+    user_id: int
+    username: str | None = None
+    full_name: str
+    text: str
+    timestamp: datetime
+    message_id: str | None = None
 
 
 class MessageBatchEvent(BaseModel):
