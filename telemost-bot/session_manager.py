@@ -97,6 +97,17 @@ def is_active(meeting_id: str) -> bool:
     return meeting_id in _sessions
 
 
+async def _click_continue_in_browser(page) -> None:
+    """Click 'Продолжить в браузере' splash screen if present before the pre-join screen."""
+    try:
+        btn = page.locator('button:has-text("Продолжить в браузере")')
+        await btn.wait_for(state="visible", timeout=8_000)
+        await btn.click()
+        logger.info("Playwright: clicked 'Продолжить в браузере'")
+    except Exception:
+        logger.debug("Playwright: no 'Продолжить в браузере' screen — skipping")
+
+
 async def _ensure_audio_enabled(page) -> None:
     """On the Telemost pre-join screen, click 'turn-on-mic-button' if the mic is muted.
 
@@ -206,6 +217,8 @@ async def _browser_task(session: TelemostSession) -> None:
 
             logger.info("Playwright: navigating to {}", session.meeting_url)
             await page.goto(session.meeting_url, wait_until="domcontentloaded")
+
+            await _click_continue_in_browser(page)
 
             try:
                 join_btn = page.locator('[data-testid="enter-conference-button"]')
