@@ -22,6 +22,9 @@ class TelemostSession:
     sink_module_id: str
     mic_sink_name: str
     mic_module_id: str
+    # Remap-source over mic_sink.monitor — a REAL capture device Chrome can open.
+    mic_source_name: str
+    mic_source_module_id: str
     _chunk_index: int = 0
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event)
     _tasks: list[asyncio.Task] = field(default_factory=list)
@@ -52,10 +55,23 @@ async def start_session(meeting_id: str, meeting_url: str, team_id: str = "") ->
         _remove_virtual_sink(sink_module_id)
         raise RuntimeError(f"Failed to create PulseAudio virtual mic sink {mic_sink_name!r}")
 
+    # Chrome/WebRTC does NOT expose a raw .monitor as a microphone, so getUserMedia
+    # fails ("Разрешите доступ к микрофону"). Remap the mic sink's monitor into a
+    # proper capture device that Chrome sees as a real mic. TTS still plays into the
+    # mic null-sink → flows through .monitor → this remap source → Chrome.
+    mic_source_name = f"bot_mic_src_{short_id}"
+    mic_source_module_id = _create_remap_source(
+        mic_source_name, f"{mic_sink_name}.monitor", "TeamPilotBotMic"
+    )
+    if mic_source_module_id is None:
+        _remove_virtual_sink(mic_module_id)
+        _remove_virtual_sink(sink_module_id)
+        raise RuntimeError(f"Failed to create PulseAudio remap source {mic_source_name!r}")
+
     # Set PA defaults BEFORE Chrome starts — Chrome/Telemost open the "default"
     # input device, so the default source MUST point at our virtual mic, else the
     # bot transmits the empty default_output.monitor and is silent in the call.
-    _pa_set_default(sink_name, f"{mic_sink_name}.monitor")
+    _pa_set_default(sink_name, mic_source_name)
 
     session = TelemostSession(
         meeting_id=meeting_id,
@@ -65,6 +81,8 @@ async def start_session(meeting_id: str, meeting_url: str, team_id: str = "") ->
         sink_module_id=sink_module_id,
         mic_sink_name=mic_sink_name,
         mic_module_id=mic_module_id,
+        mic_source_name=mic_source_name,
+        mic_source_module_id=mic_source_module_id,
     )
     _sessions[meeting_id] = session
 
@@ -89,6 +107,8 @@ async def stop_session(meeting_id: str) -> None:
         task.cancel()
     await asyncio.gather(*session._tasks, return_exceptions=True)
 
+    # Unload the remap source before its master mic-sink it depends on.
+    _remove_virtual_sink(session.mic_source_module_id)
     _remove_virtual_sink(session.sink_module_id)
     _remove_virtual_sink(session.mic_module_id)
     logger.info("Telemost session stopped: meeting_id={}", meeting_id)
@@ -123,11 +143,12 @@ async def _browser_task(session: TelemostSession) -> None:
         use_headless = True
 
     # PULSE_SINK: where Chrome plays the call audio (we capture its .monitor).
-    # PULSE_SOURCE: the bot's microphone — our silent virtual mic sink's monitor.
+    # PULSE_SOURCE: the bot's microphone — the remap-source over the mic sink's
+    # monitor (a real capture device Chrome can open; a raw monitor cannot).
     env = {
         **os.environ,
         "PULSE_SINK": session.sink_name,
-        "PULSE_SOURCE": f"{session.mic_sink_name}.monitor",
+        "PULSE_SOURCE": session.mic_source_name,
     }
     if not use_headless:
         env["DISPLAY"] = display
@@ -398,6 +419,33 @@ def _pa_set_default(sink_name: str, source_name: str) -> None:
             logger.info("PA default set: {}", " ".join(cmd[2:]))
         else:
             logger.warning("pactl failed ({}): {}", " ".join(cmd), result.stderr.strip())
+
+
+def _create_remap_source(source_name: str, master: str, description: str = "TeamPilotBotMic") -> Optional[str]:
+    """Remap a monitor source into a real capture device Chrome can open as a mic.
+
+    Raw PulseAudio monitors are not exposed to WebRTC as microphones, so
+    getUserMedia rejects. module-remap-source presents a normal input device.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "pactl", "load-module", "module-remap-source",
+                f"source_name={source_name}",
+                f"master={master}",
+                f"source_properties=device.description={description}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        logger.error("pactl load module-remap-source failed: {}", result.stderr)
+        return None
+    except Exception as e:
+        logger.error("Failed to create PulseAudio remap source: {}", e)
+        return None
 
 
 def _create_virtual_sink(sink_name: str, description: str = "TeamPilotBot") -> Optional[str]:
