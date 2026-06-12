@@ -22,12 +22,6 @@ class Settings(BaseSettings):
     WHISPER_API_KEY: str = ""
     WHISPER_MODEL: str = "whisper-large-v3"
     WHISPER_LANGUAGE: str = "ru"
-    # Контекстная подсказка для Whisper — помогает распознавать IT-термины
-    WHISPER_PROMPT: str = (
-        "Пилот, задача, задачи, задач, бэклог, спринт, канбан, YouGile, "
-        "дедлайн, разработчик, тестировщик, фронтенд, бэкенд, баг, фича, "
-        "релиз, деплой, пулреквест, ревью, стендап, ретро"
-    )
     WAKE_WORDS: str = "пилот,pilot"                    # через запятую (для WAKE_MODE=stt)
     # Режим детекта триггера: "stt" (always-listen+Whisper) | "openwakeword" (локальный движок)
     WAKE_MODE: str = "stt"
@@ -35,7 +29,7 @@ class Settings(BaseSettings):
     OWW_THRESHOLD: float = 0.5
     OWW_INFERENCE_FRAMEWORK: str = "onnx"               # onnx | tflite
     VAD_AGGRESSIVENESS: int = 2                         # 0..3, выше = агрессивнее режет тишину
-    VAD_SILENCE_MS: int = 700                           # пауза, считающаяся концом фразы
+    VAD_SILENCE_MS: int = 1100                          # пауза, считающаяся концом фразы (1100: чтобы «Пилот, …» не рвало на отдельные фразы)
     MIN_UTTERANCE_MS: int = 600                         # короче — игнорируем (шум)
     MAX_UTTERANCE_MS: int = 12000                       # длиннее — форс-обрыв
     VOICE_REPLY_TIMEOUT_SECONDS: int = 25               # бюджет ответа воркера

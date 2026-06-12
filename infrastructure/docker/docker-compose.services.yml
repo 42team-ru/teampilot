@@ -173,7 +173,6 @@ services:
     restart: unless-stopped
     ports:
       - "8002:8002"
-#    shm_size: 2g
     environment:
       BACKEND_URL: http://monolith:8080
       BOT_SECRET: ${BOT_SECRET:-changeme}
@@ -192,6 +191,8 @@ services:
       WHISPER_MODEL: ${WHISPER_MODEL:-whisper-large-v3}
       WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-ru}
       WAKE_WORDS: ${WAKE_WORDS:-пилот,pilot}
+    devices:
+      - /dev/snd:/dev/snd
 
 networks:
   default:
