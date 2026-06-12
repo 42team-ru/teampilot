@@ -93,6 +93,17 @@ def is_active(meeting_id: str) -> bool:
     return meeting_id in _sessions
 
 
+async def _ensure_audio_enabled(page) -> None:
+    """On the Telemost pre-join screen, click 'turn-on-mic-button' if the mic is muted."""
+    try:
+        btn = page.locator('[data-testid="turn-on-mic-button"]')
+        await btn.wait_for(state="visible", timeout=5_000)
+        await btn.click()
+        logger.info("Playwright: microphone was muted on pre-join screen — enabled")
+    except Exception:
+        logger.debug("Playwright: turn-on-mic-button not found — mic already enabled or pre-join differs")
+
+
 async def _browser_task(session: TelemostSession) -> None:
     try:
         from playwright.async_api import async_playwright
@@ -161,6 +172,9 @@ async def _browser_task(session: TelemostSession) -> None:
             try:
                 join_btn = page.locator('[data-testid="enter-conference-button"]')
                 await join_btn.wait_for(timeout=20_000)
+
+                await _ensure_audio_enabled(page)
+
                 await join_btn.click()
                 logger.info("Playwright: joined Telemost call meeting_id={}", session.meeting_id)
                 # Don't block — reroute runs in background while call is active

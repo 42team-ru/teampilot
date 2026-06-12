@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     WHISPER_API_KEY: str = ""
     WHISPER_MODEL: str = "whisper-large-v3"
     WHISPER_LANGUAGE: str = "ru"
+    # Контекстная подсказка для Whisper — помогает распознавать IT-термины
+    WHISPER_PROMPT: str = (
+        "Пилот, задача, задачи, задач, бэклог, спринт, канбан, YouGile, "
+        "дедлайн, разработчик, тестировщик, фронтенд, бэкенд, баг, фича, "
+        "релиз, деплой, пулреквест, ревью, стендап, ретро"
+    )
     WAKE_WORDS: str = "пилот,pilot"                    # через запятую (для WAKE_MODE=stt)
     # Режим детекта триггера: "stt" (always-listen+Whisper) | "openwakeword" (локальный движок)
     WAKE_MODE: str = "stt"

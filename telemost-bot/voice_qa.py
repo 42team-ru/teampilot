@@ -71,6 +71,7 @@ async def _transcribe(pcm: bytes) -> str:
                 "language": settings.WHISPER_LANGUAGE,
                 "response_format": "text",
                 "temperature": "0",
+                **({"prompt": settings.WHISPER_PROMPT} if settings.WHISPER_PROMPT else {}),
             },
         )
         resp.raise_for_status()
