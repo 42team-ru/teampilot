@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import httpx
-from loguru import logger
 
 from settings import settings
 
@@ -51,27 +50,38 @@ def voice_query(
     return r.json()
 
 
-def create_task(
-    team_id: str,
-    title: str,
-    *,
-    assignee_name: str | None = None,
-    deadline: str | None = None,
-    description: str | None = None,
-) -> dict:
-    body = {
-        "teamId": team_id,
-        "title": title,
-        "assigneeName": assignee_name,
-        "deadline": deadline,
-        "description": description,
-    }
-    r = httpx.post(
-        f"{_BASE}/tasks/voice-create",
-        json=body,
+def list_team_members(team_id: str) -> list[dict]:
+    """Участники команды [{id, name}] — id передавать в assignee_id. GET /tasks/voice-members."""
+    r = httpx.get(
+        f"{_BASE}/tasks/voice-members",
+        params={"teamId": team_id},
         headers=_HEADERS,
-        timeout=_TIMEOUT + 5,
+        timeout=_TIMEOUT,
     )
     r.raise_for_status()
-    logger.info("voice create_task team={} title={!r}", team_id, title)
+    return r.json()
+
+
+def list_columns(team_id: str) -> list[str]:
+    """Названия колонок доски команды. GET /tasks/voice-columns."""
+    r = httpx.get(
+        f"{_BASE}/tasks/voice-columns",
+        params={"teamId": team_id},
+        headers=_HEADERS,
+        timeout=_TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def get_context(team_id: str) -> dict:
+    """Единый контекст доски за один запрос: {members:[{id,name}], columns:[...], stats:{...}}.
+    GET /tasks/voice-context."""
+    r = httpx.get(
+        f"{_BASE}/tasks/voice-context",
+        params={"teamId": team_id},
+        headers=_HEADERS,
+        timeout=_TIMEOUT,
+    )
+    r.raise_for_status()
     return r.json()

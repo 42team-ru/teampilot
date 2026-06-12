@@ -1,7 +1,9 @@
 """Голосовой агент-PM «Пилот»: текст вопроса → tool-calling по доске → короткий ответ.
 
-Используется синхронным эндпоинтом /voice/answer. Инструменты дёргают Spring backend
-(счётчики/списки/создание) и Qdrant (семантика). Ответ — 1-2 разговорных предложения,
+Используется синхронным эндпоинтом /voice/answer. Агент **read-only**: инструменты только
+читают доску (счётчики/списки/поиск) из Spring backend и Qdrant (семантика), доску не меняют.
+Создание задач, смена статуса и назначение происходят отдельно — по транскрипции встречи
+(processor.audio_task_chain / audio_status_chain). Ответ — 1-2 разговорных предложения,
 которые затем озвучиваются (infra.tts)."""
 from __future__ import annotations
 
@@ -36,7 +38,14 @@ else:
 
 
 def _build_tools(team_id: str) -> list:
-    """Инструменты, замкнутые на team_id текущего звонка."""
+    """Read-only инструменты, замкнутые на team_id текущего звонка."""
+
+    @tool
+    def get_context() -> str:
+        """ЕДИНЫЙ контекст доски за один вызов: участники [{id, name}], названия колонок и сводка
+        по задачам. Вызывай ЭТО в начале, если нужны команда/колонки/обзор — не дёргай
+        list_team_members/list_columns/get_board_overview по отдельности."""
+        return json.dumps(backend_client.get_context(team_id), ensure_ascii=False)
 
     @tool
     def get_board_overview() -> str:
@@ -72,35 +81,30 @@ def _build_tools(team_id: str) -> list:
         return json.dumps(qdrant_search_tasks(query, team_id, limit=5), ensure_ascii=False)
 
     @tool
-    def create_task(
-        title: str,
-        assignee_name: str | None = None,
-        deadline: str | None = None,
-        description: str | None = None,
-    ) -> str:
-        """Создать новую задачу на доске. title — короткое название. assignee_name — на кого
-        назначить (имя участника). deadline — момент в ISO-8601 UTC. Возвращает созданную задачу."""
-        return json.dumps(
-            backend_client.create_task(
-                team_id,
-                title,
-                assignee_name=assignee_name,
-                deadline=deadline,
-                description=description,
-            ),
-            ensure_ascii=False,
-        )
+    def list_team_members() -> str:
+        """Участники команды: список [{id, name}]. Для назначения бери ИМЕННО id нужного
+        участника (сопоставив с названным именем) и передавай его в assignee_id."""
+        return json.dumps(backend_client.list_team_members(team_id), ensure_ascii=False)
 
-    return [get_board_overview, list_tasks, search_tasks, create_task]
+    @tool
+    def list_columns() -> str:
+        """Названия колонок доски — чтобы понять, куда класть задачу или в какую колонку двигать."""
+        return json.dumps(backend_client.list_columns(team_id), ensure_ascii=False)
+
+    return [get_context, get_board_overview, list_tasks, search_tasks,
+            list_team_members, list_columns]
 
 
 def _system_prompt() -> SystemMessage:
     now = datetime.now(MSK)
     weekdays = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
-    return SystemMessage(content=(
+    base = (
         "Ты — голосовой ассистент-проджект-менеджер по имени Пилот, ты находишься в рабочем "
         "звонке команды и отвечаешь на вопросы про доску задач.\n"
         f"Сейчас {now:%Y-%m-%d %H:%M} по Москве, сегодня {weekdays[now.weekday()]}.\n"
+        "Ты только ОТВЕЧАЕШЬ на вопросы (read-only) — задачи не создаёшь, статусы не меняешь и "
+        "никого не назначаешь. Если просят что-то сделать с доской — коротко скажи, что задачи и "
+        "изменения соберутся автоматически по итогам встречи.\n"
         "Правила ответа:\n"
         "- Отвечай по-русски, коротко и разговорно — 1-2 предложения, как живая речь вслух.\n"
         "- Без списков, markdown, эмодзи и ссылок — это произносится голосом.\n"
@@ -108,12 +112,14 @@ def _system_prompt() -> SystemMessage:
         "- Относительные сроки («до завтра», «до пятницы») переводи в конкретный момент "
         "ISO-8601 UTC для параметров инструментов, опираясь на текущую дату выше.\n"
         "- Если задач нет или данных недостаточно — честно и коротко скажи об этом.\n"
-        "- Имена исполнителей передавай как есть (например «Олег»)."
-    ))
+        "- Когда нужны команда/колонки/обзор доски — вызови get_context ОДИН раз: там сразу "
+        "участники [{id, name}], названия колонок и сводка. Не дёргай отдельные инструменты."
+    )
+    return SystemMessage(content=base)
 
 
 def answer(text: str, team_id: str, meeting_id: str = "") -> str:
-    """Главная точка: вопрос (текст) → ответ (текст) через tool-calling."""
+    """Главная точка: вопрос (текст) → ответ (текст) через tool-calling. Агент read-only."""
     tools = _build_tools(team_id)
     tools_by_name = {t.name: t for t in tools}
     llm = _llm.bind_tools(tools)
