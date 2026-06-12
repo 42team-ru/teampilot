@@ -170,6 +170,9 @@ async def _browser_task(session: TelemostSession) -> None:
                 logger.info("Playwright: joined Telemost call meeting_id={}", session.meeting_id)
                 # Don't block — reroute runs in background while call is active
                 asyncio.create_task(_reroute_chrome_audio(session.sink_name))
+                # Unmute the mic ONLY after we're in the call (clicking it on the
+                # pre-join screen used to break joining). Background task.
+                asyncio.create_task(_unmute_in_call(page, session))
             except Exception as e:
                 logger.error("Playwright: failed to click join button: {}", e)
                 await browser.close()
@@ -186,6 +189,31 @@ async def _browser_task(session: TelemostSession) -> None:
             except subprocess.TimeoutExpired:
                 xvfb_proc.kill()
             logger.info("Xvfb terminated: display={}", display)
+
+
+async def _unmute_in_call(page, session: TelemostSession) -> None:
+    """Unmute the bot's mic AFTER it has joined the call, so participants hear TTS.
+
+    The in-call toolbar exposes the same data-testid as the pre-join screen
+    ('turn-on-mic-button' while muted, flips to 'turn-off-mic-button' once on).
+    We deliberately click it ONLY post-join — doing it on pre-join broke joining.
+    """
+    try:
+        await asyncio.sleep(4)  # let the in-call toolbar render
+        btn = page.locator('[data-testid="turn-on-mic-button"]')
+        await btn.wait_for(state="visible", timeout=15_000)
+        await btn.click()
+        logger.info("Playwright: mic unmuted in call meeting_id={}", session.meeting_id)
+    except Exception as e:
+        logger.warning(
+            "Playwright: could not unmute mic in call (already on?): {}", e
+        )
+        try:
+            shot = f"/tmp/unmute_fail_{session.meeting_id}.png"
+            await page.screenshot(path=shot)
+            logger.warning("Playwright: saved unmute-fail screenshot {}", shot)
+        except Exception:
+            pass
 
 
 async def _record_loop(session: TelemostSession) -> None:
